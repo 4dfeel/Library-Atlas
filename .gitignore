@@ -1,0 +1,46 @@
+# Dependencies and build output
+node_modules/
+dist/
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+coverage/
+.coverage
+htmlcov/
+*.egg-info/
+
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# User data, caches, backups and diagnostics
+data/
+runtime/
+cache/
+backups/
+logs/
+*.sqlite
+*.sqlite3
+*.sqlite3-*
+*.db
+*.db-*
+*.log
+
+# Browser artifacts may contain private information
+test-results/
+playwright-report/
+blob-report/
+artifacts/
+
+# Local tooling
+.idea/
+.vscode/
+Thumbs.db
+Desktop.ini
