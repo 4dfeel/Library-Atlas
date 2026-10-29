@@ -14,7 +14,9 @@ npm.cmd ci
 npm.cmd run dev
 ```
 
-访问 [http://127.0.0.1:5173/library](http://127.0.0.1:5173/library)。从其他目录也可执行仓库内 `scripts/dev.ps1`，脚本按自身位置解析路径；不要依赖当前目录。路径中的中文、空格无需移动或改名。
+访问 [http://127.0.0.1:5173/library](http://127.0.0.1:5173/library)。也可双击 `scripts/dev.cmd`，或从任意目录运行它；`scripts/dev.cmd preview` 启动构建预览。脚本按自身位置解析路径，路径中的中文、空格无需移动或改名。
+
+另提供 `scripts/dev.ps1` 与 `scripts/check.ps1`，供允许执行本地 PowerShell 脚本的环境使用。当前机器的策略会阻止 `.ps1`；直接用 `.cmd` 或上述 `npm.cmd` 命令即可，无需修改执行策略。
 
 构建与本地静态预览：
 
