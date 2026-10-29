@@ -3,6 +3,7 @@
 ## 范围与决策
 - 产品需求见 `docs/PRODUCT.md`，视觉规范见 `docs/DESIGN.md`，架构见 `docs/ARCHITECTURE.md`，阶段门禁见 `docs/ROADMAP.md`。
 - 按已批准 Phase 工作。Phase 0 仅文档与初始化检查；必须等待用户审核本文件、DESIGN 和 ARCHITECTURE 后进入 Phase 1。
+- Phase 0 已获审核，当前 Phase 1 仅授权 [检查点 1：AppShell + Library](docs/specs/PHASE1.md)。后端骨架等原顺序已按用户要求延期；提交并报告后等待视觉确认。
 - 更换技术栈、大规模重构、删除已有功能或破坏性文件操作前必须征询用户；普通实现细节自主决定。
 
 ## 架构与编码

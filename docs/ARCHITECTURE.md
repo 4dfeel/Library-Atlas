@@ -1,6 +1,6 @@
 # Library Atlas 技术架构草案
 
-状态：Phase 0 待审核；2026-10-30。目录、模型、接口均为拟议契约，不代表已有代码或 Steam 能力。
+状态：Phase 0 已审核；2026-10-30。目录、模型、接口均为拟议契约，不代表已有代码或 Steam 能力。
 
 ## 1. 运行结构与决策
 采用本地单体、分层模块架构。React 处理呈现与交互；FastAPI 统一执行可见性、业务规则、同步和文件访问；SQLite 保存结构化资料。1500 条规模不需要微服务、Redis 或远程数据库。
@@ -116,3 +116,10 @@ scripts/                 # Windows 启动、构建和检查
 | 1500 项与缩放 | 尚无运行实现/性能实测 | 合成数据性能 trace、虚拟化键盘测试、1920 和缩放矩阵；超预算先优化查询与渲染 |
 
 官方依据：[IPlayerService 文档](https://partner.steamgames.com/doc/webapi/IPlayerService?language=english)、[Steam Private Games 帮助](https://help.steampowered.com/en/faqs/view/1150-C06F-4D62-4966)。帮助说明不能证明 API 提供对应状态。后续记录适配器能力为 supported/unsupported/unknown，逐项附实测日期和脱敏证据。
+
+## 8. Phase 1 检查点 1 实施边界
+用户明确将本轮收窄为纯前端 AppShell + Library（见 [执行规范](specs/PHASE1.md)），覆盖此前 Phase 1 含后端骨架的安排。正式产品仍采用上述 FastAPI 单服务架构；本轮使用 Vite 本地 dev/preview 供视觉评审，不是正式交付运行架构。未创建 Python、数据库或假业务接口。
+
+前端 `LibrarySource` 是替换边界：组件 → TanStack Query hooks → Demo source → 先按 visibility=normal 过滤的查询结果。Demo 默认启用（`VITE_DEMO_MODE=false` 可关闭），默认生成规模 1500，`?size=5000` 启用压力场景。数据为固定种子、会话内存存储，收藏只保留至刷新。真实 source 尚未实现；这里的前端可见性过滤仅适用于合成数据，不能充当未来真实数据的安全边界。
+
+图片分为三类：24 张本地原创 SVG 叙事插画、可见卡片按需生成的程序化 SVG、明确缺失的统一占位。SVG 不需 srcset，任意 DPR 下保持矢量清晰；未来位图源仍必须提供 sizes/srcset。字体依赖包打入 dist，通过 unicode-range 按需取本地 WOFF2，运行时不联网取字体。原始私人哨兵仅存在 Demo source 内部，普通 hooks 不返回它们；它们不是用户真实隐私资料。

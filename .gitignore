@@ -21,11 +21,11 @@ htmlcov/
 *.key
 
 # User data, caches, backups and diagnostics
-data/
-runtime/
-cache/
-backups/
-logs/
+/data/
+/runtime/
+/cache/
+/backups/
+/logs/
 *.sqlite
 *.sqlite3
 *.sqlite3-*
@@ -44,3 +44,7 @@ artifacts/
 .vscode/
 Thumbs.db
 Desktop.ini
+
+# Generated local tooling
+*.tsbuildinfo
+.DS_Store
