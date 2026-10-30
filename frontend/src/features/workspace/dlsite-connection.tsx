@@ -17,12 +17,15 @@ import { formatDate } from '@/lib/utils';
 function LoginForm({
   connection,
   actions,
+  loginId,
+  setLoginId,
 }: {
   connection: DlsiteConnection;
   actions: ReturnType<typeof useDlsiteConnection>['actions'];
+  loginId: string;
+  setLoginId: (value: string) => void;
 }) {
   // The password lives only in this component and only until the service accepts it.
-  const [loginId, setLoginId] = useState('');
   const [password, setPassword] = useState('');
   const [switching, setSwitching] = useState(false);
   const [remember, setRemember] = useState(false);
@@ -169,6 +172,8 @@ function LoginForm({
 /** Everything about the real DLsite connection. The session itself never reaches the page. */
 export function DlsiteConnectionPanel() {
   const { connection, actions, isError } = useDlsiteConnection();
+  // The form goes away while a login runs; a failed login should not lose the account.
+  const [loginId, setLoginId] = useState('');
   if (isError)
     return (
       <p className="dlsite-message" role="alert">
@@ -256,6 +261,13 @@ export function DlsiteConnectionPanel() {
         </div>
       );
     default:
-      return <LoginForm connection={connection} actions={actions} />;
+      return (
+        <LoginForm
+          connection={connection}
+          actions={actions}
+          loginId={loginId}
+          setLoginId={setLoginId}
+        />
+      );
   }
 }

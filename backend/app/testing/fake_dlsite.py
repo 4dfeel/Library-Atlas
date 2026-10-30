@@ -40,6 +40,8 @@ class FakeLoginProcess:
         if self._request.mode == "window":
             account = "ok"
         if account.startswith("bad"):
+            # Long enough for the page to show its progress state, as a real login does.
+            self._cancelled.wait(timeout=1.5)
             yield LoginEvent("result", "bad_credentials")
         elif account.startswith("changed"):
             yield LoginEvent("result", "form_changed")
