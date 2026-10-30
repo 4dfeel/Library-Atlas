@@ -412,6 +412,27 @@ test('a narrower result brings the header back even if the list cannot scroll', 
   await expect(page.locator('.library-page')).toHaveAttribute('data-collapsed', 'false');
 });
 
+test('back to top answers a real press anywhere on it', async ({ page }) => {
+  await page.goto('/library?view=grid');
+  const scroller = page.getByTestId('library-scroll');
+  for (const across of [0.1, 0.5, 0.9]) {
+    // Just after opening, the header holds still for a moment on purpose.
+    await page.waitForTimeout(350);
+    await scroller.hover();
+    await page.mouse.wheel(0, 900);
+    const button = page.getByTestId('scroll-to-top');
+    await expect(button).toBeVisible();
+    const box = (await button.boundingBox())!;
+    // A real mouse, held a moment: a press that moves the button loses the click.
+    await page.mouse.move(box.x + box.width * across, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.waitForTimeout(150);
+    await page.mouse.up();
+    await expect(page.locator('.library-page')).toHaveAttribute('data-collapsed', 'false');
+    await expect.poll(() => scroller.evaluate((node) => node.scrollTop)).toBeLessThan(9);
+  }
+});
+
 test('a short list keeps its controls in place', async ({ page }, info) => {
   test.skip(info.project.name !== '1080p', 'Behavior, not layout tiers.');
   await page.goto('/library?q=%E6%98%9F%E7%A9%B9');

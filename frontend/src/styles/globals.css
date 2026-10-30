@@ -1938,6 +1938,10 @@ kbd {
   font-size: 12px;
   cursor: pointer;
 }
+/* Its centring is a `transform`, so the pressed state has to keep it or the click is lost. */
+.scroll-to-top:active:not(:disabled) {
+  transform: translateX(-50%) translateY(1px);
+}
 .scroll-to-top:hover {
   background: var(--surface);
 }

@@ -310,6 +310,33 @@ test.describe('unpacking and the queue', () => {
     }
   });
 
+  test('the arrows answer a real press anywhere on them', async ({ page }) => {
+    const work = await freshWork();
+    await openWork(page, work);
+    const gallery = page.getByTestId('work-gallery');
+    await expect(gallery).toBeVisible();
+    const image = gallery.getByTestId('gallery-image');
+    const next = gallery.getByRole('button', { name: '下一张' });
+    await next.scrollIntoViewIfNeeded();
+    let expected = 0;
+    // A real mouse, held a moment: a press that moves the button loses the click.
+    for (const [across, down] of [
+      [0.5, 0.12],
+      [0.5, 0.5],
+      [0.5, 0.88],
+      [0.12, 0.5],
+      [0.88, 0.5],
+    ] as const) {
+      const box = (await next.boundingBox())!;
+      await page.mouse.move(box.x + box.width * across, box.y + box.height * down);
+      await page.mouse.down();
+      await page.waitForTimeout(150);
+      await page.mouse.up();
+      expected += 1;
+      await expect(image).toHaveAttribute('src', new RegExp(`gallery/${expected}$`));
+    }
+  });
+
   test('a work with no images shows no empty frame', async ({ page }) => {
     await control({ gallery: 'none' });
     const work = await freshWork();
