@@ -74,6 +74,8 @@ export interface DlsiteConnection {
   canReveal?: boolean;
   /** Masked; absent after web login, where Atlas never sees the account name. */
   accountAlias?: string;
+  /** Masked name of a remembered login. The password never comes to the page. */
+  rememberedAccount?: string;
 }
 
 export interface FolderInfo {
@@ -222,15 +224,25 @@ export class RealLibrarySource implements LibrarySource {
   }
 
   /** The password is sent once in the request body and goes no further on this side. */
-  dlsiteLogin(loginId: string, password: string, confirmSwitch: boolean) {
+  dlsiteLogin(loginId: string, password: string, confirmSwitch: boolean, remember: boolean) {
     return apiWrite<DlsiteConnection>('POST', `${dlsitePath}/login`, {
       loginId,
       password,
       confirmSwitch,
+      remember,
     });
   }
 
-  dlsiteAction(action: 'login/window' | 'login/cancel' | 'login/reveal' | 'verify' | 'disconnect') {
+  dlsiteAction(
+    action:
+      | 'login/window'
+      | 'login/saved'
+      | 'login/cancel'
+      | 'login/reveal'
+      | 'saved-login/forget'
+      | 'verify'
+      | 'disconnect',
+  ) {
     return apiWrite<DlsiteConnection>('POST', `${dlsitePath}/${action}`);
   }
 

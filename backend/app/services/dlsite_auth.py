@@ -7,10 +7,11 @@ being safely stored and being verifiable right now stay separate facts.
 """
 
 import hashlib
+import json
 import logging
 import shutil
 import threading
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import cast
 
@@ -30,7 +31,7 @@ from app.api import models
 from app.core.credentials import CredentialStore, CredentialStoreError
 from app.core.errors import AtlasError
 from app.core.session_vault import SessionCorrupt, SessionVault
-from app.repositories import accounts
+from app.repositories import accounts, app_settings
 
 logger = logging.getLogger("atlas")
 
@@ -46,9 +47,11 @@ MESSAGES = {
     "session_missing": "保存的登录信息已不可用，请重新登录。",
     "session_expired": "登录已失效，请重新登录。",
     "platform_unavailable": "暂时无法连接 DLsite 验证登录状态。这不代表登录已失效。",
-    "disconnect_failed": "已停用这个登录，不会再被使用，但清理系统凭据时出错。请重试断开。",
+    "disconnect_failed": "已停用这个登录，不会再被使用，但清理系统凭据时出错。请重试退出登录。",
+    "saved_login_rejected": "保存的密码已失效，已删除。请重新输入。",
+    "remember_failed": "已登录，但没能保存账号密码，下次需要重新输入。",
 }
-RECHECK_SECONDS = 30.0
+_REMEMBERED_ALIAS = "dlsite.remembered_alias"
 
 
 @dataclass
@@ -58,6 +61,9 @@ class _Attempt:
     needs_verification: bool = False
     fingerprint: str | None = None
     alias: str | None = None
+    # Held only until the login ends, and only when the user asked to be remembered.
+    remember: bytes | None = field(default=None, repr=False)
+    from_saved: bool = False
 
 
 def mask_account(login_id: str) -> str:
@@ -89,12 +95,15 @@ class DlsiteAuth:
         with engine.connect() as connection:
             self._library_id = accounts.library_id(connection)
         self._vault = SessionVault(store, f"{self._library_id}/dlsite/session")
+        # In the credential store only, by the user's choice. Read only to log in.
+        self._saved_login = SessionVault(store, f"{self._library_id}/dlsite/login")
 
     # --- reading ---
 
     def connection(self) -> models.DlsiteConnection:
         with self._engine.connect() as connection:
             row = accounts.get_account(connection)
+            remembered = app_settings.get(connection, _REMEMBERED_ALIAS)
         persisted = row.state if row else "not_connected"
         cleanup = bool(row.cleanup_pending) if row else False
         with self._lock:
@@ -117,6 +126,7 @@ class DlsiteAuth:
             last_verified_at=row.last_verified_at if row else None,
             can_reveal=attempt is not None and attempt.needs_verification,
             account_alias=row.account_alias if row and persisted == "connected" else None,
+            remembered_account=remembered,
         )
 
     def summary_state(self) -> models.ConnectionState:
@@ -129,14 +139,26 @@ class DlsiteAuth:
         return hashlib.sha256(f"{self._library_id}:{normalized}".encode()).hexdigest()
 
     def _begin(
-        self, request: LoginRequest, fingerprint: str | None, alias: str | None = None
+        self,
+        request: LoginRequest,
+        fingerprint: str | None,
+        alias: str | None = None,
+        *,
+        remember: bytes | None = None,
+        from_saved: bool = False,
     ) -> models.DlsiteConnection:
         with self._lock:
             if self._attempt is not None:
                 raise AtlasError("login_in_progress", "已经有一次登录正在进行。", status=409)
             self._next_attempt += 1
             self._generation += 1
-            attempt = _Attempt(id=self._next_attempt, fingerprint=fingerprint, alias=alias)
+            attempt = _Attempt(
+                id=self._next_attempt,
+                fingerprint=fingerprint,
+                alias=alias,
+                remember=remember,
+                from_saved=from_saved,
+            )
             self._attempt = attempt
             self._problem = None
             self._unverified = False
@@ -146,7 +168,13 @@ class DlsiteAuth:
         return self.connection()
 
     def start_login(
-        self, login_id: str, password: str, *, confirm_switch: bool
+        self,
+        login_id: str,
+        password: str,
+        *,
+        confirm_switch: bool,
+        remember: bool = False,
+        from_saved: bool = False,
     ) -> models.DlsiteConnection:
         fingerprint = self._fingerprint(login_id)
         with self._engine.connect() as connection:
@@ -162,7 +190,42 @@ class DlsiteAuth:
             LoginRequest("credentials", self._browser_dir, login_id, password),
             fingerprint,
             mask_account(login_id),
+            remember=(
+                json.dumps({"login_id": login_id, "password": password}).encode()
+                if remember
+                else None
+            ),
+            from_saved=from_saved,
         )
+
+    def start_saved_login(self) -> models.DlsiteConnection:
+        try:
+            raw = self._saved_login.load()
+            saved = json.loads(raw) if raw else None
+            if saved is None:
+                raise ValueError
+            login_id, password = saved["login_id"], saved["password"]
+        except CredentialStoreError:
+            raise AtlasError(
+                "credential_store_unavailable", "暂时无法读取系统凭据存储。", status=503
+            ) from None
+        except (SessionCorrupt, ValueError, KeyError, TypeError):
+            self.forget_saved_login()
+            raise AtlasError(
+                "no_saved_login", "没有可用的已保存账号，请重新输入。", status=409
+            ) from None
+        return self.start_login(login_id, password, confirm_switch=True, from_saved=True)
+
+    def forget_saved_login(self) -> models.DlsiteConnection:
+        try:
+            self._saved_login.delete()
+        except CredentialStoreError:
+            raise AtlasError(
+                "credential_store_unavailable", "无法删除保存的账号密码，请重试。", status=503
+            ) from None
+        with self._engine.begin() as connection:
+            app_settings.delete(connection, _REMEMBERED_ALIAS)
+        return self.connection()
 
     def start_window_login(self) -> models.DlsiteConnection:
         # The account cannot be identified here: its name stays inside the platform's page.
@@ -185,6 +248,8 @@ class DlsiteAuth:
                     with self._lock:
                         if self._current(attempt):
                             attempt.needs_verification = event.value == "needs_verification"
+                elif event.kind == "page":
+                    logger.info("login page: %s", event.value)
                 else:
                     outcome = event.value
                     cookies = session_cookies(event.cookies)
@@ -199,6 +264,10 @@ class DlsiteAuth:
         problem = "not_confirmed" if outcome == "success" else outcome
         with self._lock:
             if self._current(attempt):
+                if outcome == "bad_credentials" and attempt.from_saved:
+                    # Never send a known-bad password again: that is how accounts get locked.
+                    self.forget_saved_login()
+                    problem = "saved_login_rejected"
                 self._attempt = None
                 self._problem = None if problem == "cancelled" else problem
 
@@ -229,6 +298,15 @@ class DlsiteAuth:
             self._attempt = None
             self._unverified = result is SessionCheck.UNAVAILABLE
             self._problem = "platform_unavailable" if self._unverified else None
+            if attempt.remember is not None:
+                try:
+                    self._saved_login.save(attempt.remember)
+                    with self._engine.begin() as connection:
+                        app_settings.put(connection, _REMEMBERED_ALIAS, attempt.alias or "")
+                except (CredentialStoreError, SQLAlchemyError) as error:
+                    logger.error("login not remembered: %s", type(error).__name__)
+                    self._problem = "remember_failed"
+                attempt.remember = None
 
     def cancel(self) -> models.DlsiteConnection:
         with self._lock:

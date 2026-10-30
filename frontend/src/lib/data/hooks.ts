@@ -290,14 +290,16 @@ export function useDlsiteConnection(enabled = true) {
     retry: false,
     // Only while something is happening; this asks the local service, not the platform.
     refetchInterval: (current) =>
-      current.state.data && inProgress.has(current.state.data.state) ? 700 : 30_000,
+      current.state.data && inProgress.has(current.state.data.state) ? 700 : 5_000,
   });
   // A login finishes in the background, so badges follow the state rather than the click.
   const currentState = query.data?.state;
   useEffect(() => {
     if (currentState) void queryClient.invalidateQueries({ queryKey: [...realRoot, 'sources'] });
   }, [currentState, queryClient]);
-  const settle = (connection: DlsiteConnection) => {
+  const settle = async (connection: DlsiteConnection) => {
+    // A poll that started before this action must not land after it and restore old state.
+    await queryClient.cancelQueries({ queryKey: key });
     queryClient.setQueryData(key, connection);
     return connection;
   };
@@ -305,8 +307,10 @@ export function useDlsiteConnection(enabled = true) {
     connection: query.data,
     isError: query.isError && !query.data,
     actions: {
-      login: async (loginId: string, password: string, confirmSwitch: boolean) =>
-        settle(await realSource.dlsiteLogin(loginId, password, confirmSwitch)),
+      login: async (loginId: string, password: string, confirmSwitch: boolean, remember: boolean) =>
+        settle(await realSource.dlsiteLogin(loginId, password, confirmSwitch, remember)),
+      loginWithSaved: async () => settle(await realSource.dlsiteAction('login/saved')),
+      forgetSaved: async () => settle(await realSource.dlsiteAction('saved-login/forget')),
       loginWithWindow: async () => settle(await realSource.dlsiteAction('login/window')),
       cancel: async () => settle(await realSource.dlsiteAction('login/cancel')),
       reveal: async () => settle(await realSource.dlsiteAction('login/reveal')),

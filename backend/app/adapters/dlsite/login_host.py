@@ -25,7 +25,7 @@ class LoginRequest:
 
 @dataclass(frozen=True)
 class LoginEvent:
-    kind: str  # "state" or "result"
+    kind: str  # "state", "page" or "result"
     value: str
     cookies: list[dict[str, Any]] = field(default_factory=list, repr=False)
 
@@ -65,6 +65,8 @@ class _BrowserProcess:
                     continue
                 if data.get("event") == "state":
                     yield LoginEvent("state", str(data.get("state")))
+                elif data.get("event") == "page":
+                    yield LoginEvent("page", str(data.get("kind")))
                 elif data.get("event") == "result":
                     finished = True
                     yield LoginEvent(

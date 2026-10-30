@@ -208,6 +208,8 @@ class DlsiteConnection(ApiModel):
     can_reveal: bool = False
     # Masked account name; absent after web login, where Atlas never sees the name.
     account_alias: str | None = None
+    # Masked name of a remembered login. The password itself never leaves the service.
+    remembered_account: str | None = None
 
 
 class DlsiteLogin(ApiModel):
@@ -218,6 +220,7 @@ class DlsiteLogin(ApiModel):
     login_id: Annotated[str, StringConstraints(min_length=1, max_length=256)]
     password: Annotated[SecretStr, Field(min_length=1, max_length=256)]
     confirm_switch: StrictBool = False
+    remember: StrictBool = False
 
 
 FolderKind = Literal["library", "download_cache"]

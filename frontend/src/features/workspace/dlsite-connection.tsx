@@ -6,6 +6,7 @@ import {
   LoaderCircle,
   LogOut,
   RefreshCw,
+  Trash2,
   X,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -24,6 +25,8 @@ function LoginForm({
   const [loginId, setLoginId] = useState('');
   const [password, setPassword] = useState('');
   const [switching, setSwitching] = useState(false);
+  const [remember, setRemember] = useState(false);
+  const [typing, setTyping] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
 
@@ -33,7 +36,7 @@ function LoginForm({
     setSending(true);
     setError(null);
     try {
-      await actions.login(loginId, password, switching);
+      await actions.login(loginId, password, switching, remember);
       setPassword('');
       setSwitching(false);
     } catch (failure) {
@@ -46,6 +49,47 @@ function LoginForm({
       setSending(false);
     }
   };
+
+  const run = async (action: () => Promise<unknown>) => {
+    setError(null);
+    try {
+      await action();
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : '操作没有完成，请重试。');
+    }
+  };
+
+  if (connection.rememberedAccount && !typing)
+    return (
+      <div className="dlsite-login" data-testid="dlsite-saved-login">
+        {connection.message && (
+          <p className="dlsite-message" role="alert">
+            <CircleAlert size={14} />
+            {connection.message}
+          </p>
+        )}
+        {error && (
+          <p className="dlsite-message" role="alert">
+            <CircleAlert size={14} />
+            {error}
+          </p>
+        )}
+        <p className="dlsite-saved-account">{connection.rememberedAccount}</p>
+        <p className="dlsite-note">账号和密码已保存在 Windows 凭据管理器，点一下就能登录。</p>
+        <div className="dlsite-actions">
+          <Button size="sm" onClick={() => void run(actions.loginWithSaved)}>
+            登录
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => setTyping(true)}>
+            使用其他账号
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => void run(actions.forgetSaved)}>
+            <Trash2 size={14} />
+            忘记保存的密码
+          </Button>
+        </div>
+      </div>
+    );
 
   return (
     <form className="dlsite-login" onSubmit={(event) => void submit(event)} autoComplete="off">
@@ -89,7 +133,19 @@ function LoginForm({
           required
         />
       </label>
-      <p className="dlsite-note">账号和密码只用于这次登录，Atlas 不会保存密码。</p>
+      <label className="dlsite-remember">
+        <input
+          type="checkbox"
+          checked={remember}
+          onChange={(event) => setRemember(event.target.checked)}
+        />
+        <span>记住账号和密码</span>
+      </label>
+      <p className="dlsite-note">
+        {remember
+          ? '登录成功后保存在 Windows 凭据管理器，下次点一下就能登录。可以随时忘记。'
+          : '账号和密码只用于这次登录，Atlas 不会保存密码。'}
+      </p>
       <div className="dlsite-actions">
         <Button type="submit" size="sm" disabled={sending || !loginId.trim() || !password}>
           {sending && <LoaderCircle size={14} className="spin" />}

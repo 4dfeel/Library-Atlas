@@ -1061,3 +1061,15 @@
   flex: 1 1 320px;
   min-width: 0;
 }
+.dlsite-login label.dlsite-remember {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+.dlsite-saved-account {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}

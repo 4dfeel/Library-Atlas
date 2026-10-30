@@ -39,7 +39,7 @@ async function openPanel(page: Page) {
 
 async function submitLogin(page: Page, account: string) {
   await page.getByLabel('DLsite 账号').fill(account);
-  await page.getByLabel('密码').fill(password);
+  await page.getByLabel('密码', { exact: true }).fill(password);
   await page.getByRole('button', { name: '登录', exact: true }).click();
 }
 
@@ -80,6 +80,10 @@ test.beforeEach(async () => {
     method: 'POST',
     headers: { Origin: service.origin, 'X-Atlas-CSRF': session.csrfToken },
   });
+  await fetch(`${service.origin}/api/v1/sources/dlsite/saved-login/forget`, {
+    method: 'POST',
+    headers: { Origin: service.origin, 'X-Atlas-CSRF': session.csrfToken },
+  });
 });
 
 test('login happens inside Atlas and survives a real restart', async ({ page }) => {
@@ -112,11 +116,11 @@ test('login happens inside Atlas and survives a real restart', async ({ page }) 
   await openPanel(page);
   await expect(row(page).getByTestId('dlsite-connected')).toBeVisible();
   await expect(row(page)).toContainText('已连接');
-  await expect(page.getByLabel('密码')).toHaveCount(0);
+  await expect(page.getByLabel('密码', { exact: true })).toHaveCount(0);
 
   await row(page).getByRole('button', { name: '退出登录' }).click();
   await expect(row(page)).toContainText('未连接');
-  await expect(page.getByLabel('密码')).toBeVisible();
+  await expect(page.getByLabel('密码', { exact: true })).toBeVisible();
   const works2 = await (await fetch(`${service.origin}/api/v1/works`)).json();
   expect(works2.totalVisible).toBe(12);
 
@@ -138,7 +142,7 @@ test('wrong password says so, keeps the account and asks for the password again'
   await signIn(page, 'bad@example.test');
   await expect(row(page)).toContainText('账号或密码不正确');
   await expect(page.getByLabel('DLsite 账号')).toHaveValue('bad@example.test');
-  await expect(page.getByLabel('密码')).toHaveValue('');
+  await expect(page.getByLabel('密码', { exact: true })).toHaveValue('');
   await expect(row(page)).toContainText('未连接');
   await shot(page, 'dlsite-bad-credentials');
 });
@@ -149,7 +153,7 @@ test('a login can be cancelled and leaves nothing connected', async ({ page }) =
   await expect(page.getByTestId('dlsite-progress')).toContainText('正在登录');
   await shot(page, 'dlsite-signing-in');
   await page.getByTestId('dlsite-progress').getByRole('button', { name: '取消' }).click();
-  await expect(page.getByLabel('密码')).toBeVisible();
+  await expect(page.getByLabel('密码', { exact: true })).toBeVisible();
   await expect(row(page)).toContainText('未连接');
 });
 
@@ -161,7 +165,7 @@ test('platform verification is explained and can be cancelled', async ({ page })
   await expect(verification.getByRole('button', { name: '回到验证窗口' })).toBeVisible();
   await shot(page, 'dlsite-needs-verification');
   await verification.getByRole('button', { name: '取消' }).click();
-  await expect(page.getByLabel('密码')).toBeVisible();
+  await expect(page.getByLabel('密码', { exact: true })).toBeVisible();
 });
 
 test('the web login fallback is available and needs no password here', async ({ page }) => {
@@ -192,7 +196,7 @@ test('expired, unverifiable and unstorable sessions are told apart', async ({ pa
   await row(page).getByRole('button', { name: '重新验证' }).click();
   await expect(row(page)).toContainText('会话已过期');
   await expect(row(page)).toContainText('登录已失效');
-  await expect(page.getByLabel('密码')).toBeVisible();
+  await expect(page.getByLabel('密码', { exact: true })).toBeVisible();
   await shot(page, 'dlsite-reauth');
 
   await control({ store: 'fail-write' });
@@ -311,10 +315,76 @@ test('settings in the demo space stay out of real data', async ({ page }) => {
   await page.goto(`${service.origin}/settings`);
   const settings = page.getByTestId('settings-page');
   await expect(settings).toContainText('演示空间不连接真实账号');
-  await expect(settings.getByLabel('密码')).toHaveCount(0);
+  await expect(settings.getByLabel('密码', { exact: true })).toHaveCount(0);
   await expect(page.getByTestId('account-menu')).toHaveCount(0);
   await shot(page, 'settings-demo');
   expect(calls).toEqual([]);
+});
+
+test('a poll that lands after the login cannot bring back the login form', async ({ page }) => {
+  await openPanel(page);
+  await page.getByLabel('DLsite 账号').fill('ok@example.test');
+  await page.getByLabel('密码', { exact: true }).fill(password);
+  // Hold one poll that started before the login, with the old answer in it.
+  let release = () => {};
+  const held = new Promise<void>((done) => (release = done));
+  let holding = true;
+  await page.route('**/api/v1/sources/dlsite/connection', async (route) => {
+    if (holding) {
+      holding = false;
+      const response = await route.fetch();
+      await held;
+      await route.fulfill({ response }).catch(() => undefined);
+    } else {
+      await route.continue();
+    }
+  });
+  await expect.poll(() => holding, { timeout: 15_000 }).toBe(false);
+  await page.getByRole('button', { name: '登录', exact: true }).click();
+  const confirm = page.getByRole('button', { name: '确认切换并登录' });
+  await confirm.or(page.getByTestId('dlsite-connected')).first().waitFor();
+  if (await confirm.isVisible()) await confirm.click();
+  await expect(row(page).getByTestId('dlsite-connected')).toBeVisible();
+  release();
+  await page.waitForTimeout(500);
+  await expect(row(page).getByTestId('dlsite-connected')).toBeVisible();
+  await expect(page.getByLabel('密码', { exact: true })).toHaveCount(0);
+});
+
+test('a remembered login is one click and never reaches the page', async ({ page }) => {
+  await openPanel(page);
+  await page.getByLabel('DLsite 账号').fill('saved@example.test');
+  await page.getByLabel('密码', { exact: true }).fill(password);
+  await page.getByLabel('记住账号和密码').check();
+  await expect(row(page)).toContainText('Windows 凭据管理器');
+  await shot(page, 'dlsite-remember');
+  await page.getByRole('button', { name: '登录', exact: true }).click();
+  const confirm = page.getByRole('button', { name: '确认切换并登录' });
+  await confirm.or(page.getByTestId('dlsite-connected')).first().waitFor();
+  if (await confirm.isVisible()) await confirm.click();
+  await expect(row(page).getByTestId('dlsite-connected')).toBeVisible();
+  await row(page).getByRole('button', { name: '退出登录' }).click();
+
+  const saved = page.getByTestId('dlsite-saved-login');
+  await expect(saved).toContainText('sav•••@example.test');
+  await expect(page.getByLabel('密码', { exact: true })).toHaveCount(0);
+  await shot(page, 'dlsite-saved-login');
+  expect(await page.content()).not.toContain(password);
+  const responses: string[] = [];
+  page.on('response', async (response) => {
+    if (response.url().includes('/sources/dlsite')) responses.push(await response.text());
+  });
+  await saved.getByRole('button', { name: '登录', exact: true }).click();
+  await expect(row(page).getByTestId('dlsite-connected')).toBeVisible();
+  expect(responses.join('\n')).not.toContain(password);
+
+  await service.restart();
+  await openPanel(page);
+  await row(page).getByRole('button', { name: '退出登录' }).click();
+  await expect(saved).toBeVisible();
+  await saved.getByRole('button', { name: '忘记保存的密码' }).click();
+  await expect(page.getByLabel('密码', { exact: true })).toBeVisible();
+  await expect(page.getByTestId('dlsite-saved-login')).toHaveCount(0);
 });
 
 test('the demo connection panel never reaches the real flow', async ({ page }) => {
@@ -326,6 +396,6 @@ test('the demo connection panel never reaches the real flow', async ({ page }) =
   await expect(page.getByTestId('workspace-indicator')).toHaveText('DEMO · 演示模式');
   await page.getByRole('button', { name: '管理来源连接' }).click();
   await expect(page.getByRole('dialog', { name: '来源连接' })).toContainText('Atlas 演示账号');
-  await expect(page.getByLabel('密码')).toHaveCount(0);
+  await expect(page.getByLabel('密码', { exact: true })).toHaveCount(0);
   expect(calls).toEqual([]);
 });

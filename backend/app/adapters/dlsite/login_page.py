@@ -25,6 +25,9 @@ INSPECT_SCRIPT = """JSON.stringify({
     '.g-recaptcha, [data-sitekey], iframe[src*=recaptcha], iframe[src*=turnstile]'
   ),
   loggedInMark: document.body ? document.body.innerText.includes('ログイン中') : false,
+  hasInputs: [...document.querySelectorAll('input, textarea')].some((field) =>
+    !['hidden', 'submit', 'button', 'checkbox', 'radio', 'search'].includes(field.type)
+      && field.offsetParent !== null),
   submitted: window.__atlasSubmitted === true
 })"""
 
@@ -49,6 +52,7 @@ class PageState:
     captcha: bool = False
     logged_in_mark: bool = False
     submitted: bool = False
+    has_inputs: bool = False
 
 
 def is_platform_url(url: str) -> bool:
@@ -62,9 +66,15 @@ def is_login_page(url: str) -> bool:
     return parts.scheme == "https" and parts.hostname == LOGIN_HOST and parts.path == "/login"
 
 
-def classify(state: PageState, *, was_submitted: bool) -> PageKind:
+def classify(state: PageState, *, was_submitted: bool, left_form: bool = False) -> PageKind:
     """`was_submitted` is Atlas's own record; `state.submitted` marks the page it submitted
-    from, so a page without the mark is the response to that submit."""
+    from, so a page without the mark is the response to that submit. `left_form` says the
+    login form has been seen and is now gone, which also covers a login done by hand.
+
+    A page with no login form and nothing to fill in counts as logged in. That is only a
+    candidate: the session check against the platform decides. Signed-in landing pages do
+    not reliably say so in their text, and waiting for that text left the window on screen.
+    """
     if not state.url or state.ready != "complete":
         return PageKind.LOADING
     if not is_platform_url(state.url):
@@ -80,20 +90,22 @@ def classify(state: PageState, *, was_submitted: bool) -> PageKind:
         return PageKind.LOADING if state.submitted else PageKind.REJECTED
     if state.logged_in_mark:
         return PageKind.LOGGED_IN
-    return PageKind.VERIFICATION if was_submitted else PageKind.UNEXPECTED
+    if not (was_submitted or left_form):
+        return PageKind.UNEXPECTED
+    return PageKind.VERIFICATION if state.has_inputs else PageKind.LOGGED_IN
 
 
-class VerificationGate:
-    """Decides when the user really has to act. Pages pass through states that look like
-    verification (the redirect after a submit, a challenge that solves itself), so the
-    window only appears if the page is still asking after `grace` seconds."""
+class Sustained:
+    """True once a state has held for `grace` seconds. Pages pass through states that look
+    final (a redirect after a submit, a challenge that solves itself), so nothing is
+    decided on a single glance."""
 
     def __init__(self, grace: float) -> None:
         self._grace = grace
         self._since: float | None = None
 
-    def observe(self, *, verifying: bool, now: float) -> bool:
-        if not verifying:
+    def observe(self, active: bool, *, now: float) -> bool:
+        if not active:
             self._since = None
             return False
         if self._since is None:
@@ -111,4 +123,5 @@ def page_state(data: dict[str, object]) -> PageState:
         captcha=bool(data.get("captcha")),
         logged_in_mark=bool(data.get("loggedInMark")),
         submitted=bool(data.get("submitted")),
+        has_inputs=bool(data.get("hasInputs")),
     )

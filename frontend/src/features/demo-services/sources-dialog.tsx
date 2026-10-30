@@ -194,7 +194,7 @@ export function SourcesDialog({
       description={
         demoEnabled
           ? '仅演示：不会要求、接收或保存任何密码、Cookie 或令牌。真实连接将在后续阶段由你在平台官方页面登录完成。'
-          : 'Atlas 只保存登录后的会话，存放在 Windows 凭据管理器中，不会保存你的密码。'
+          : '登录后的会话保存在 Windows 凭据管理器。只有你选择记住时，才会同时保存账号密码。'
       }
     >
       {demoEnabled ? (

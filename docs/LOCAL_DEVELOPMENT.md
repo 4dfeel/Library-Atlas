@@ -70,7 +70,7 @@ scripts\serve.cmd
 3. 在面板输入账号密码，点登录。如果 DLsite 要求额外验证，按提示在弹出的窗口完成。
 4. 不想在 Atlas 输入密码，或提示登录方式有变化时，点“改用网页登录”。
 
-需要 Microsoft Edge WebView2 Runtime（Windows 11 通常自带）。会话保存在 Windows 凭据管理器（`LibraryAtlas/real/…`），密码不保存；隐藏浏览器的临时数据放在数据目录的 `login-browser\`，每次用完删除。退出登录只清除 Atlas 保存的登录，不影响作品和备注，也不会让你在其他设备退出。
+需要 Microsoft Edge WebView2 Runtime（Windows 11 通常自带）。会话保存在 Windows 凭据管理器（`LibraryAtlas/real/…`）。密码默认不保存；勾选“记住账号和密码”后同样存在这里，下次点一下就能登录，可在面板“忘记保存的密码”。退出登录不会删除它。保存的密码被 DLsite 拒绝时会自动删除，不会重试。隐藏浏览器的临时数据放在数据目录的 `login-browser\`，每次用完删除。退出登录只清除 Atlas 保存的登录，不影响作品和备注，也不会让你在其他设备退出。
 
 | 现象 | 处理 |
 | --- | --- |

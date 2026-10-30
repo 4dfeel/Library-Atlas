@@ -18,7 +18,7 @@ from app.adapters.dlsite.login_page import (
     INSPECT_SCRIPT,
     LOGIN_URL,
     PageKind,
-    VerificationGate,
+    Sustained,
     classify,
     is_login_page,
     page_state,
@@ -28,6 +28,7 @@ LOAD_TIMEOUT = 30.0
 SUBMIT_TIMEOUT = 30.0
 USER_TIMEOUT = 300.0
 VERIFICATION_GRACE = 6.0
+SETTLE_GRACE = 2.0  # A login page must stop moving before Atlas navigates away from it.
 POLL = 0.4
 # Pages that hold the cookies Atlas needs later. Visited only after a successful login.
 COOKIE_PAGES = ("https://www.dlsite.com/home/", "https://play.dlsite.com/login/")
@@ -113,8 +114,11 @@ def _drive(window: Any, request: dict[str, Any], output: _Output, state: dict[st
     revealed = not credentials
     deadline = time.monotonic() + (LOAD_TIMEOUT if credentials else USER_TIMEOUT)
 
-    gate = VerificationGate(VERIFICATION_GRACE)
+    verification = Sustained(VERIFICATION_GRACE)
+    settled = Sustained(SETTLE_GRACE)
     asked = False
+    form_seen = False
+    last_kind: PageKind | None = None
 
     def need_user() -> None:
         # Once only: the user gets one full timeout, not one that restarts on every poll.
@@ -136,9 +140,16 @@ def _drive(window: Any, request: dict[str, Any], output: _Output, state: dict[st
         if page is None:
             time.sleep(POLL)
             continue
-        kind = classify(page, was_submitted=submitted)
-        if gate.observe(verifying=kind is PageKind.VERIFICATION, now=time.monotonic()):
+        form_seen = form_seen or page.has_form
+        kind = classify(page, was_submitted=submitted, left_form=form_seen)
+        if kind is not last_kind:
+            # The kind only, never an address or content: enough to diagnose a login.
+            output.event(event="page", kind=kind.value)
+            last_kind = kind
+        now = time.monotonic()
+        if verification.observe(kind is PageKind.VERIFICATION, now=now):
             need_user()
+        logged_in = settled.observe(kind is PageKind.LOGGED_IN, now=now)
         if kind is PageKind.OFF_PLATFORM:
             window.load_url(LOGIN_URL)
         elif kind is PageKind.LOGIN_FORM and credentials and not submitted:
@@ -162,7 +173,7 @@ def _drive(window: Any, request: dict[str, Any], output: _Output, state: dict[st
         elif kind is PageKind.UNEXPECTED and credentials:
             output.event(event="result", outcome="form_changed")
             break
-        elif kind is PageKind.LOGGED_IN:
+        elif logged_in:
             state["collecting"] = True
             if revealed:
                 window.hide()

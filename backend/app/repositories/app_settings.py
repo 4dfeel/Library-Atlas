@@ -13,6 +13,10 @@ def get(connection: Connection, key: str) -> str | None:
     return str(value) if value is not None else None
 
 
+def delete(connection: Connection, key: str) -> None:
+    connection.execute(app_settings.delete().where(app_settings.c.key == key))
+
+
 def put(connection: Connection, key: str, value: str) -> None:
     connection.execute(
         insert(app_settings)

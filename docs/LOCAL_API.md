@@ -100,8 +100,10 @@
 
 | 接口 | 说明 |
 | --- | --- |
-| `GET /sources/dlsite/connection` | `{state,code?,message?,lastVerifiedAt?,canReveal?}`。只读本地状态，不访问平台 |
-| `POST /sources/dlsite/login` | `{loginId,password,confirmSwitch?}`，启动一次登录。不接受其他字段，请求体不进日志和错误响应 |
+| `GET /sources/dlsite/connection` | `{state,code?,message?,lastVerifiedAt?,canReveal?,accountAlias?,rememberedAccount?}`（后两者是打码账号）。只读本地状态，不访问平台 |
+| `POST /sources/dlsite/login` | `{loginId,password,confirmSwitch?,remember?}`，启动一次登录。`remember` 为真时，登录成功后把账号密码存入 Windows 凭据管理器。不接受其他字段，请求体不进日志和错误响应 |
+| `POST /sources/dlsite/login/saved` | 用保存的账号密码登录。密码不经过前端。无保存时 409 `no_saved_login` |
+| `POST /sources/dlsite/saved-login/forget` | 删除保存的账号密码 |
 | `POST /sources/dlsite/login/window` | 备用网页登录，无请求体 |
 | `POST /sources/dlsite/login/cancel` | 取消当前尝试，其迟到结果被丢弃 |
 | `POST /sources/dlsite/login/reveal` | 把验证窗口调回前台 |
@@ -129,6 +131,8 @@
 | `store_unavailable` | 读不到系统凭据存储 |
 | `session_missing` / `session_expired` | 保存的会话不可用 / 已失效 |
 | `platform_unavailable` | 暂时连不上平台 |
+| `saved_login_rejected` | 保存的密码被拒绝，已自动删除，不会重试 |
+| `remember_failed` | 已登录，但没能保存账号密码 |
 
 错误响应：409 `login_in_progress`（已有登录在进行）、409 `account_mismatch`（账号与之前不同，带 `confirmSwitch: true` 重试）、503 `credential_store_unavailable`。
 

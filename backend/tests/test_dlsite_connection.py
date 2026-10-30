@@ -16,7 +16,7 @@ from app.adapters.dlsite.login_host import LoginEvent, LoginProcess, LoginReques
 from app.adapters.dlsite.login_page import (
     PageKind,
     PageState,
-    VerificationGate,
+    Sustained,
     classify,
     is_login_page,
 )
@@ -728,7 +728,8 @@ LOGIN = "https://login.dlsite.com/login"
             PageKind.VERIFICATION,
         ),
         (PageState(url=LOGIN, ready="complete", challenge=True), False, PageKind.VERIFICATION),
-        (PageState(url=LOGIN, ready="complete"), True, PageKind.VERIFICATION),
+        (PageState(url=LOGIN, ready="complete", has_inputs=True), True, PageKind.VERIFICATION),
+        (PageState(url=LOGIN, ready="complete"), True, PageKind.LOGGED_IN),
         (PageState(url=LOGIN, ready="complete"), False, PageKind.UNEXPECTED),
         (PageState(url=LOGIN, ready="complete", logged_in_mark=True), True, PageKind.LOGGED_IN),
         (PageState(url="https://www.dlsite.com/home/", ready="complete"), True, PageKind.LOGGED_IN),
@@ -785,18 +786,120 @@ def test_mask_account(login_id: str, alias: str) -> None:
 
 
 def test_passing_pages_never_reveal_the_window() -> None:
-    gate = VerificationGate(6.0)
+    gate = Sustained(6.0)
     # The redirect after a submit looks like verification for a moment.
-    assert gate.observe(verifying=True, now=10.0) is False
-    assert gate.observe(verifying=True, now=12.0) is False
-    assert gate.observe(verifying=False, now=13.0) is False
+    assert gate.observe(True, now=10.0) is False
+    assert gate.observe(True, now=12.0) is False
+    assert gate.observe(False, now=13.0) is False
     # It starts over: separate short passes do not add up.
-    assert gate.observe(verifying=True, now=14.0) is False
-    assert gate.observe(verifying=True, now=19.9) is False
+    assert gate.observe(True, now=14.0) is False
+    assert gate.observe(True, now=19.9) is False
 
 
 def test_a_page_that_keeps_asking_reveals_the_window() -> None:
-    gate = VerificationGate(6.0)
-    assert gate.observe(verifying=True, now=0.0) is False
-    assert gate.observe(verifying=True, now=6.0) is True
-    assert gate.observe(verifying=True, now=7.0) is True
+    gate = Sustained(6.0)
+    assert gate.observe(True, now=0.0) is False
+    assert gate.observe(True, now=6.0) is True
+    assert gate.observe(True, now=7.0) is True
+
+
+def test_signed_in_landing_page_is_not_mistaken_for_verification() -> None:
+    # The page DLsite really lands on: no form, no inputs, no 'logged in' wording.
+    landing = PageState(url=LOGIN, ready="complete")
+    assert classify(landing, was_submitted=True) is PageKind.LOGGED_IN
+    assert classify(landing, was_submitted=False, left_form=True) is PageKind.LOGGED_IN
+    code_page = PageState(url=LOGIN, ready="complete", has_inputs=True)
+    assert classify(code_page, was_submitted=True) is PageKind.VERIFICATION
+    assert classify(landing, was_submitted=False) is PageKind.UNEXPECTED
+
+
+# --- remembered login ---
+
+
+def login_stored(rig: Rig) -> bool:
+    return any("/dlsite/login/" in key for key in rig.store.items)
+
+
+def test_login_is_not_remembered_unless_asked(api: TestClient, rig: Rig) -> None:
+    login(api)
+    assert "rememberedAccount" not in wait_for(api, "connected")
+    assert not login_stored(rig)
+
+
+def test_remembered_login_needs_no_typing_and_never_returns_the_password(
+    api: TestClient, rig: Rig, settings: Settings
+) -> None:
+    login(api, "me@example.test", remember=True)
+    connected = wait_for(api, "connected")
+    assert connected["rememberedAccount"] == "me•••@example.test"
+    assert login_stored(rig)
+    # Only the credential store holds it, not the database or any other file.
+    for path in settings.data_dir.rglob("*"):
+        if path.is_file():
+            assert SENTINEL_PASSWORD.encode() not in path.read_bytes()
+    out = api.post(f"{BASE}/disconnect")
+    assert out.json()["rememberedAccount"] == "me•••@example.test"
+    assert SENTINEL_PASSWORD not in out.text
+    started = api.post(f"{BASE}/login/saved")
+    assert started.status_code == 200
+    assert SENTINEL_PASSWORD not in started.text
+    wait_for(api, "connected")
+    assert rig.host.requests[-1].password == SENTINEL_PASSWORD
+    assert rig.host.requests[-1].login_id == "me@example.test"
+
+
+def test_remembered_login_survives_restart_and_can_be_forgotten(rig: Rig) -> None:
+    with rig.client() as client:
+        client.headers.update(write_headers(client))
+        login(client, remember=True)
+        wait_for(client, "connected")
+    with rig.client() as client:
+        client.headers.update(write_headers(client))
+        assert state(client)["rememberedAccount"]
+        forgotten = client.post(f"{BASE}/saved-login/forget").json()
+        assert "rememberedAccount" not in forgotten
+        assert not login_stored(rig)
+        refused = client.post(f"{BASE}/login/saved")
+        assert refused.status_code == 409
+        assert refused.json()["error"]["code"] == "no_saved_login"
+
+
+def test_rejected_saved_password_is_deleted_not_retried(api: TestClient, rig: Rig) -> None:
+    login(api, remember=True)
+    wait_for(api, "connected")
+    api.post(f"{BASE}/disconnect")
+    rig.host.next = [LoginEvent("result", "bad_credentials")]
+    api.post(f"{BASE}/login/saved")
+    deadline = time.monotonic() + 5
+    while state(api).get("code") != "saved_login_rejected" and time.monotonic() < deadline:
+        time.sleep(0.02)
+    current = state(api)
+    assert current["code"] == "saved_login_rejected"
+    assert "rememberedAccount" not in current
+    assert not login_stored(rig)
+    assert len(rig.host.requests) == 2
+
+
+def test_failed_login_does_not_remember(api: TestClient, rig: Rig) -> None:
+    rig.host.next = [LoginEvent("result", "bad_credentials")]
+    login(api, remember=True)
+    deadline = time.monotonic() + 5
+    while state(api).get("code") != "bad_credentials" and time.monotonic() < deadline:
+        time.sleep(0.02)
+    assert not login_stored(rig)
+    assert "rememberedAccount" not in state(api)
+
+
+def test_failing_to_remember_does_not_undo_the_login(api: TestClient, rig: Rig) -> None:
+    original = rig.store.write
+
+    def refuse_login(name: str, secret: bytes) -> None:
+        if "/dlsite/login/" in name:
+            raise CredentialStoreError("x")
+        original(name, secret)
+
+    rig.store.write = refuse_login  # type: ignore[method-assign]
+    login(api, remember=True)
+    current = wait_for(api, "connected")
+    assert current["code"] == "remember_failed"
+    assert "rememberedAccount" not in current

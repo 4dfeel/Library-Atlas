@@ -179,8 +179,19 @@ def _build_api() -> APIRouter:
     @api.post("/sources/dlsite/login", response_model_exclude_none=True)
     def dlsite_login(auth: DlsiteDep, body: models.DlsiteLogin) -> models.DlsiteConnection:
         return auth.start_login(
-            body.login_id, body.password.get_secret_value(), confirm_switch=body.confirm_switch
+            body.login_id,
+            body.password.get_secret_value(),
+            confirm_switch=body.confirm_switch,
+            remember=body.remember,
         )
+
+    @api.post("/sources/dlsite/login/saved", response_model_exclude_none=True)
+    def dlsite_saved_login(auth: DlsiteDep) -> models.DlsiteConnection:
+        return auth.start_saved_login()
+
+    @api.post("/sources/dlsite/saved-login/forget", response_model_exclude_none=True)
+    def dlsite_forget_login(auth: DlsiteDep) -> models.DlsiteConnection:
+        return auth.forget_saved_login()
 
     @api.post("/sources/dlsite/login/window", response_model_exclude_none=True)
     def dlsite_window_login(auth: DlsiteDep) -> models.DlsiteConnection:
