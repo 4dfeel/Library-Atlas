@@ -9,7 +9,9 @@ import json
 import threading
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 
+from app.adapters.dlsite.library import PlatformUnavailable, ResponseChanged, SessionRejected
 from app.adapters.dlsite.login_host import LoginEvent, LoginProcess, LoginRequest
 from app.adapters.dlsite.session import SessionCheck, SessionCookie
 from app.core.credentials import CredentialStoreError
@@ -137,4 +139,61 @@ class FakeFolderOpener:
     """Opens nothing, so test runs never pop up Explorer windows."""
 
     def open(self, path: Path) -> None:
+        return None
+
+
+_FAKE_TYPES = ("RPG", "ADV", "MNG", "ICG", "SOU", "MUS", "MOV", "ET3", "ZZZ")
+
+
+class FakeLibraryClient:
+    """A made-up purchased library. The control file sets its size and how it misbehaves:
+    `size`, `sync` (`expired`, `offline`, `changed`, `slow`) and `sync_after` (batches that
+    succeed first). Titles are invented."""
+
+    def __init__(self, control: FakeControl) -> None:
+        self._control = control
+        self._batches = 0
+
+    def _settings(self) -> dict[str, Any]:
+        return self._control.read()
+
+    def count(self) -> int:
+        return int(self._settings().get("size", 0))
+
+    def owned(self) -> Any:
+        return [
+            {"workno": f"RJ8{index:05d}", "sales_date": f"2026-0{1 + index % 9}-15T00:00:00+00:00"}
+            for index in range(self.count())
+        ]
+
+    def works(self, ids: list[str]) -> list[Any]:
+        settings = self._settings()
+        behavior = settings.get("sync")
+        if self._batches >= int(settings.get("sync_after", 0)):
+            if behavior == "expired":
+                raise SessionRejected
+            if behavior == "offline":
+                raise PlatformUnavailable(0.01)
+            if behavior == "changed":
+                raise ResponseChanged
+        if behavior == "slow":
+            threading.Event().wait(0.5)
+        self._batches += 1
+        items = []
+        for work_id in ids:
+            index = int(work_id[3:])
+            items.append(
+                {
+                    "workno": work_id,
+                    "name": {"ja_JP": f"合成作品 {index} 号", "en_US": f"Synthetic Work {index}"},
+                    "maker": {"id": "RG00001", "name": {"ja_JP": "虚构社团"}},
+                    "work_type": _FAKE_TYPES[index % len(_FAKE_TYPES)],
+                    "regist_date": "2025-06-01T00:00:00+09:00",
+                    "tags": [{"class": "genre", "name": "合成样本"}],
+                    "work_files": {},
+                }
+            )
+        return items
+
+    def close(self) -> None:
         return None

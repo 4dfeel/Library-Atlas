@@ -58,6 +58,8 @@ source_accounts = Table(
     # Set before a stored session is deleted and cleared after. While set, the session is
     # never read, so a failed cleanup cannot bring a disconnected account back.
     Column("cleanup_pending", Integer, nullable=False, server_default=text("0")),
+    # Set only by a complete sync. An attempt's own time lives on its sync_jobs row.
+    Column("last_synced_at", String, nullable=True),
     CheckConstraint(
         "state IN ('not_connected', 'connected', 'reauth_required', 'error')",
         name="ck_source_accounts_state",
@@ -97,6 +99,7 @@ works = Table(
     Column("search_text", Text, nullable=False),
     Column("sort_title", Text, nullable=False),
     Column("metadata_updated_at", String, nullable=False),
+    Column("source_url", String, nullable=True),
     UniqueConstraint("source_id", "source_work_id", name="uq_works_source_identity"),
     CheckConstraint("kind IN ('game', 'image', 'video', 'audio', 'other')", name="ck_works_kind"),
     CheckConstraint("local_state IN ('unknown', 'available', 'absent')", name="ck_works_local"),
@@ -138,6 +141,28 @@ work_files = Table(
     ),
     CheckConstraint("size_bytes IS NULL OR size_bytes >= 0", name="ck_files_size"),
     Index("ix_work_files_work", "work_id", "position"),
+)
+
+sync_jobs = Table(
+    "sync_jobs",
+    metadata,
+    Column("id", String, primary_key=True),
+    Column("state", String, nullable=False),
+    Column("total", Integer, nullable=True),
+    Column("processed", Integer, nullable=False, server_default=text("0")),
+    Column("added", Integer, nullable=False, server_default=text("0")),
+    Column("updated", Integer, nullable=False, server_default=text("0")),
+    Column("skipped", Integer, nullable=False, server_default=text("0")),
+    Column("missing", Integer, nullable=False, server_default=text("0")),
+    Column("error_code", String, nullable=True),
+    Column("started_at", String, nullable=False),
+    Column("finished_at", String, nullable=True),
+    CheckConstraint(
+        "state IN ('preparing', 'reading', 'saving', 'succeeded', 'partial', 'failed', "
+        "'cancelled', 'reauth_required', 'interrupted')",
+        name="ck_sync_jobs_state",
+    ),
+    Index("ix_sync_jobs_started", "started_at"),
 )
 
 library_entries = Table(

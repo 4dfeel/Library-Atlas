@@ -22,6 +22,8 @@ def _cover(row: Row[Any]) -> models.Cover:
     ref: str | None = row.cover_ref
     if ref and ref.startswith("synthetic:"):
         return models.Cover(kind="procedural", index=int(ref.removeprefix("synthetic:")))
+    if ref:
+        return models.Cover(kind="remote", index=0, url=f"/api/v1/works/{row.id}/cover")
     return models.Cover(kind="missing", index=0)
 
 
@@ -55,6 +57,7 @@ def _work_fields(row: Row[Any], files: list[Row[Any]]) -> dict[str, Any]:
             official_viewer_only=_bool(row.official_viewer_only),
         ),
         "file": _file_ref(files),
+        "source_url": row.source_url,
     }
 
 
@@ -124,6 +127,13 @@ def list_page(engine: Engine, query: models.WorkQuery) -> models.WorkPage:
     )
 
 
+def cover_reference(engine: Engine, work_id: str) -> str | None:
+    """Through the ordinary scope: a private work's image is as unavailable as the work."""
+    with engine.connect() as connection:
+        ref: str | None = repo.get_ordinary_work(connection, work_id).cover_ref
+    return ref
+
+
 def get_detail(engine: Engine, work_id: str) -> models.WorkDetailOut:
     with engine.connect() as connection:
         return _detail(connection, repo.get_ordinary_work(connection, work_id))
@@ -186,9 +196,13 @@ def source_status(engine: Engine, dlsite_state: models.ConnectionState | None) -
     with engine.connect() as connection:
         rows = repo.source_summaries(connection)
         accounts = {
-            row.source_id: row.state
+            row.source_id: row
             for row in connection.execute(
-                select(source_accounts.c.source_id, source_accounts.c.state)
+                select(
+                    source_accounts.c.source_id,
+                    source_accounts.c.state,
+                    source_accounts.c.last_synced_at,
+                )
             )
         }
     return models.SourcesOut(
@@ -200,10 +214,13 @@ def source_status(engine: Engine, dlsite_state: models.ConnectionState | None) -
                 connection=(
                     dlsite_state
                     if row.id == "dlsite" and dlsite_state
-                    else accounts.get(row.id, "not_connected")
+                    else (accounts[row.id].state if row.id in accounts else "not_connected")
                 ),
                 work_count=row.work_count,
-                capabilities=models.SourceCapabilities(connect=row.id == "dlsite"),
+                last_sync_at=accounts[row.id].last_synced_at if row.id in accounts else None,
+                capabilities=models.SourceCapabilities(
+                    connect=row.id == "dlsite", sync=row.id == "dlsite"
+                ),
             )
             for row in rows
         ]

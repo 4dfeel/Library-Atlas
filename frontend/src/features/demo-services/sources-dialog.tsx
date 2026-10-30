@@ -13,7 +13,7 @@ import {
   type SourceStatus,
 } from '@/lib/data';
 import { DlsiteConnectionPanel } from '@/features/workspace/dlsite-connection';
-import { platformLabels } from '@/lib/utils';
+import { formatDate, platformLabels } from '@/lib/utils';
 import { connectionLabels, realConnectionState } from './labels';
 
 const timeFormat = new Intl.DateTimeFormat('zh-CN', {
@@ -25,6 +25,7 @@ const timeFormat = new Intl.DateTimeFormat('zh-CN', {
 
 function RealSourceRow({ platform, source }: { platform: Platform; source?: SourceStatus }) {
   const name = platformLabels[platform];
+  const synced = formatDate(source?.lastSyncAt ?? null);
   return (
     <section className="source-row" aria-labelledby={`source-${platform}`} data-source={platform}>
       <div className="source-row-heading">
@@ -46,7 +47,7 @@ function RealSourceRow({ platform, source }: { platform: Platform; source?: Sour
         </div>
         <div>
           <dt>最后同步</dt>
-          <dd>暂无记录</dd>
+          <dd>{synced ?? '暂无记录'}</dd>
         </div>
       </dl>
       {platform === 'dlsite' && <DlsiteConnectionPanel />}
@@ -223,7 +224,7 @@ export function SourcesDialog({
           ))}
           <p className="dialog-footnote">
             <PlugZap size={14} />
-            作品同步尚未开放，连接后作品库暂时还是空的。
+            同步只读取作品资料。下载和解压将在后续版本开放。
           </p>
         </div>
       )}

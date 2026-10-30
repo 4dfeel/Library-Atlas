@@ -98,7 +98,7 @@ test('login happens inside Atlas and survives a real restart', async ({ page }) 
   await signIn(page, 'ok@example.test');
   await expect(row(page).getByTestId('dlsite-connected')).toBeVisible();
   await expect(row(page)).toContainText('已连接');
-  await expect(row(page)).toContainText('作品同步将在后续版本开放');
+  await expect(row(page).getByTestId('dlsite-sync')).toBeVisible();
   await shot(page, 'dlsite-connected');
   expect(sent.join('\n')).not.toContain(password);
   // The form is gone and the password is nowhere in the page or its storage.

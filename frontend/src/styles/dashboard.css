@@ -1073,3 +1073,33 @@
   color: var(--text-primary);
   overflow-wrap: anywhere;
 }
+.dlsite-sync {
+  display: grid;
+  gap: 10px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.dlsite-sync-progress {
+  display: grid;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.dlsite-sync-progress > span {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.dlsite-sync-result {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--success);
+}
+.dlsite-sync-result > svg {
+  flex: none;
+  margin-top: 3px;
+}

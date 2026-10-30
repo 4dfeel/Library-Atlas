@@ -5,7 +5,7 @@ import {
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query';
-import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { ApiError } from './api-client';
 import type { DashboardResult, DashboardScope } from './dashboard';
 import type { Connections } from './demo-connections';
@@ -19,6 +19,8 @@ import {
   type DlsiteConnection,
   type FolderInfo,
   type LibrarySummary,
+  type SyncJob,
+  type SyncStatus,
 } from './real-source';
 import type { DemoScenario, DemoSize, Game, GameDetail, GameUpdate, LibraryFilters } from './types';
 import { useWorkspaceMode, type WorkspaceMode } from './workspace';
@@ -108,6 +110,9 @@ export function useLibraryCollection(
   }, []);
 
   const demoData = demo.data;
+  const [lastSummary, setLastSummary] = useState<LibrarySummary | undefined>();
+  const firstPage = real[0]?.data;
+  if (firstPage && firstPage !== lastSummary) setLastSummary(firstPage);
   const realItems = new Map<number, Game[]>();
   pages.forEach((page, position) => {
     const data = real[position]?.data;
@@ -132,7 +137,8 @@ export function useLibraryCollection(
 
   const first = real[0]!;
   return {
-    summary: first.data,
+    // While new filters load, keep the last numbers: a flash of "0" would read as a result.
+    summary: first.data ?? (first.isPending ? lastSummary : undefined),
     count: first.data?.filteredCount ?? 0,
     gameAt: realGameAt,
     onVisibleRange,
@@ -317,6 +323,59 @@ export function useDlsiteConnection(enabled = true) {
       verify: async () => settle(await realSource.dlsiteAction('verify')),
       disconnect: async () => settle(await realSource.dlsiteAction('disconnect')),
     },
+  };
+}
+
+const syncActive = new Set<SyncJob['state']>(['preparing', 'reading', 'saving']);
+
+export function isSyncActive(job: SyncJob): boolean {
+  return syncActive.has(job.state);
+}
+
+/**
+ * Sync progress as the service reports it. Lists and counts refresh every few seconds while
+ * works arrive and once at the end, never on each one, so pages do not flicker.
+ */
+export function useDlsiteSync() {
+  const queryClient = useQueryClient();
+  const key = [...realRoot, 'dlsite-sync'];
+  const [error, setError] = useState<string | null>(null);
+  const query = useQuery({
+    queryKey: key,
+    queryFn: ({ signal }) => realSource.syncStatus(signal),
+    retry: false,
+    refetchInterval: (current) => {
+      const job = current.state.data?.job;
+      return job && isSyncActive(job) ? 1_000 : 15_000;
+    },
+  });
+  const job = query.data?.job;
+  const state = job?.state;
+  const processed = job?.processed;
+  const lastRefresh = useRef(0);
+  useEffect(() => {
+    if (!state) return;
+    const running = syncActive.has(state);
+    if (running && Date.now() - lastRefresh.current < 4_000) return;
+    lastRefresh.current = Date.now();
+    for (const part of ['works', 'dashboard', 'sources', 'detail', 'dlsite-connection'])
+      void queryClient.invalidateQueries({ queryKey: [...realRoot, part] });
+  }, [state, processed, queryClient]);
+  const act = (action: 'sync' | 'sync/cancel') => async () => {
+    setError(null);
+    try {
+      const next: SyncStatus = await realSource.syncAction(action);
+      await queryClient.cancelQueries({ queryKey: key });
+      queryClient.setQueryData(key, next);
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : '操作没有完成，请重试。');
+    }
+  };
+  return {
+    status: query.data,
+    error,
+    start: () => void act('sync')(),
+    cancel: () => void act('sync/cancel')(),
   };
 }
 

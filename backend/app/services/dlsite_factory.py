@@ -3,12 +3,14 @@ request, option or environment variable can put stand-ins behind a real library.
 
 from sqlalchemy import Engine
 
+from app.adapters.dlsite.library import PlayLibraryClient
 from app.adapters.dlsite.login_host import BrowserLoginHost
 from app.adapters.dlsite.session import PlaySessionChecker
 from app.adapters.system.folder_dialog import DialogFolderPicker, ExplorerFolderOpener
 from app.core.config import Settings
 from app.core.credentials import NAMESPACE, CredentialStoreError, WindowsCredentialStore
 from app.services.dlsite_auth import DlsiteAuth
+from app.services.dlsite_sync import DlsiteSync
 from app.services.folders import FolderService
 
 
@@ -39,3 +41,12 @@ def build_folder_service(settings: Settings, engine: Engine) -> FolderService:
         control = FakeControl(settings.data_dir)
         return FolderService(engine, settings, FakeFolderPicker(control), FakeFolderOpener())
     return FolderService(engine, settings, DialogFolderPicker(), ExplorerFolderOpener())
+
+
+def build_dlsite_sync(settings: Settings, engine: Engine, auth: DlsiteAuth) -> DlsiteSync:
+    if settings.profile == "test":
+        from app.testing.fake_dlsite import FakeControl, FakeLibraryClient
+
+        control = FakeControl(settings.data_dir)
+        return DlsiteSync(engine, auth, lambda _cookies: FakeLibraryClient(control))
+    return DlsiteSync(engine, auth, PlayLibraryClient)

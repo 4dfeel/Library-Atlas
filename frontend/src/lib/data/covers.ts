@@ -52,6 +52,7 @@ export function getBackdropSource(game: Game): string | null {
 /** Called by mounted cards only; no eager creation or request for 5000 covers. */
 export function getCoverSource(game: Game): string | null {
   if (game.visibility !== 'normal' || game.cover.kind === 'missing') return null;
+  if (game.cover.kind === 'remote') return game.cover.url ?? null;
   if (game.cover.kind === 'art')
     return `/demo/covers/cover-${String(game.cover.index).padStart(2, '0')}.svg`;
   const index = game.cover.index;

@@ -94,6 +94,39 @@ export interface SourceStatus {
   capabilities: { connect: boolean; sync: boolean; download: boolean };
 }
 
+export type SyncState =
+  | 'preparing'
+  | 'reading'
+  | 'saving'
+  | 'succeeded'
+  | 'partial'
+  | 'failed'
+  | 'cancelled'
+  | 'reauth_required'
+  | 'interrupted';
+
+export interface SyncJob {
+  id: string;
+  state: SyncState;
+  /** `null` until the platform has said how many works there are. */
+  total: number | null;
+  processed: number;
+  added: number;
+  updated: number;
+  skipped: number;
+  missing: number;
+  code: string | null;
+  message: string | null;
+  startedAt: string;
+  finishedAt: string | null;
+}
+
+export interface SyncStatus {
+  /** Only a complete sync sets this; an attempt's own time is on the job. */
+  lastSyncedAt: string | null;
+  job: SyncJob | null;
+}
+
 export interface ServiceReady {
   status: 'ready' | 'not_ready';
   profile: 'real' | 'test';
@@ -217,6 +250,14 @@ export class RealLibrarySource implements LibrarySource {
   async folderAction(kind: FolderInfo['kind'], action: 'pick' | 'open'): Promise<FolderInfo[]> {
     return (await apiWrite<{ folders: FolderInfo[] }>('POST', `${folderPath}/${kind}/${action}`))
       .folders;
+  }
+
+  syncStatus(signal?: AbortSignal): Promise<SyncStatus> {
+    return apiGet<SyncStatus>(`${dlsitePath}/sync`, undefined, signal);
+  }
+
+  syncAction(action: 'sync' | 'sync/cancel'): Promise<SyncStatus> {
+    return apiWrite<SyncStatus>('POST', `${dlsitePath}/${action}`);
   }
 
   dlsiteConnection(signal?: AbortSignal): Promise<DlsiteConnection> {

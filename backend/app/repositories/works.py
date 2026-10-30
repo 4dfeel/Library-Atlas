@@ -75,6 +75,9 @@ class SourceMetadata:
     can_download: bool | None = None
     can_extract: bool | None = None
     official_viewer_only: bool | None = None
+    # Other spellings of the title: searchable, not displayed.
+    alt_titles: tuple[str, ...] = field(default_factory=tuple)
+    source_url: str | None = None
 
 
 @dataclass(frozen=True)
@@ -332,10 +335,18 @@ def toggle_favorite(connection: Connection, work_id: str) -> None:
 
 
 def upsert_source_metadata(
-    connection: Connection, metadata: SourceMetadata, *, work_id: str | None = None
+    connection: Connection,
+    metadata: SourceMetadata,
+    *,
+    work_id: str | None = None,
+    visibility: str | None = None,
+    keep_missing: bool = False,
+    acquired_at: str | None = None,
 ) -> str:
     """Idempotent on (source, source work ID). Never writes personal records of a known
-    work; a new work starts quarantined until the user confirms it."""
+    work: `visibility` and `acquired_at` only apply to a work seen for the first time, which
+    otherwise starts quarantined. With `keep_missing`, a field this response did not provide
+    keeps its stored value instead of being cleared."""
     now = _now()
     values: dict[str, Any] = {
         "source_id": metadata.source_id,
@@ -359,24 +370,39 @@ def upsert_source_metadata(
         "can_download": metadata.can_download,
         "can_extract": metadata.can_extract,
         "official_viewer_only": metadata.official_viewer_only,
-        "search_text": search_text(metadata.title, metadata.subtitle, metadata.maker),
+        "search_text": search_text(
+            metadata.title, metadata.subtitle, metadata.maker, *metadata.alt_titles
+        ),
         "sort_title": sort_title(metadata.title),
         "metadata_updated_at": now,
+        "source_url": metadata.source_url,
     }
+    changes = values
+    if keep_missing:
+        changes = {name: value for name, value in values.items() if value is not None}
+        if not metadata.tags:
+            changes.pop("tags_json", None)
+        # Facts this source does not report at all.
+        for name in ("local_state", "subtitle"):
+            changes.pop(name, None)
     statement = insert(works).values(id=work_id or f"wk_{uuid.uuid4().hex}", **values)
     identifier = connection.execute(
         statement.on_conflict_do_update(
-            index_elements=[works.c.source_id, works.c.source_work_id], set_=values
+            index_elements=[works.c.source_id, works.c.source_work_id], set_=changes
         ).returning(works.c.id)
     ).scalar_one()
     connection.execute(
         insert(library_entries)
-        .values(work_id=identifier, ownership_status="observed_owned", added_at=now)
-        .on_conflict_do_nothing()
+        .values(work_id=identifier, ownership_status="observed_owned", added_at=acquired_at or now)
+        .on_conflict_do_update(
+            index_elements=[library_entries.c.work_id],
+            set_={"ownership_status": "observed_owned"},
+        )
     )
-    connection.execute(
-        insert(personal_records).values(work_id=identifier, updated_at=now).on_conflict_do_nothing()
-    )
+    personal: dict[str, Any] = {"work_id": identifier, "updated_at": now}
+    if visibility is not None:
+        personal["visibility"] = visibility
+    connection.execute(insert(personal_records).values(**personal).on_conflict_do_nothing())
     return str(identifier)
 
 

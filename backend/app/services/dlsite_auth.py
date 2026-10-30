@@ -324,6 +324,47 @@ class DlsiteAuth:
             process.reveal()
         return self.connection()
 
+    # --- for the sync job ---
+
+    def session_for_sync(self) -> tuple[list[SessionCookie], int]:
+        """The current session and a token for it. Reuses this session; never starts a login."""
+        with self._engine.connect() as connection:
+            row = accounts.get_account(connection)
+        with self._lock:
+            generation = self._generation
+            busy = self._attempt is not None
+        if busy or row is None or row.state != "connected" or row.cleanup_pending:
+            raise AtlasError("not_connected", "请先登录 DLsite。", status=409)
+        try:
+            raw = self._vault.load()
+            if raw is None:
+                raise SessionCorrupt
+            return decode_session(raw), generation
+        except CredentialStoreError:
+            raise AtlasError(
+                "credential_store_unavailable", MESSAGES["store_unavailable"], status=503
+            ) from None
+        except (SessionCorrupt, ValueError):
+            with self._engine.begin() as connection:
+                accounts.set_state(connection, "reauth_required")
+            with self._lock:
+                self._problem = "session_missing"
+            raise AtlasError("not_connected", MESSAGES["session_missing"], status=409) from None
+
+    def is_current(self, generation: int) -> bool:
+        with self._lock:
+            return generation == self._generation
+
+    def session_rejected(self, generation: int) -> None:
+        """The platform refused this session during a sync. Ignored if it has been replaced."""
+        with self._lock:
+            if generation != self._generation:
+                return
+            self._problem = "session_expired"
+            self._unverified = False
+            with self._engine.begin() as connection:
+                accounts.set_state(connection, "reauth_required")
+
     # --- session check ---
 
     def verify(self) -> models.DlsiteConnection:

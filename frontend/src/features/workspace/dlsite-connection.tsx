@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { isAccountMismatch, useDlsiteConnection, type DlsiteConnection } from '@/lib/data';
 import { formatDate } from '@/lib/utils';
+import { DlsiteSyncPanel } from './dlsite-sync';
 
 function LoginForm({
   connection,
@@ -233,7 +234,7 @@ export function DlsiteConnectionPanel() {
                 最近验证 {verified} ·{' '}
               </>
             )}
-            作品同步将在后续版本开放。
+            已连接。
           </p>
           <div className="dlsite-actions">
             <Button variant="secondary" size="sm" onClick={() => void actions.verify()}>
@@ -246,6 +247,7 @@ export function DlsiteConnectionPanel() {
             </Button>
           </div>
           <p className="dlsite-note">退出登录只清除 Atlas 保存的登录，作品和备注不受影响。</p>
+          <DlsiteSyncPanel />
         </div>
       );
     case 'disconnect_failed':

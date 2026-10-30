@@ -56,10 +56,10 @@ export function RealLibraryEmpty() {
       title="你的作品库还是空的"
       description={
         connected
-          ? 'DLsite 已连接。作品同步将在后续版本开放，开放后你拥有的作品会出现在这里；这里不会放入演示作品。'
-          : '还没有连接来源，所以这里没有作品。作品同步开放后，你拥有的作品会出现在这里；这里不会放入演示作品。'
+          ? 'DLsite 已连接。同步作品库后，你拥有的作品会出现在这里。'
+          : '还没有连接来源，所以这里没有作品。连接 DLsite 并同步后，你拥有的作品会出现在这里。'
       }
-      action={connected ? '查看来源状态' : '连接 DLsite'}
+      action={connected ? '同步作品库' : '连接 DLsite'}
       onAction={openSources}
     />
   );

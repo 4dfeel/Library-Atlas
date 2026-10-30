@@ -18,6 +18,7 @@ from sqlalchemy.exc import DBAPIError, SQLAlchemyError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app import __version__
+from app.adapters.dlsite.covers import CoverCache, CoverUnavailable
 from app.api import models
 from app.core.config import Settings
 from app.core.errors import NOT_READY_MESSAGES, AtlasError
@@ -25,7 +26,12 @@ from app.core.security import LocalBoundaryMiddleware, new_csrf_token
 from app.db.bootstrap import DatabaseNotReady, open_database
 from app.services import library
 from app.services.dlsite_auth import DlsiteAuth
-from app.services.dlsite_factory import build_dlsite_auth, build_folder_service
+from app.services.dlsite_factory import (
+    build_dlsite_auth,
+    build_dlsite_sync,
+    build_folder_service,
+)
+from app.services.dlsite_sync import DlsiteSync
 from app.services.folders import FolderService
 
 logger = logging.getLogger("atlas")
@@ -50,6 +56,8 @@ class ServiceState:
     not_ready_reason: str | None = "starting"
     dlsite: DlsiteAuth | None = None
     folders: FolderService | None = None
+    sync: DlsiteSync | None = None
+    covers: CoverCache | None = None
 
 
 def _error_body(
@@ -96,6 +104,18 @@ def _dlsite(request: Request, _engine: EngineDep) -> DlsiteAuth:
 
 
 DlsiteDep = Annotated[DlsiteAuth, Depends(_dlsite)]
+
+
+def _sync(request: Request, _engine: EngineDep) -> DlsiteSync:
+    sync = _state(request).sync
+    if sync is None:
+        raise AtlasError(
+            "credential_store_unavailable", "系统凭据存储不可用，无法同步作品。", status=503
+        )
+    return sync
+
+
+SyncDep = Annotated[DlsiteSync, Depends(_sync)]
 
 
 def _folders(request: Request, _engine: EngineDep) -> FolderService:
@@ -209,6 +229,32 @@ def _build_api() -> APIRouter:
     def dlsite_verify(auth: DlsiteDep) -> models.DlsiteConnection:
         return auth.verify()
 
+    @api.get("/sources/dlsite/sync")
+    def sync_status(sync: SyncDep) -> models.SyncStatus:
+        return sync.status()
+
+    @api.post("/sources/dlsite/sync")
+    def sync_start(sync: SyncDep) -> models.SyncStatus:
+        return sync.start()
+
+    @api.post("/sources/dlsite/sync/cancel")
+    def sync_cancel(sync: SyncDep) -> models.SyncStatus:
+        return sync.cancel()
+
+    @api.get("/works/{work_id}/cover", include_in_schema=False)
+    def work_cover(request: Request, engine: EngineDep, work_id: str) -> Response:
+        ref = library.cover_reference(engine, work_id)
+        covers = _state(request).covers
+        if not ref or covers is None:
+            raise AtlasError("cover_unavailable", "没有封面。", status=404)
+        try:
+            path, content_type = covers.get(ref)
+        except CoverUnavailable:
+            raise AtlasError("cover_unavailable", "封面暂时无法获取。", status=404) from None
+        return FileResponse(
+            path, media_type=content_type, headers={"Cache-Control": "private, max-age=604800"}
+        )
+
     @api.get("/settings/folders")
     def get_folders(service: FoldersDep) -> models.FoldersOut:
         return service.folders()
@@ -259,6 +305,7 @@ def create_app(
     *,
     open_db: bool = True,
     dlsite_factory: Callable[[Settings, Engine], DlsiteAuth | None] = build_dlsite_auth,
+    dlsite_sync_factory: Callable[[Settings, Engine, DlsiteAuth], DlsiteSync] = build_dlsite_sync,
 ) -> FastAPI:
     state = ServiceState(settings=settings, csrf_token=new_csrf_token())
 
@@ -273,12 +320,17 @@ def create_app(
                 state.not_ready_reason = None
                 state.folders = build_folder_service(settings, opened.engine)
                 state.dlsite = dlsite_factory(settings, opened.engine)
+                state.covers = CoverCache(settings.data_dir / "cache" / "covers")
                 if state.dlsite is not None:
+                    state.sync = dlsite_sync_factory(settings, opened.engine, state.dlsite)
+                    state.sync.recover()
                     state.dlsite.restore()
             except DatabaseNotReady as error:
                 state.not_ready_reason = error.reason
                 logger.error("database not ready: %s", error.reason)
         yield
+        if state.sync is not None:
+            state.sync.shutdown()
         if state.dlsite is not None:
             state.dlsite.shutdown()
         if state.engine is not None:

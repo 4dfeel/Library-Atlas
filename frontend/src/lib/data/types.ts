@@ -40,7 +40,8 @@ export interface Game {
   playtimeMinutes: number | null;
   favorite: boolean;
   visibility: Visibility;
-  cover: { kind: 'art' | 'procedural' | 'missing'; index: number };
+  /** `remote`: a platform image served through Atlas's own cover address. */
+  cover: { kind: 'art' | 'procedural' | 'remote' | 'missing'; index: number; url?: string | null };
   background: string | null;
   addedAt: string;
   /** Last use: played for games; read, watched or listened for others. Demo record. */
@@ -49,6 +50,8 @@ export interface Game {
   capabilities: WorkCapabilities;
   /** Minimal file identity; versions or language packs are not merged by title. */
   file: { version: string; sizeBytes: number | null } | null;
+  /** The work's page on the source platform, when known. */
+  sourceUrl?: string | null;
 }
 
 /** `null` means not known yet; the demo dataset always knows. */

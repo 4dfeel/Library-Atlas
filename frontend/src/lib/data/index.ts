@@ -29,12 +29,16 @@ export type {
   DlsiteConnection,
   FolderInfo,
   LibrarySummary,
+  SyncJob,
+  SyncStatus,
   SourceStatus,
 } from './real-source';
 export { demoAvailable, setWorkspaceMode, useWorkspaceMode, type WorkspaceMode } from './workspace';
 export {
   getDemoEditCount,
   isAccountMismatch,
+  isSyncActive,
+  useDlsiteSync,
   isConflict,
   useDlsiteConnection,
   useFolderActions,

@@ -219,6 +219,14 @@ function DetailBody({ game }: { game: GameDetail }) {
                   : isTestLibrary
                     ? '合成测试样本'
                     : '本地资料库'}
+                {game.sourceUrl && (
+                  <>
+                    {' · '}
+                    <a href={game.sourceUrl} target="_blank" rel="noreferrer noopener">
+                      在 {platformLabels[game.platform]} 查看
+                    </a>
+                  </>
+                )}
               </dd>
             </div>
           </dl>

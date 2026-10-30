@@ -62,8 +62,10 @@ class PersonalUpdate(ApiModel):
 
 
 class Cover(ApiModel):
-    kind: Literal["procedural", "missing"]
+    kind: Literal["procedural", "remote", "missing"]
     index: int
+    # Atlas's own address for a cached platform image, never the platform's.
+    url: str | None = None
 
 
 class Capabilities(ApiModel):
@@ -114,6 +116,7 @@ class WorkOut(ApiModel):
     last_played_at: str | None
     capabilities: Capabilities
     file: FileRef | None
+    source_url: str | None = None
 
 
 class Achievements(ApiModel):
@@ -221,6 +224,41 @@ class DlsiteLogin(ApiModel):
     password: Annotated[SecretStr, Field(min_length=1, max_length=256)]
     confirm_switch: StrictBool = False
     remember: StrictBool = False
+
+
+SyncState = Literal[
+    "preparing",
+    "reading",
+    "saving",
+    "succeeded",
+    "partial",
+    "failed",
+    "cancelled",
+    "reauth_required",
+    "interrupted",
+]
+
+
+class SyncJob(ApiModel):
+    id: str
+    state: SyncState
+    total: int | None
+    processed: int
+    added: int
+    updated: int
+    skipped: int
+    missing: int
+    code: str | None = None
+    message: str | None = None
+    started_at: str
+    finished_at: str | None = None
+
+
+class SyncStatus(ApiModel):
+    """`lastSyncedAt` changes only after a complete sync, not after every attempt."""
+
+    last_synced_at: str | None = None
+    job: SyncJob | None = None
 
 
 FolderKind = Literal["library", "download_cache"]

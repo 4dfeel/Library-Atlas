@@ -396,7 +396,7 @@ export function App() {
                     {serviceDown
                       ? (serviceMessage ??
                         '本地服务没有响应。你的资料没有受到影响；请确认服务已启动。')
-                      : '本地服务已连接。作品同步和下载将在后续版本开放。'}
+                      : '本地服务已连接。下载和解压将在后续版本开放。'}
                   </p>
                   {serviceDown && (
                     <Button variant="ghost" size="sm" onClick={retryService}>
