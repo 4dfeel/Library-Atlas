@@ -83,6 +83,24 @@ def classify(state: PageState, *, was_submitted: bool) -> PageKind:
     return PageKind.VERIFICATION if was_submitted else PageKind.UNEXPECTED
 
 
+class VerificationGate:
+    """Decides when the user really has to act. Pages pass through states that look like
+    verification (the redirect after a submit, a challenge that solves itself), so the
+    window only appears if the page is still asking after `grace` seconds."""
+
+    def __init__(self, grace: float) -> None:
+        self._grace = grace
+        self._since: float | None = None
+
+    def observe(self, *, verifying: bool, now: float) -> bool:
+        if not verifying:
+            self._since = None
+            return False
+        if self._since is None:
+            self._since = now
+        return now - self._since >= self._grace
+
+
 def page_state(data: dict[str, object]) -> PageState:
     return PageState(
         url=str(data.get("url") or ""),

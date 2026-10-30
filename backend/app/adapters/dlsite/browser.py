@@ -18,6 +18,7 @@ from app.adapters.dlsite.login_page import (
     INSPECT_SCRIPT,
     LOGIN_URL,
     PageKind,
+    VerificationGate,
     classify,
     is_login_page,
     page_state,
@@ -26,6 +27,7 @@ from app.adapters.dlsite.login_page import (
 LOAD_TIMEOUT = 30.0
 SUBMIT_TIMEOUT = 30.0
 USER_TIMEOUT = 300.0
+VERIFICATION_GRACE = 6.0
 POLL = 0.4
 # Pages that hold the cookies Atlas needs later. Visited only after a successful login.
 COOKIE_PAGES = ("https://www.dlsite.com/home/", "https://play.dlsite.com/login/")
@@ -111,13 +113,20 @@ def _drive(window: Any, request: dict[str, Any], output: _Output, state: dict[st
     revealed = not credentials
     deadline = time.monotonic() + (LOAD_TIMEOUT if credentials else USER_TIMEOUT)
 
-    def need_user(reason: str) -> None:
-        nonlocal revealed, deadline
+    gate = VerificationGate(VERIFICATION_GRACE)
+    asked = False
+
+    def need_user() -> None:
+        # Once only: the user gets one full timeout, not one that restarts on every poll.
+        nonlocal revealed, deadline, asked
+        if asked:
+            return
+        asked = True
         if not revealed:
             revealed = True
             window.show()
         deadline = time.monotonic() + USER_TIMEOUT
-        output.event(event="state", state="needs_verification", reason=reason)
+        output.event(event="state", state="needs_verification")
 
     while not output.finished:
         if time.monotonic() > deadline:
@@ -128,6 +137,8 @@ def _drive(window: Any, request: dict[str, Any], output: _Output, state: dict[st
             time.sleep(POLL)
             continue
         kind = classify(page, was_submitted=submitted)
+        if gate.observe(verifying=kind is PageKind.VERIFICATION, now=time.monotonic()):
+            need_user()
         if kind is PageKind.OFF_PLATFORM:
             window.load_url(LOGIN_URL)
         elif kind is PageKind.LOGIN_FORM and credentials and not submitted:
@@ -148,8 +159,6 @@ def _drive(window: Any, request: dict[str, Any], output: _Output, state: dict[st
             # One attempt per click. The user decides whether to try again.
             output.event(event="result", outcome="bad_credentials")
             break
-        elif kind is PageKind.VERIFICATION:
-            need_user("verification")
         elif kind is PageKind.UNEXPECTED and credentials:
             output.event(event="result", outcome="form_changed")
             break

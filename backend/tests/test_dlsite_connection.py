@@ -13,7 +13,13 @@ from fastapi.testclient import TestClient
 from sqlalchemy import Engine
 
 from app.adapters.dlsite.login_host import LoginEvent, LoginProcess, LoginRequest
-from app.adapters.dlsite.login_page import PageKind, PageState, classify, is_login_page
+from app.adapters.dlsite.login_page import (
+    PageKind,
+    PageState,
+    VerificationGate,
+    classify,
+    is_login_page,
+)
 from app.adapters.dlsite.session import (
     SessionCheck,
     SessionCookie,
@@ -773,3 +779,24 @@ def test_alias_is_gone_after_logout(api: TestClient) -> None:
 )
 def test_mask_account(login_id: str, alias: str) -> None:
     assert mask_account(login_id) == alias
+
+
+# --- when the window may appear ---
+
+
+def test_passing_pages_never_reveal_the_window() -> None:
+    gate = VerificationGate(6.0)
+    # The redirect after a submit looks like verification for a moment.
+    assert gate.observe(verifying=True, now=10.0) is False
+    assert gate.observe(verifying=True, now=12.0) is False
+    assert gate.observe(verifying=False, now=13.0) is False
+    # It starts over: separate short passes do not add up.
+    assert gate.observe(verifying=True, now=14.0) is False
+    assert gate.observe(verifying=True, now=19.9) is False
+
+
+def test_a_page_that_keeps_asking_reveals_the_window() -> None:
+    gate = VerificationGate(6.0)
+    assert gate.observe(verifying=True, now=0.0) is False
+    assert gate.observe(verifying=True, now=6.0) is True
+    assert gate.observe(verifying=True, now=7.0) is True
