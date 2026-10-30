@@ -233,3 +233,7 @@ frontend/src/features/game-detail/work-gallery.tsx  介绍图
 - 迁移 `0010`：`works.intro_json`、`intro_fetched_at`。
 - 前端 `features/game-detail/official-intro.tsx` 只渲染校验过的块。
 - **未落地**：视频内嵌播放。
+
+## 16. Phase 2 检查点 7 实际落地（2026-10-31）
+- `services/local_copies.py`、`domain/local_files.py`（候选程序，只看文件名）、`adapters/system/launcher.py`（参数列表，不经过 shell）。
+- 迁移 `0011`：`local_copies`。C8–C11 都基于它。

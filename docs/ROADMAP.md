@@ -42,7 +42,7 @@
 | 4 | 真实下载队列 | 实现完成，待人工真实下载验证。见 [报告](PHASE2_CHECKPOINT4_REPORT.md) |
 | 5 | 解压与一键下载并解压 | 实现完成，待人工真实解压验证。见 [报告](PHASE2_CHECKPOINT5_REPORT.md) |
 | 6 | DLsite 官方商店介绍与富媒体详情（Steam 延期） | 实现完成，待真实覆盖核对。见 [报告](PHASE2_CHECKPOINT6_REPORT.md) |
-| 7 | 全链路验收 | 未开始 |
+| 7 | 本地作品手动关联与游戏启动 | 实现完成，真实启动待人工。见 [报告](PHASE2_CHECKPOINT7_REPORT.md) |
 
 Steam 接入未实现；真实下载和解压待用户验证。
 

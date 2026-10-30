@@ -360,6 +360,77 @@ class UpdateSettingsIn(ApiModel):
     auto_check: bool
 
 
+CopyOrigin = Literal["manual", "unpacked", "scanned"]
+CopyStatus = Literal["ok", "no_entry", "root_missing", "offline", "entry_missing"]
+
+
+class LocalCopyOut(ApiModel):
+    id: str
+    work_id: str
+    root: str
+    entry: str | None
+    working: str | None
+    arguments: list[str]
+    label: str | None
+    is_default: bool
+    origin: CopyOrigin
+    status: CopyStatus
+    message: str
+
+
+class LocalCopiesOut(ApiModel):
+    copies: list[LocalCopyOut]
+
+
+class LocalCopyIn(ApiModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, extra="forbid")
+
+    root: Annotated[str, StringConstraints(min_length=1, max_length=1024)]
+    entry: Annotated[str, StringConstraints(max_length=1024)] | None = None
+    working: Annotated[str, StringConstraints(max_length=1024)] | None = None
+    arguments: list[str] = []
+    label: Annotated[str, StringConstraints(max_length=120)] | None = None
+    make_default: bool = False
+
+
+class LocalCopyUpdate(ApiModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, extra="forbid")
+
+    root: Annotated[str, StringConstraints(max_length=1024)] | None = None
+    entry: Annotated[str, StringConstraints(max_length=1024)] | None = None
+    working: Annotated[str, StringConstraints(max_length=1024)] | None = None
+    arguments: list[str] | None = None
+    label: Annotated[str, StringConstraints(max_length=120)] | None = None
+
+
+class CopyPreviewIn(ApiModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, extra="forbid")
+
+    path: Annotated[str, StringConstraints(min_length=1, max_length=1024)]
+
+
+class CopyEntryOut(ApiModel):
+    path: str
+    likely_helper: bool
+
+
+class CopyPreviewOut(ApiModel):
+    root: str
+    entries: list[CopyEntryOut]
+    suggested: str | None
+
+
+class ChosenFolderOut(ApiModel):
+    path: str | None
+
+
+class LaunchOut(ApiModel):
+    """`submitted` means Windows was asked to start it. Nothing more is known."""
+
+    submitted: bool
+    repeated: bool = False
+
+
 IntroStatus = Literal["ok", "empty", "unavailable"]
 
 

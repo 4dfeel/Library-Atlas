@@ -558,7 +558,9 @@ def _measure(folder: Path) -> tuple[int, int]:
         try:
             with os.scandir(stack.pop()) as entries:
                 for entry in entries:
-                    if entry.is_dir(follow_symlinks=False):
+                    if entry.is_junction():
+                        files += 1  # Never entered; `verify_output` refuses it afterwards.
+                    elif entry.is_dir(follow_symlinks=False):
                         stack.append(entry.path)
                     else:
                         files += 1

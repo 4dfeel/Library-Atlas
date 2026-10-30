@@ -5,6 +5,7 @@ database per profile directory.
 """
 
 from sqlalchemy import (
+    JSON,
     CheckConstraint,
     Column,
     ForeignKey,
@@ -249,6 +250,27 @@ extract_tasks = Table(
     ),
     Index("ix_extract_tasks_work", "work_id", "created_at"),
     Index("ix_extract_tasks_state", "state", "created_at"),
+)
+
+local_copies = Table(
+    "local_copies",
+    metadata,
+    Column("id", String, primary_key=True),
+    Column("work_id", String, ForeignKey("works.id"), nullable=False),
+    Column("root_path", String, nullable=False),
+    Column("root_key", String, nullable=False),  # Windows folder names ignore case.
+    Column("entry_path", String, nullable=True),
+    Column("working_path", String, nullable=True),
+    Column("arguments", JSON, nullable=True),
+    Column("label", String, nullable=True),
+    Column("is_default", Integer, nullable=False, server_default=text("0")),
+    Column("origin", String, nullable=False),
+    Column("batch_id", String, nullable=True),  # The import that made it, so it can be undone.
+    Column("created_at", String, nullable=False),
+    Column("updated_at", String, nullable=False),
+    UniqueConstraint("work_id", "root_key", name="uq_local_copies_work_root"),
+    CheckConstraint("origin IN ('manual', 'unpacked', 'scanned')", name="ck_local_copies_origin"),
+    Index("ix_local_copies_work", "work_id", "is_default"),
 )
 
 library_entries = Table(

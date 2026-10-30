@@ -152,6 +152,8 @@ class ExtractionService:
         self._running: dict[str, _Control] = {}
         self._threads: dict[str, threading.Thread] = {}
         self._closing = False
+        # Told where a finished work now is.
+        self.on_result: Callable[[str, Path], None] | None = None
 
     # --- start and stop of the service ---
 
@@ -563,6 +565,15 @@ class ExtractionService:
             raise _Stop("failed", "disk_full" if full else "write_failed") from None
         self._commit(row, control, listing)
         self._remove_archives(row)
+        if self.on_result is not None:
+            with self._engine.connect() as connection:
+                final = connection.execute(
+                    select(extract_tasks.c.final_name).where(extract_tasks.c.id == row.id)
+                ).scalar()
+            try:
+                self.on_result(row.work_id, root / str(final))
+            except Exception as error:  # noqa: BLE001 - the work is unpacked either way.
+                logger.warning("could not record an unpacked work: %s", type(error).__name__)
 
     def _unpack(
         self,

@@ -12,6 +12,7 @@ from app.adapters.dlsite.session import PlaySessionChecker
 from app.adapters.dlsite.store_page import PublicStorePage
 from app.adapters.system.archives import find_seven_zip
 from app.adapters.system.folder_dialog import DialogFolderPicker, ExplorerFolderOpener
+from app.adapters.system.launcher import ProcessLauncher
 from app.core.config import Settings
 from app.core.credentials import NAMESPACE, CredentialStoreError, WindowsCredentialStore
 from app.services.dlsite_auth import DlsiteAuth
@@ -21,6 +22,7 @@ from app.services.extractions import ExtractionService
 from app.services.folders import FolderService
 from app.services.gallery import WorkGallery
 from app.services.introductions import WorkIntroductions
+from app.services.local_copies import LocalCopies
 from app.services.update_checks import UpdateChecker
 
 
@@ -92,6 +94,10 @@ def build_introductions(
         )
         return WorkIntroductions(engine, FakeStorePage(FakeControl(settings.data_dir)), cache)
     return WorkIntroductions(engine, PublicStorePage(), images)
+
+
+def build_local_copies(settings: Settings, engine: Engine, folders: FolderService) -> LocalCopies:
+    return LocalCopies(engine, settings, folders, ProcessLauncher())
 
 
 def build_update_checker(settings: Settings, engine: Engine, sync: DlsiteSync) -> UpdateChecker:

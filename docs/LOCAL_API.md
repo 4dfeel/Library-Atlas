@@ -200,3 +200,14 @@
 | `GET /works/{id}/introduction` | `{status,blocks,fetchedAt?,stale,problem?,message?}`。`status`：`ok` `empty` `unavailable`；`problem`：`gone` `unavailable` `changed`。`blocks` 是校验过的结构，不是 HTML |
 | `POST /works/{id}/introduction/refresh` | 手动重读，60 秒内不重复请求 |
 | `GET /works/{id}/intro-image/{index}` | 介绍里的图片，按序号，不接受地址 |
+
+### 本地副本
+| 接口 | 说明 |
+| --- | --- |
+| `GET`、`POST /works/{id}/local-copies` | 列出、关联。`{root,entry?,working?,arguments?,label?,makeDefault?}` |
+| `POST /works/{id}/local-copies/preview` | `{path}`，返回候选程序，只看文件名 |
+| `POST /local-copies/choose-folder` | 打开文件夹选择窗口 |
+| `PATCH`、`DELETE /local-copies/{id}` | 修改（含重新定位）；移除只删记录 |
+| `POST /local-copies/{id}/default` `open` `launch` | `launch` 返回 `{submitted,repeated}`，只表示已交给 Windows |
+
+`status`：`ok` `no_entry` `root_missing` `offline` `entry_missing`。

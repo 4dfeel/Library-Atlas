@@ -21,6 +21,8 @@ import {
   type LibrarySummary,
   type SyncJob,
   type DownloadAction,
+  type LocalCopy,
+  type LocalCopyInput,
   type DownloadList,
   type DownloadState,
   type DownloadTask,
@@ -659,5 +661,41 @@ export function useWorkIntroduction(workId: string) {
         .catch(() => undefined)
         .finally(() => setRefreshing(false));
     },
+  };
+}
+
+export function useLocalCopies(workId: string) {
+  const isReal = useWorkspaceMode() === 'real';
+  const query = useQuery({
+    queryKey: [...realRoot, 'local-copies', workId],
+    queryFn: ({ signal }) => realSource.localCopies(workId, signal),
+    enabled: isReal,
+    retry: false,
+    // A drive coming back, or a folder moved outside Atlas, shows up without a reload.
+    refetchInterval: 30_000,
+  });
+  return { copies: query.data ?? emptyCopies, loading: isReal && query.isPending };
+}
+
+const emptyCopies: LocalCopy[] = [];
+
+export function useLocalCopyActions(workId: string) {
+  const queryClient = useQueryClient();
+  const refresh = () =>
+    queryClient.invalidateQueries({ queryKey: [...realRoot, 'local-copies', workId] });
+  const then = async <T>(work: Promise<T>) => {
+    const result = await work;
+    await refresh();
+    return result;
+  };
+  return {
+    preview: (path: string) => realSource.previewLocalCopy(workId, path),
+    chooseFolder: async () => (await realSource.chooseCopyFolder()).path,
+    add: (body: LocalCopyInput) => then(realSource.addLocalCopy(workId, body)),
+    update: (id: string, body: LocalCopyInput) => then(realSource.updateLocalCopy(id, body)),
+    remove: (id: string) => then(realSource.removeLocalCopy(id)),
+    setDefault: (id: string) => then(realSource.localCopyAction(id, 'default')),
+    open: (id: string) => realSource.localCopyAction(id, 'open'),
+    launch: (id: string) => realSource.launchLocalCopy(id),
   };
 }

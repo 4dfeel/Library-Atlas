@@ -13,6 +13,7 @@ import {
 } from '@/lib/data';
 import { AppLink } from '@/components/app-link';
 import { DownloadAction } from './download-action';
+import { LocalCopyPanel } from './local-copy';
 import {
   availabilityLabel,
   formatDate,
@@ -199,8 +200,8 @@ export function GameHero({
                   官方商店
                 </a>
               )}
-              {/* For a real work the download row below is where its folder opens. */}
-              {(isDemo || openActionLabels[game.kind] !== '打开文件夹') && (
+              {/* A real work's own actions are in the rows below. */}
+              {isDemo && (
                 <>
                   <Button variant="ghost" disabled aria-describedby="launch-unavailable">
                     <Play size={16} />
@@ -215,6 +216,7 @@ export function GameHero({
               )}
             </div>
             <DownloadAction game={game} size={size} />
+            {!isDemo && <LocalCopyPanel game={game} />}
             <dl className="hero-facts">
               {tracksPlay ? (
                 <>

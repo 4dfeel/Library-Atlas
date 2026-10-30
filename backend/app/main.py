@@ -34,6 +34,7 @@ from app.services.dlsite_factory import (
     build_folder_service,
     build_gallery,
     build_introductions,
+    build_local_copies,
     build_update_checker,
 )
 from app.services.dlsite_sync import DlsiteSync
@@ -42,6 +43,7 @@ from app.services.extractions import ExtractionService
 from app.services.folders import FolderService
 from app.services.gallery import WorkGallery
 from app.services.introductions import WorkIntroductions
+from app.services.local_copies import LocalCopies
 from app.services.update_checks import UpdateChecker
 
 logger = logging.getLogger("atlas")
@@ -72,6 +74,7 @@ class ServiceState:
     extractions: ExtractionService | None = None
     gallery: WorkGallery | None = None
     introductions: WorkIntroductions | None = None
+    local_copies: LocalCopies | None = None
     updates: UpdateChecker | None = None
 
 
@@ -170,6 +173,15 @@ def _introductions(request: Request, _engine: EngineDep) -> WorkIntroductions:
 
 
 IntroductionsDep = Annotated[WorkIntroductions, Depends(_introductions)]
+
+
+def _local_copies(request: Request, _engine: EngineDep) -> LocalCopies:
+    service = _state(request).local_copies
+    assert service is not None  # Built whenever the engine is.
+    return service
+
+
+CopiesDep = Annotated[LocalCopies, Depends(_local_copies)]
 
 
 def _updates(request: Request, _engine: EngineDep) -> UpdateChecker:
@@ -380,6 +392,48 @@ def _build_api() -> APIRouter:
             path, media_type=content_type, headers={"Cache-Control": "private, max-age=604800"}
         )
 
+    @api.get("/works/{work_id}/local-copies")
+    def list_copies(service: CopiesDep, work_id: str) -> models.LocalCopiesOut:
+        return service.copies(work_id)
+
+    @api.post("/works/{work_id}/local-copies")
+    def add_copy(
+        service: CopiesDep, work_id: str, body: models.LocalCopyIn
+    ) -> models.LocalCopiesOut:
+        return service.add(work_id, body)
+
+    @api.post("/works/{work_id}/local-copies/preview")
+    def preview_copy(
+        service: CopiesDep, work_id: str, body: models.CopyPreviewIn
+    ) -> models.CopyPreviewOut:
+        return service.preview(body.path)
+
+    @api.post("/local-copies/choose-folder")
+    def choose_copy_folder(service: CopiesDep) -> models.ChosenFolderOut:
+        return service.choose_folder()
+
+    @api.patch("/local-copies/{copy_id}")
+    def update_copy(
+        service: CopiesDep, copy_id: str, body: models.LocalCopyUpdate
+    ) -> models.LocalCopyOut:
+        return service.update_copy(copy_id, body)
+
+    @api.delete("/local-copies/{copy_id}")
+    def remove_copy(service: CopiesDep, copy_id: str) -> models.LocalCopiesOut:
+        return service.remove(copy_id)
+
+    @api.post("/local-copies/{copy_id}/default")
+    def default_copy(service: CopiesDep, copy_id: str) -> models.LocalCopiesOut:
+        return service.set_default(copy_id)
+
+    @api.post("/local-copies/{copy_id}/open")
+    def open_copy(service: CopiesDep, copy_id: str) -> models.LocalCopyOut:
+        return service.open_folder(copy_id)
+
+    @api.post("/local-copies/{copy_id}/launch")
+    def launch_copy(service: CopiesDep, copy_id: str) -> models.LaunchOut:
+        return service.launch(copy_id)
+
     @api.get("/settings/updates")
     def update_settings(checker: UpdatesDep) -> models.UpdateSettings:
         return checker.status()
@@ -482,6 +536,8 @@ def create_app(
                 state.folders = build_folder_service(settings, opened.engine)
                 state.extractions = build_extraction_service(opened.engine, state.folders)
                 state.extractions.recover()
+                state.local_copies = build_local_copies(settings, opened.engine, state.folders)
+                state.extractions.on_result = state.local_copies.record_unpacked
                 state.dlsite = dlsite_factory(settings, opened.engine)
                 state.covers = CoverCache(settings.data_dir / "cache" / "covers")
                 state.gallery = build_gallery(settings, opened.engine, state.covers)

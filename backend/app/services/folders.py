@@ -33,6 +33,15 @@ def _protected_roots() -> list[Path]:
     return [Path(root) for root in roots if root]
 
 
+def is_protected(path: Path) -> bool:
+    """A system folder, or the whole drive, or anything inside the system's own."""
+    if path == Path(path.anchor):
+        return True
+    return any(
+        path == root.resolve() or path.is_relative_to(root.resolve()) for root in _protected_roots()
+    )
+
+
 class FolderService:
     def __init__(
         self, engine: Engine, settings: Settings, picker: FolderPicker, opener: FolderOpener
@@ -102,6 +111,19 @@ class FolderService:
                 "write_failed", "无法写入作品文件夹，请检查权限。", status=409
             ) from None
         return library, archives
+
+    def choose(self) -> Path | None:
+        """The chooser alone, for callers that keep the answer themselves."""
+        if not self._picking.acquire(blocking=False):
+            raise AtlasError("picker_open", "文件夹选择窗口已经打开了。", status=409)
+        try:
+            return self._picker.pick(None)
+        except OSError:
+            raise AtlasError(
+                "picker_failed", "无法打开文件夹选择窗口，可以直接输入路径。", status=500
+            ) from None
+        finally:
+            self._picking.release()
 
     def open_path(self, path: Path) -> None:
         """For a folder a finished task wrote to; callers never pass request data."""

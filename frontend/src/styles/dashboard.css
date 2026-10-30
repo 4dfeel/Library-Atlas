@@ -1781,3 +1781,82 @@
     animation: none;
   }
 }
+
+.local-copy {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  margin-top: 10px;
+}
+
+.local-copy-list {
+  display: flex;
+  flex-basis: 100%;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.local-copy-list li {
+  display: inline-flex;
+  align-items: center;
+  max-width: 320px;
+}
+
+.local-copy-list li > button:first-child {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 2px 6px;
+  border: 0;
+  background: none;
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.local-copy-list li > button:first-child[aria-pressed='true'] {
+  color: var(--warning);
+}
+
+.local-copy-list span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.copy-form {
+  display: grid;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.copy-form select,
+.copy-form textarea {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--sidebar);
+  color: var(--text-primary);
+  font: inherit;
+}
+
+.copy-advanced {
+  display: grid;
+  gap: 8px;
+  color: var(--text-muted);
+}
+
+.copy-advanced summary {
+  cursor: pointer;
+}
+
+.copy-advanced label {
+  display: block;
+  margin-top: 8px;
+}

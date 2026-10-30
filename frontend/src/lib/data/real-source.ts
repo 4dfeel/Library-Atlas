@@ -185,6 +185,34 @@ export interface UpdateSettings {
   lastCheckedAt: string | null;
 }
 
+export interface LocalCopy {
+  id: string;
+  workId: string;
+  root: string;
+  entry: string | null;
+  working: string | null;
+  arguments: string[];
+  label: string | null;
+  isDefault: boolean;
+  origin: 'manual' | 'unpacked' | 'scanned';
+  status: 'ok' | 'no_entry' | 'root_missing' | 'offline' | 'entry_missing';
+  message: string;
+}
+
+export interface LocalCopyInput {
+  root: string;
+  entry: string | null;
+  working: string | null;
+  arguments: string[];
+  label: string | null;
+}
+
+export interface CopyPreview {
+  root: string;
+  entries: { path: string; likelyHelper: boolean }[];
+  suggested: string | null;
+}
+
 export type IntroBlock =
   | { type: 'heading'; text: string }
   | { type: 'paragraph'; spans: { text: string; href?: string }[] }
@@ -397,6 +425,43 @@ export class RealLibrarySource implements LibrarySource {
 
   gallery(workId: string, signal?: AbortSignal): Promise<WorkGalleryData> {
     return apiGet<WorkGalleryData>(`${workPath(workId)}/gallery`, undefined, signal);
+  }
+
+  async localCopies(workId: string, signal?: AbortSignal): Promise<LocalCopy[]> {
+    return (
+      await apiGet<{ copies: LocalCopy[] }>(`${workPath(workId)}/local-copies`, undefined, signal)
+    ).copies;
+  }
+
+  addLocalCopy(workId: string, body: LocalCopyInput) {
+    return apiWrite<{ copies: LocalCopy[] }>('POST', `${workPath(workId)}/local-copies`, body);
+  }
+
+  previewLocalCopy(workId: string, path: string) {
+    return apiWrite<CopyPreview>('POST', `${workPath(workId)}/local-copies/preview`, { path });
+  }
+
+  chooseCopyFolder() {
+    return apiWrite<{ path: string | null }>('POST', '/api/v1/local-copies/choose-folder');
+  }
+
+  updateLocalCopy(id: string, body: LocalCopyInput) {
+    return apiWrite<LocalCopy>('PATCH', `/api/v1/local-copies/${encodeURIComponent(id)}`, body);
+  }
+
+  removeLocalCopy(id: string) {
+    return apiWrite('DELETE', `/api/v1/local-copies/${encodeURIComponent(id)}`);
+  }
+
+  localCopyAction(id: string, action: 'default' | 'open') {
+    return apiWrite('POST', `/api/v1/local-copies/${encodeURIComponent(id)}/${action}`);
+  }
+
+  launchLocalCopy(id: string) {
+    return apiWrite<{ submitted: boolean; repeated: boolean }>(
+      'POST',
+      `/api/v1/local-copies/${encodeURIComponent(id)}/launch`,
+    );
   }
 
   introduction(workId: string, signal?: AbortSignal): Promise<WorkIntroduction> {
