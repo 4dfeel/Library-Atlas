@@ -1,3 +1,5 @@
+import type { DashboardRequest, DashboardResult } from './dashboard';
+
 export type DemoSize = 1500 | 5000;
 export type DemoScenario = 'normal' | 'empty' | 'loading' | 'error';
 export type GameStatus = 'unplayed' | 'playing' | 'completed' | 'paused';
@@ -30,9 +32,10 @@ export interface Game {
   status: GameStatus;
   /**
    * Locally available: an installed Steam game, or downloaded DLsite files. Labels
-   * differ per platform; downloaded never implies installed or launchable.
+   * differ per platform; downloaded never implies installed or launchable. `null`
+   * means not known, which is never shown as absent.
    */
-  installed: boolean;
+  installed: boolean | null;
   /** Game play time only; `null` when the source does not report it. */
   playtimeMinutes: number | null;
   favorite: boolean;
@@ -48,13 +51,29 @@ export interface Game {
   file: { version: string; sizeBytes: number | null } | null;
 }
 
+/** `null` means not known yet; the demo dataset always knows. */
 export interface WorkCapabilities {
   /** Purchased files can be fetched directly (DLsite only, demo). */
-  download: boolean;
+  download: boolean | null;
   /** Downloaded files are archives that need extracting. */
-  extract: boolean;
+  extract: boolean | null;
   /** Only viewable in the platform's own reader; Atlas never bypasses this. */
-  officialViewerOnly: boolean;
+  officialViewerOnly: boolean | null;
+}
+
+/** One file or part of a work. One work may have many; each part is not a work. */
+export interface WorkFileInfo {
+  id: string;
+  label: string | null;
+  version: string | null;
+  language: string | null;
+  partIndex: number | null;
+  partCount: number | null;
+  sizeBytes: number | null;
+  format: string | null;
+  availability: 'unknown' | 'downloadable' | 'viewer_only';
+  downloadState: 'unknown' | 'not_downloaded' | 'downloaded';
+  extractState: 'unknown' | 'not_applicable' | 'not_extracted' | 'extracted';
 }
 
 export interface LibraryFilters {
@@ -78,7 +97,6 @@ export interface LibraryResult {
   favoriteCount: number;
   /** Visible works per kind, before kind and other filters. */
   kindCounts: Record<WorkKind, number>;
-  mode: 'demo';
 }
 
 export interface LibraryRequest {
@@ -105,6 +123,10 @@ export interface GameDetail extends Game {
   achievements: GameAchievements | null;
   rating: number | null;
   note: string;
+  /** Real mode: increases with every saved edit. */
+  version?: number;
+  /** Real mode: every known file or part. */
+  files?: WorkFileInfo[];
 }
 
 /** Only these personal fields are writable; visibility and observations are not. */
@@ -113,6 +135,8 @@ export interface GameUpdate {
   rating?: number | null;
   note?: string;
   favorite?: boolean;
+  /** Real mode: refuse the save if the record changed since this version was read. */
+  expectedVersion?: number;
 }
 
 export interface GameRequest {
@@ -136,10 +160,10 @@ export class GameUpdateError extends Error {
   }
 }
 
-/** Replace this boundary with the API source when backend work is authorized. */
+/** What pages use, whichever library is showing. Lists differ: see useLibraryCollection. */
 export interface LibrarySource {
   readonly mode: 'demo' | 'real';
-  list(request: LibraryRequest): Promise<LibraryResult>;
+  dashboard(request: DashboardRequest): Promise<DashboardResult>;
   getGame(request: GameRequest): Promise<GameDetail>;
   updateGame(id: string, update: GameUpdate): Promise<GameDetail>;
   toggleFavorite(id: string): Promise<void>;

@@ -1,8 +1,16 @@
 # Library Atlas
 
-面向 Windows 11 的本地多平台作品库（Steam + DLsite，以游戏为核心）。当前交付为 **Phase 1 前端独立 Demo**：检查点 1（AppShell + 作品库）、检查点 2（作品详情，含多平台作品库重构）、检查点 3（首页 Dashboard、演示来源连接与下载解压）与检查点 4（全页面验收）。工程检查已完成，Phase 1 等待用户人工验收，见 [Phase 1 验收报告](docs/PHASE1_ACCEPTANCE_REPORT.md)。所有作品、封面和游玩记录均为合成资料（Steam 游戏与 DLsite 风格的游戏/图像/视频/音声/其他作品，全部原创、全年龄），不连接 Steam 或 DLsite。
+面向 Windows 11 的本地多平台作品库（Steam + DLsite，以游戏为核心）。当前包含 **Phase 1 前端 Demo**（已获用户确认，见 [验收报告](docs/PHASE1_ACCEPTANCE_REPORT.md)）和 **Phase 2 检查点 1 的本地服务与真实资料库基础**（见 [报告](docs/PHASE2_CHECKPOINT1_REPORT.md)）。Demo 的作品、封面和游玩记录均为合成资料（全部原创、全年龄）；真实资料库初始为空。目前不连接 Steam 或 DLsite。
 
-## 在 Windows 启动
+## 正式运行（本地服务 + 真实资料库）
+```bat
+scripts\setup-backend.cmd
+cd frontend && npm.cmd ci && npm.cmd run build && cd ..
+scripts\serve.cmd
+```
+打开 [http://127.0.0.1:8765/](http://127.0.0.1:8765/)，点右上角模式标识可在“演示空间”和“我的资料库”之间切换。真实资料库初始为空：Steam 与 DLsite 的登录、同步、下载解压尚未开放。详见 [运行说明](docs/LOCAL_DEVELOPMENT.md) 与 [本地 API](docs/LOCAL_API.md)。
+
+## 只看前端（Demo，无需服务）
 
 使用 **Node 22.22.1 + npm 10.9.4**（见 `.node-version` 和 `frontend/package.json`），打开 PowerShell：
 
@@ -25,7 +33,7 @@ npm.cmd run build
 npm.cmd run preview
 ```
 
-预览地址 [http://127.0.0.1:4173/library](http://127.0.0.1:4173/library)。本检查点使用 Vite 供前端评审；正式产品仍按 ARCHITECTURE 使用 FastAPI 托管构建，但后端尚未授权开发。端口已占用时命令直接报错，请先关闭原来占用该端口的服务。
+预览地址 [http://127.0.0.1:4173/library](http://127.0.0.1:4173/library)。这里用 Vite 评审前端；正式运行由 FastAPI 托管构建（见上）。端口已占用时命令直接报错，请先关闭原来占用该端口的服务。
 
 ## Demo 使用
 
@@ -36,7 +44,7 @@ npm.cmd run preview
 - 点击游戏名称或卡片进入详情 `/library/<ID>`，例如 [星穹观测站](http://127.0.0.1:4173/library/demo-00001)。状态、1–5 星评分、备注与收藏是**演示修改**，保存在本浏览器 localStorage（键 `library-atlas.demo-edits.v1.atlas-demo-41544c41`），刷新后保留；“演示设置 → 重置演示修改…”确认后清除。不写入任何真实资料。
 - 详情边界样本：`demo-00010` 无背景、`demo-00036` 无封面、`demo-00025` 双缺图、`demo-00008` 未开始、`demo-00002` 无成就、`demo-00003` 无评分与备注、`demo-00029` 超长中日英标题；`demo-00098`（私人）与 `demo-99999`（不存在）显示同一不可用页面。`?state=loading|error|save-error` 复现加载、读取失败与保存失败。
 - `?state=empty` / `?state=error` / `?state=loading` 用于检查反馈；`?q=跨越星海` 检查超长标题，`?q=晨雾回廊` 检查缺封面。
-- `frontend/.env.example` 给出构建配置；`VITE_DEMO_MODE=false` 关闭 Demo。需重启 dev 或重新构建；此时显示未接入说明，不会转为真实数据。
+- `frontend/.env.example` 给出构建配置；`VITE_DEMO_MODE=false` 构建时移除演示空间，只保留真实资料库。
 - 收藏夹管理、游玩计划、发现、私人空间、启动/打开作品、真实登录、库同步与真实下载解压尚未开放；未实现操作明确标注，不会假装已经成功。
 
 ## 验证与截图
@@ -68,4 +76,4 @@ npm.cmd run test:e2e
 - `frontend/public/demo/covers/`：24 张原创叙事矢量插画；`node scripts/generate-demo-covers.mjs` 从仓库根目录可确定性重建，同时生成 `public/demo/backdrops/` 24 幅 2:1 详情背景。其余程序化 SVG 只在可见卡片生成，缺图使用独立占位。
 - 字体通过锁定的 `@fontsource-variable/noto-sans-sc` 包打入构建，使用 unicode-range 按需加载本地 WOFF2，无 Google Fonts/CDN 请求。系统 Segoe UI 优先；中文可回退 Noto Sans SC。字体许可证随发布物提供于 `licenses/noto-sans-sc-OFL.txt`。
 
-需求和范围以 [当前执行规范](docs/specs/PHASE1.md)、[设计规范](docs/DESIGN.md) 和 [路线图](docs/ROADMAP.md) 为准。Phase 1 完成后等待用户人工验收；未经另行授权不进入 Phase 2（后端、真实登录、同步与下载）。
+需求和范围以 [当前执行规范](docs/specs/PHASE1.md)、[设计规范](docs/DESIGN.md) 和 [路线图](docs/ROADMAP.md) 为准。Phase 2 按检查点逐点授权：本地服务与真实模式基础已完成；真实登录、同步、下载解压尚未开始。

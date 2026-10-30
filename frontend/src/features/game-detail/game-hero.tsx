@@ -6,6 +6,7 @@ import {
   getBackdropSource,
   getCoverSource,
   useUpdateGame,
+  useWorkspace,
   type DemoSize,
   type Game,
   type GameDetail,
@@ -105,7 +106,9 @@ export function GameHero({
   backLabel: string;
   headingRef: Ref<HTMLHeadingElement>;
 }) {
+  const { isDemo, isTestLibrary } = useWorkspace();
   const favorite = useUpdateGame(size, game.id);
+  const savedNote = isDemo ? ' · 演示修改保存在本机' : '';
   const isFavorite = favorite.isPending
     ? (favorite.variables.favorite ?? game.favorite)
     : game.favorite;
@@ -135,7 +138,8 @@ export function GameHero({
           </div>
           <div className="hero-copy">
             <div className="hero-eyebrow">
-              <span className="demo-chip">DEMO · 合成资料</span>
+              {isDemo && <span className="demo-chip">DEMO · 合成资料</span>}
+              {isTestLibrary && <span className="demo-chip">测试数据 · 合成样本</span>}
               <span className="platform-chip" data-platform={game.platform}>
                 {platformLabels[game.platform]}
               </span>
@@ -174,11 +178,7 @@ export function GameHero({
                     { favorite: !isFavorite },
                     {
                       onSuccess: () =>
-                        notify(
-                          isFavorite
-                            ? '已取消收藏 · 演示修改保存在本机'
-                            : '已加入收藏 · 演示修改保存在本机',
-                        ),
+                        notify(`${isFavorite ? '已取消收藏' : '已加入收藏'}${savedNote}`),
                       onError: () => notify('未能更新收藏，请重试', 'error'),
                     },
                   )
@@ -192,7 +192,9 @@ export function GameHero({
                 {openActionLabels[game.kind]}
               </Button>
               <span id="launch-unavailable" className="unavailable-note">
-                暂不可用 · 演示模式未接入 {platformLabels[game.platform]}
+                {isDemo
+                  ? `暂不可用 · 演示模式未接入 ${platformLabels[game.platform]}`
+                  : '暂不可用 · 打开本地作品将在后续版本开放'}
               </span>
             </div>
             <DownloadAction game={game} size={size} />
@@ -218,7 +220,7 @@ export function GameHero({
                       <span className="fact-empty">暂无记录</span>
                     )}
                   </Fact>
-                  <Fact label="成就进度 · 演示">
+                  <Fact label={isDemo ? '成就进度 · 演示' : '成就进度'}>
                     {achievements ? (
                       <>
                         <strong>{achievements.unlocked}</strong>

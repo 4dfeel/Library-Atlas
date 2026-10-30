@@ -78,6 +78,5 @@ export function selectLibrary(games: readonly Game[], filters: LibraryFilters): 
     kindCounts: Object.fromEntries(
       workKinds.map((kind) => [kind, visible.filter((game) => game.kind === kind).length]),
     ) as Record<WorkKind, number>,
-    mode: 'demo',
   };
 }

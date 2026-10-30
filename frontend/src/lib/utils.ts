@@ -44,6 +44,7 @@ export const platformLabels: Record<Platform, string> = { steam: 'Steam', dlsite
  * download never makes a DLsite game "installed" or launchable.
  */
 export function availabilityLabel(game: Pick<Game, 'platform' | 'installed'>): string {
+  if (game.installed === null) return '本机状态未知';
   if (game.platform === 'steam') return game.installed ? '已安装' : '未安装';
   return game.installed ? '已下载' : '未下载';
 }

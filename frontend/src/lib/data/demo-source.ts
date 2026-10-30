@@ -1,5 +1,5 @@
 import { createDefaultEditStore, isValidRating, type DemoEditStore } from './demo-edits';
-import { selectDashboard, type DashboardResult, type DashboardScope } from './dashboard';
+import { selectDashboard, type DashboardRequest, type DashboardResult } from './dashboard';
 import { describeDemoGame } from './details';
 import { generateDemoGames } from './generator';
 import { isOrdinaryGame, selectLibrary } from './selectors';
@@ -137,12 +137,7 @@ export class DemoLibrarySource implements LibrarySource {
     batch = 0,
     scenario = 'normal',
     signal,
-  }: {
-    scope: DashboardScope;
-    batch?: number;
-    scenario?: DemoScenario;
-    signal?: AbortSignal;
-  }): Promise<DashboardResult> {
+  }: DashboardRequest): Promise<DashboardResult> {
     await previewScenario(scenario === 'empty' ? 'normal' : scenario, signal);
     const ordinary = this.games.filter(isOrdinaryGame).map((game) => this.withEdits(game));
     return selectDashboard(scenario === 'empty' ? [] : ordinary, scope, batch);

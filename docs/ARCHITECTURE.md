@@ -1,6 +1,6 @@
 # Library Atlas 技术架构草案
 
-状态：Phase 0 已审核；2026-10-30。目录、模型、接口均为拟议契约，不代表已有代码或 Steam 能力。
+状态：Phase 0 已审核；2026-10-30。§1–§7 是总体设计；**实际落地情况见 §10**，真实平台接入尚未实现。
 
 ## 1. 运行结构与决策
 采用本地单体、分层模块架构。React 处理呈现与交互；FastAPI 统一执行可见性、业务规则、同步和文件访问；SQLite 保存结构化资料。1500 条规模不需要微服务、Redis 或远程数据库。
@@ -138,3 +138,29 @@ scripts/                 # Windows 启动、构建和检查
 - `demo-connections`、`demo-tasks` 为页面级单例外部 store（`useSyncExternalStore`）：一个任务服务、一个计时器，任务按作品去重，取消后不再完成，刷新丢弃未完成任务；完成结果写入演示编辑存储的 `downloaded`（v1 增量字段，不清空既有修改）。连接状态只保存粗粒度状态到 localStorage，不含任何凭据。
 - 以上均为前端演示边界，不代表后端设计已落地。真实认证、会话存储、库同步、下载器与文件系统操作仍属 Phase 2 及以后，按 §9 的约束在后端实现。
 - 检查点 4 补充：`VITE_DEMO_MODE=false` 时来源连接与下载任务弹层不渲染任何演示状态（只说明“尚未接入”），首页聚合查询也不执行；首页范围切换期间的占位数据以 `data-ready=false` / `aria-busy` 标示，测试与性能计时以真实结果到位为准。
+
+## 10. Phase 2 检查点 1 实际落地（2026-10-30）
+契约见 [LOCAL_API.md](LOCAL_API.md)，运行见 [LOCAL_DEVELOPMENT.md](LOCAL_DEVELOPMENT.md)，与设计的差异见 [接入方案 §10](PHASE2_INTEGRATION_PLAN.md)。
+
+```text
+backend/app/
+  main.py            应用工厂：API + 静态托管 + 统一错误 + 不含敏感信息的请求日志
+  __main__.py        python -m app serve|check|init|seed-test
+  api/models.py      Pydantic 请求/响应契约
+  services/library.py  用例：行 → 契约对象；一次请求一个事务
+  domain/            首页聚合、文本规范化（纯函数）
+  repositories/works.py  全部 SQL；ORDINARY 可见性条件唯一定义处
+  db/                schema、engine、bootstrap（校验/备份/迁移/印记）、Alembic 迁移
+  core/              config、errors、security（请求边界）、credentials（凭据边界）
+  testing/synthetic.py  合成样本，只由 seed-test 命令调用
+frontend/src/lib/data/
+  workspace.ts       模式选择
+  api-client.ts      唯一的 HTTP 出口：错误分类、CSRF
+  real-source.ts     真实数据源（实现 LibrarySource）
+  hooks.ts           页面唯一入口；按模式分流，缓存键按模式隔离
+```
+
+- **已落地**：单一回环 FastAPI 服务托管 `frontend/dist`；SQLite（WAL、外键、CHECK、busy_timeout、显式事务）；SQLAlchemy Core + Alembic；迁移前在线备份；数据库 real/test 印记；服务端可见性；Host/Origin/CSRF 边界；Windows 凭据存储接口。
+- **表**：`library_meta`、`sources`、`source_accounts`（空）、`works`、`work_files`、`library_entries`、`personal_records`。来源数据与个人记录分表，同步代码写不到个人记录。
+- **未落地**：真实认证、同步、下载、解压、任务系统、私人空间、图片资产路由（封面现在只有合成样本的本地绘制与缺图占位）、Steam 适配器、观测表、收藏夹与分类规则。
+- **Demo**：仍是纯前端，不需要服务。其可见性过滤只作用于合成数据，真实模式的可见性只在服务端。

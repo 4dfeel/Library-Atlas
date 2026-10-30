@@ -14,6 +14,7 @@ describe('demo services when demo mode is off', () => {
     renderWithQuery(<SourcesDialog open onOpenChange={vi.fn()} size={1500} demoEnabled={false} />);
     const dialog = screen.getByRole('dialog', { name: '来源连接' });
     expect(dialog).toHaveTextContent('真实来源连接尚未接入');
+    expect(dialog).toHaveTextContent('未连接');
     expect(dialog).not.toHaveTextContent('已连接');
     expect(dialog).not.toHaveTextContent('演示');
     expect(screen.queryByRole('button', { name: /连接|断开/ })).toBeNull();

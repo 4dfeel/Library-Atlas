@@ -5,6 +5,7 @@ import {
   noteMaxLength,
   ratingScale,
   useUpdateGame,
+  useWorkspace,
   type DemoSize,
   type GameDetail,
   type GameStatus,
@@ -21,11 +22,13 @@ function SaveState({
   error,
   saved,
   idle,
+  savedText = '已保存',
 }: {
   pending: boolean;
   error: Error | null;
   saved: boolean;
   idle?: string;
+  savedText?: string;
 }) {
   return (
     <p className="save-state" aria-live="polite">
@@ -42,7 +45,7 @@ function SaveState({
       ) : saved ? (
         <span className="save-success">
           <Check size={13} />
-          已保存到本机演示存储
+          {savedText}
         </span>
       ) : (
         idle && <span>{idle}</span>
@@ -52,6 +55,7 @@ function SaveState({
 }
 
 function StatusField({ game, size, notify }: { game: GameDetail; size: DemoSize; notify: Notify }) {
+  const { isDemo } = useWorkspace();
   const mutation = useUpdateGame(size, game.id);
   const name = useId();
   // Show the requested value while saving; revert to the stored value on failure.
@@ -86,12 +90,14 @@ function StatusField({ game, size, notify }: { game: GameDetail; size: DemoSize;
         error={mutation.error}
         saved={mutation.isSuccess}
         idle="修改后会同步到作品库的状态显示与筛选。"
+        savedText={isDemo ? '已保存到本机演示存储' : '已保存'}
       />
     </fieldset>
   );
 }
 
 function RatingField({ game, size, notify }: { game: GameDetail; size: DemoSize; notify: Notify }) {
+  const { isDemo } = useWorkspace();
   const mutation = useUpdateGame(size, game.id);
   const name = useId();
   const shown =
@@ -110,7 +116,7 @@ function RatingField({ game, size, notify }: { game: GameDetail; size: DemoSize;
   return (
     <fieldset className="record-field">
       <legend>
-        个人评分<span className="field-rule">1–5 星 · 整数 · 演示</span>
+        个人评分<span className="field-rule">1–5 星 · 整数{isDemo ? ' · 演示' : ''}</span>
       </legend>
       <div className="rating-row">
         <div className="rating-stars" data-rating={shown ?? 0}>
@@ -145,12 +151,19 @@ function RatingField({ game, size, notify }: { game: GameDetail; size: DemoSize;
           </Button>
         )}
       </div>
-      <SaveState pending={mutation.isPending} error={mutation.error} saved={mutation.isSuccess} />
+      <SaveState
+        pending={mutation.isPending}
+        error={mutation.error}
+        saved={mutation.isSuccess}
+        savedText={isDemo ? '已保存到本机演示存储' : '已保存'}
+      />
     </fieldset>
   );
 }
 
 function NoteField({ game, size, notify }: { game: GameDetail; size: DemoSize; notify: Notify }) {
+  const { isDemo } = useWorkspace();
+  const savedText = isDemo ? '已保存到本机演示存储' : '已保存';
   const mutation = useUpdateGame(size, game.id);
   const saved = game.note;
   const [editing, setEditing] = useState(() => noteDrafts.get(game.id) !== undefined);
@@ -191,14 +204,15 @@ function NoteField({ game, size, notify }: { game: GameDetail; size: DemoSize; n
   const save = () => {
     if (tooLong || mutation.isPending) return;
     mutation.mutate(
-      { note: draft },
+      // Long-lived drafts must not silently overwrite a newer note from another tab.
+      { note: draft, expectedVersion: game.version },
       {
         onSuccess: () => {
           noteDrafts.delete(game.id);
           restoreFocus.current = true;
           setEditing(false);
           setJustSaved(true);
-          notify('备注已保存到本机演示存储');
+          notify(`备注${savedText}`);
         },
         onError: () => notify('备注未保存，内容仍保留在编辑框中', 'error'),
       },
@@ -218,7 +232,7 @@ function NoteField({ game, size, notify }: { game: GameDetail; size: DemoSize; n
     <div className="record-field note-field" role="group" aria-labelledby={labelId}>
       <div className="note-heading">
         <span id={labelId} className="field-label">
-          个人备注<span className="field-rule">演示 · 仅保存在本机</span>
+          个人备注<span className="field-rule">{isDemo ? '演示 · ' : ''}仅保存在本机</span>
         </span>
         {!editing && (
           <Button
@@ -280,7 +294,7 @@ function NoteField({ game, size, notify }: { game: GameDetail; size: DemoSize; n
       ) : saved ? (
         <>
           <p className="note-text">{saved}</p>
-          {justSaved && <SaveState pending={false} error={null} saved />}
+          {justSaved && <SaveState pending={false} error={null} saved savedText={savedText} />}
         </>
       ) : (
         <p className="note-empty">还没有备注。记录进度、感想或下次想做的事。</p>
@@ -298,12 +312,14 @@ export function PersonalRecord({
   size: DemoSize;
   notify: Notify;
 }) {
+  const { isDemo, isTestLibrary } = useWorkspace();
   return (
     <section className="personal-record" aria-labelledby="personal-record-title">
       <div className="panel-heading">
         <span className="eyebrow">MY RECORD</span>
         <h2 id="personal-record-title">我的记录</h2>
-        <span className="demo-chip">DEMO</span>
+        {isDemo && <span className="demo-chip">DEMO</span>}
+        {isTestLibrary && <span className="demo-chip">测试数据</span>}
       </div>
       <StatusField game={game} size={size} notify={notify} />
       <RatingField game={game} size={size} notify={notify} />

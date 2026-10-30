@@ -128,7 +128,7 @@ export function createTaskService({ tickMs = 250, onComplete }: TaskServiceOptio
         title: work.title,
         platform: work.platform,
         sizeBytes: work.file?.sizeBytes ?? null,
-        needsExtract: work.capabilities.extract,
+        needsExtract: work.capabilities.extract === true,
         phase: 'queued',
         progress: null,
         error: null,

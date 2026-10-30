@@ -17,6 +17,8 @@ import { FeedbackState } from '@/components/feedback-state';
 import { GameCover } from '@/components/game-card';
 import { useShell } from '@/app/shell-context';
 import { ConnectionBadge } from '@/features/demo-services/sources-dialog';
+import { realConnectionState } from '@/features/demo-services/labels';
+import { ReadFailure, RealLibraryEmpty } from '@/features/workspace/service-state';
 import { HeroBackdrop } from '@/features/game-detail/game-hero';
 import { libraryHrefFor } from '@/features/library/library-url';
 import {
@@ -26,6 +28,8 @@ import {
   useConnections,
   useDashboard,
   useDemoTasks,
+  useRealSources,
+  useWorkspace,
   type DashboardResult,
   type DashboardScope,
   type DemoScenario,
@@ -128,6 +132,7 @@ function Stat({
 }
 
 function Stats({ data, size }: { data: DashboardResult; size: DemoSize }) {
+  const { isDemo } = useWorkspace();
   const t = data.totals;
   const scoped = libraryHrefFor(size, scopeLibraryFilters(data.scope));
   if (!data.hasGames)
@@ -145,7 +150,7 @@ function Stats({ data, size }: { data: DashboardResult; size: DemoSize }) {
           label="有体验记录"
           value={t.usedNonGames.toLocaleString('zh-CN')}
           unit="部"
-          note="演示记录 · 阅读、观看或收听"
+          note={isDemo ? '演示记录 · 阅读、观看或收听' : '阅读、观看或收听'}
         />
         <Stat
           label="待体验"
@@ -157,7 +162,7 @@ function Stats({ data, size }: { data: DashboardResult; size: DemoSize }) {
           label="已下载"
           value={t.local.toLocaleString('zh-CN')}
           unit="部"
-          note="本机可用 · 演示"
+          note={isDemo ? '本机可用 · 演示' : '本机可用'}
         />
       </dl>
     );
@@ -206,7 +211,7 @@ function Stats({ data, size }: { data: DashboardResult; size: DemoSize }) {
         unit={recorded ? '小时' : undefined}
         note={
           recorded
-            ? `来自 ${recorded.toLocaleString('zh-CN')} 款有记录的游戏 · 演示`
+            ? `来自 ${recorded.toLocaleString('zh-CN')} 款有记录的游戏${isDemo ? ' · 演示' : ''}`
             : '该来源不提供游玩时长'
         }
         testId="stat-playtime"
@@ -301,6 +306,7 @@ function Featured({
 }
 
 function RecentRow({ data, size }: { data: DashboardResult; size: DemoSize }) {
+  const { isDemo } = useWorkspace();
   const ref = useRef<HTMLDivElement>(null);
   const width = useMeasuredWidth(ref);
   // Show whole cards only; never render hidden-but-focusable extras.
@@ -315,7 +321,7 @@ function RecentRow({ data, size }: { data: DashboardResult; size: DemoSize }) {
           <Timer size={16} />
           {gameOnly ? '最近游玩' : '最近体验'}
         </h2>
-        <span className="dash-section-note">演示记录 · 按最近使用排序</span>
+        <span className="dash-section-note">{isDemo ? '演示记录 · ' : ''}按最近使用排序</span>
       </div>
       <div
         className="recent-row"
@@ -480,7 +486,9 @@ function MostPlayed({ data, size }: { data: DashboardResult; size: DemoSize }) {
 }
 
 function Sources({ data, size }: { data: DashboardResult; size: DemoSize }) {
+  const { isDemo } = useWorkspace();
   const connections = useConnections();
+  const realSources = useRealSources(!isDemo).data;
   const tasks = useDemoTasks();
   const { openSources, openTasks } = useShell();
   const running = tasks.filter(isActiveTask).length;
@@ -492,7 +500,9 @@ function Sources({ data, size }: { data: DashboardResult; size: DemoSize }) {
         <PlugZap size={15} />
         来源与同步
       </h2>
-      <p className="dash-module-note">演示状态；不会连接真实账号。</p>
+      <p className="dash-module-note">
+        {isDemo ? '演示状态；不会连接真实账号。' : '连接与同步将在后续版本开放。'}
+      </p>
       <ul className="source-list">
         {(['steam', 'dlsite'] as const).map((platform) => (
           <li key={platform} data-source={platform}>
@@ -506,7 +516,13 @@ function Sources({ data, size }: { data: DashboardResult; size: DemoSize }) {
                 {data.sources[platform].local.toLocaleString('zh-CN')}
               </small>
             </span>
-            <ConnectionBadge state={connections[platform].state} />
+            <ConnectionBadge
+              state={
+                isDemo
+                  ? connections[platform].state
+                  : realConnectionState(realSources?.find((source) => source.id === platform))
+              }
+            />
           </li>
         ))}
       </ul>
@@ -559,9 +575,13 @@ function DashboardSkeleton() {
   );
 }
 
-export function DashboardPage({ size, demoEnabled }: { size: DemoSize; demoEnabled: boolean }) {
+export function DashboardPage({ size }: { size: DemoSize }) {
+  const { isDemo, isTestLibrary } = useWorkspace();
   const [scope, setScopeState] = useState<DashboardScope>(readScope);
-  const [scenario, setScenario] = useState<DemoScenario>(scenarioFromUrl);
+  // Preview states are demo tools; the real library only ever shows what is true.
+  const [scenario, setScenario] = useState<DemoScenario>(() =>
+    isDemo ? scenarioFromUrl() : 'normal',
+  );
   const [featuredIndex, setFeaturedIndex] = useState(0);
   const [batch, setBatch] = useState(0);
   const query = useDashboard(scope, { size, scenario, batch });
@@ -580,17 +600,19 @@ export function DashboardPage({ size, demoEnabled }: { size: DemoSize; demoEnabl
     patchHistoryState({}, `${url.pathname}${url.search}`);
   };
 
-  if (!demoEnabled)
+  if (query.isPending) return <DashboardSkeleton />;
+  if (!isDemo && !data)
     return (
-      <main className="dashboard-page dash-feedback">
-        <FeedbackState
-          kind="empty"
-          title="真实资料尚未接入"
-          description="此检查点仅提供独立演示空间，首页不会把演示统计当作真实记录展示。"
-        />
+      <main className="dashboard-page dash-feedback" data-testid="dashboard-failure">
+        <ReadFailure error={query.error ?? new Error()} onRetry={() => void query.refetch()} />
       </main>
     );
-  if (query.isPending) return <DashboardSkeleton />;
+  if (!isDemo && data && data.sources.steam.works + data.sources.dlsite.works === 0)
+    return (
+      <main className="dashboard-page dash-feedback" data-testid="dashboard-empty">
+        <RealLibraryEmpty />
+      </main>
+    );
   if (query.isError || !data)
     return (
       <main className="dashboard-page dash-feedback">
@@ -634,7 +656,8 @@ export function DashboardPage({ size, demoEnabled }: { size: DemoSize; demoEnabl
               <h1 id="dash-title">欢迎回来</h1>
               <p>
                 你的收藏共 {data.sources.steam.works + data.sources.dlsite.works} 部作品
-                <span className="demo-chip">DEMO · 合成数据</span>
+                {isDemo && <span className="demo-chip">DEMO · 合成数据</span>}
+                {isTestLibrary && <span className="demo-chip">测试数据 · 合成样本</span>}
               </p>
             </div>
             <ScopeSwitch scope={scope} onChange={setScope} />

@@ -1,4 +1,4 @@
-import type { ConnectionState, DemoTask, TaskPhase } from '@/lib/data';
+import type { ConnectionState, DemoTask, SourceStatus, TaskPhase } from '@/lib/data';
 
 export const connectionLabels: Record<ConnectionState, string> = {
   connected: '已连接',
@@ -7,6 +7,14 @@ export const connectionLabels: Record<ConnectionState, string> = {
   error: '连接失败',
   disconnected: '未连接',
 };
+
+/** Real connection states map onto the shared badge; absent data is never "connected". */
+export function realConnectionState(source: SourceStatus | undefined): ConnectionState {
+  if (source?.connection === 'connected') return 'connected';
+  if (source?.connection === 'reauth_required') return 'expired';
+  if (source?.connection === 'error') return 'error';
+  return 'disconnected';
+}
 
 export const phaseLabels: Record<TaskPhase, string> = {
   queued: '排队中',

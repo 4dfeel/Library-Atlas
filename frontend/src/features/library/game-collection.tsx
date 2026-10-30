@@ -1,5 +1,5 @@
 import { useVirtualizer, defaultRangeExtractor } from '@tanstack/react-virtual';
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Download, Star } from 'lucide-react';
 import type { Game } from '@/lib/data';
 import { availabilityLabel, statusLabels, workMeta } from '@/lib/utils';
@@ -9,6 +9,18 @@ import { AppLink } from '@/components/app-link';
 
 export type ViewMode = 'grid' | 'list';
 
+function rowItems(
+  start: number,
+  columns: number,
+  count: number,
+  gameAt: (index: number) => Game | undefined,
+) {
+  const items: { game: Game | undefined; itemIndex: number }[] = [];
+  for (let itemIndex = start; itemIndex < Math.min(count, start + columns); itemIndex++)
+    items.push({ game: gameAt(itemIndex), itemIndex });
+  return items;
+}
+
 export interface CollectionRestore {
   /** First visible item index when the user left this Library entry. */
   anchor?: number;
@@ -16,7 +28,9 @@ export interface CollectionRestore {
 }
 
 export function GameCollection({
-  games,
+  count,
+  gameAt,
+  onVisibleRange,
   view,
   onFavorite,
   filterKey,
@@ -24,7 +38,11 @@ export function GameCollection({
   onOpenGame,
   restore,
 }: {
-  games: Game[];
+  count: number;
+  /** `undefined` while that item's page is still loading. */
+  gameAt: (index: number) => Game | undefined;
+  /** Reports the item range on screen, so real mode can read just those pages. */
+  onVisibleRange?: (start: number, end: number) => void;
   view: ViewMode;
   onFavorite: (id: string) => void;
   filterKey: string;
@@ -41,7 +59,7 @@ export function GameCollection({
   const rowHeight = view === 'list' ? 92 : gridLayout.rowHeight;
   const [focusedIndex, setFocusedIndex] = useState<number | null>(null);
   const focusedControl = useRef<{ gameId: string; control: string } | null>(null);
-  const rowCount = Math.ceil(games.length / columns);
+  const rowCount = Math.ceil(count / columns);
   // This imperative virtualizer is intentionally outside React Compiler memoization.
   // eslint-disable-next-line react-hooks/incompatible-library
   const virtualizer = useVirtualizer({
@@ -57,6 +75,13 @@ export function GameCollection({
         : indices;
     },
   });
+  const virtualRows = virtualizer.getVirtualItems();
+  const firstRow = virtualRows[0]?.index;
+  const lastRow = virtualRows.at(-1)?.index;
+  useEffect(() => {
+    if (firstRow !== undefined && lastRow !== undefined)
+      onVisibleRange?.(firstRow * columns, Math.min(count, (lastRow + 1) * columns));
+  }, [firstRow, lastRow, columns, count, onVisibleRange]);
   const previousLayout = useRef({ columns, rowHeight, view });
   useLayoutEffect(() => {
     const old = previousLayout.current;
@@ -143,7 +168,7 @@ export function GameCollection({
         role="list"
         aria-label={view === 'grid' ? '作品网格' : '作品列表'}
       >
-        {virtualizer.getVirtualItems().map((row) => (
+        {virtualRows.map((row) => (
           <div
             className={`virtual-row ${view === 'grid' ? 'grid-row' : ''}`}
             key={`${view}-${row.index}`}
@@ -153,84 +178,98 @@ export function GameCollection({
               gridTemplateColumns: `repeat(${columns}, minmax(0, ${cardWidth}px))`,
             }}
           >
-            {games.slice(row.index * columns, row.index * columns + columns).map((game, index) => (
-              <div
-                key={game.id}
-                role="listitem"
-                onFocusCapture={(event) => {
-                  const control = (event.target as HTMLElement).closest<HTMLElement>(
-                    '[data-focus-key]',
-                  );
-                  focusedControl.current = control
-                    ? { gameId: game.id, control: control.dataset.focusKey ?? 'title' }
-                    : null;
-                  setFocusedIndex(row.index * columns + index);
-                }}
-                onBlurCapture={(event) => {
-                  if (
-                    !event.currentTarget.contains(event.relatedTarget) &&
-                    event.relatedTarget instanceof HTMLElement &&
-                    event.relatedTarget !== document.body
-                  ) {
-                    focusedControl.current = null;
-                    setFocusedIndex(null);
-                  }
-                }}
-              >
-                {view === 'grid' ? (
-                  <GameCard
-                    game={game}
-                    onFavorite={onFavorite}
-                    href={detailHref(game.id)}
-                    onOpen={() => openGame(game.id)}
-                  />
-                ) : (
-                  <article
-                    className="game-list-row"
-                    data-testid="game-card"
-                    data-game-card
-                    data-game-id={game.id}
+            {rowItems(row.index * columns, columns, count, gameAt).map(
+              ({ game, itemIndex }, index) =>
+                !game ? (
+                  <div
+                    key={`pending-${itemIndex}`}
+                    role="listitem"
+                    data-pending-item
+                    className={view === 'grid' ? 'skeleton-card' : 'skeleton-row'}
                   >
-                    <div className="list-game-title">
-                      <GameCover game={game} compact />
-                      <div>
-                        <h3>
-                          <AppLink
-                            to={detailHref(game.id)}
-                            state={{ fromLibrary: true }}
-                            onNavigate={() => openGame(game.id)}
-                            className="game-link"
-                            data-focus-key="title"
-                            title={game.title}
-                          >
-                            {game.title}
-                          </AppLink>
-                        </h3>
-                        <span className="list-install">
-                          {game.installed && <Download size={12} />}
-                          {availabilityLabel(game)}
+                    {view === 'grid' && <div className="skeleton-cover" />}
+                    <div className="skeleton-line" />
+                    <div className="skeleton-line short" />
+                  </div>
+                ) : (
+                  <div
+                    key={game.id}
+                    role="listitem"
+                    onFocusCapture={(event) => {
+                      const control = (event.target as HTMLElement).closest<HTMLElement>(
+                        '[data-focus-key]',
+                      );
+                      focusedControl.current = control
+                        ? { gameId: game.id, control: control.dataset.focusKey ?? 'title' }
+                        : null;
+                      setFocusedIndex(row.index * columns + index);
+                    }}
+                    onBlurCapture={(event) => {
+                      if (
+                        !event.currentTarget.contains(event.relatedTarget) &&
+                        event.relatedTarget instanceof HTMLElement &&
+                        event.relatedTarget !== document.body
+                      ) {
+                        focusedControl.current = null;
+                        setFocusedIndex(null);
+                      }
+                    }}
+                  >
+                    {view === 'grid' ? (
+                      <GameCard
+                        game={game}
+                        onFavorite={onFavorite}
+                        href={detailHref(game.id)}
+                        onOpen={() => openGame(game.id)}
+                      />
+                    ) : (
+                      <article
+                        className="game-list-row"
+                        data-testid="game-card"
+                        data-game-card
+                        data-game-id={game.id}
+                      >
+                        <div className="list-game-title">
+                          <GameCover game={game} compact />
+                          <div>
+                            <h3>
+                              <AppLink
+                                to={detailHref(game.id)}
+                                state={{ fromLibrary: true }}
+                                onNavigate={() => openGame(game.id)}
+                                className="game-link"
+                                data-focus-key="title"
+                                title={game.title}
+                              >
+                                {game.title}
+                              </AppLink>
+                            </h3>
+                            <span className="list-install">
+                              {game.installed && <Download size={12} />}
+                              {availabilityLabel(game)}
+                            </span>
+                          </div>
+                        </div>
+                        <span className="list-genre">{game.genre}</span>
+                        <span className={`list-status status-${game.status}`}>
+                          <i />
+                          {statusLabels[game.status]}
                         </span>
-                      </div>
-                    </div>
-                    <span className="list-genre">{game.genre}</span>
-                    <span className={`list-status status-${game.status}`}>
-                      <i />
-                      {statusLabels[game.status]}
-                    </span>
-                    <span className="list-playtime">{workMeta(game)}</span>
-                    <button
-                      data-focus-key="favorite"
-                      className={`list-favorite${game.favorite ? ' is-favorite' : ''}`}
-                      aria-label={`${game.favorite ? '取消收藏' : '收藏'} ${game.title}`}
-                      aria-pressed={game.favorite}
-                      onClick={() => onFavorite(game.id)}
-                    >
-                      <Star size={17} fill={game.favorite ? 'currentColor' : 'none'} />
-                    </button>
-                  </article>
-                )}
-              </div>
-            ))}
+                        <span className="list-playtime">{workMeta(game)}</span>
+                        <button
+                          data-focus-key="favorite"
+                          className={`list-favorite${game.favorite ? ' is-favorite' : ''}`}
+                          aria-label={`${game.favorite ? '取消收藏' : '收藏'} ${game.title}`}
+                          aria-pressed={game.favorite}
+                          onClick={() => onFavorite(game.id)}
+                        >
+                          <Star size={17} fill={game.favorite ? 'currentColor' : 'none'} />
+                        </button>
+                      </article>
+                    )}
+                  </div>
+                ),
+            )}
           </div>
         ))}
       </div>

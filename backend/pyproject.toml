@@ -1,0 +1,29 @@
+[project]
+name = "library-atlas-backend"
+version = "0.1.0"
+description = "Library Atlas local service"
+requires-python = "==3.14.*"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py314"
+extend-exclude = ["app/db/migrations/versions"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "S", "T20"]
+ignore = ["S101"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S"]
+"app/__main__.py" = ["T20"]
+"app/testing/*" = ["S311"]
+
+[tool.mypy]
+python_version = "3.14"
+strict = true
+files = ["app"]
+exclude = ["app/db/migrations/"]

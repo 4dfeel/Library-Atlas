@@ -1,6 +1,15 @@
 # Phase 2 接入方案（建议稿，待用户确认）
 
-日期：2026-10-30 · 状态：**建议方案，尚未实现，也未并入正式架构基线**（[ARCHITECTURE.md](ARCHITECTURE.md) 不因本文自动改变）。能力依据见 [能力矩阵](PHASE2_CAPABILITY_MATRIX.md)（下文 E*/M* 编号同该文），结论与待决策见 [检查点 0 报告](PHASE2_CHECKPOINT0_REPORT.md)。
+日期：2026-10-30 · 状态：用户已确认方向（决定见 §0）；检查点 1 已按本方案落地，差异见 §10，其余部分仍是后续检查点的计划。能力依据见 [能力矩阵](PHASE2_CAPABILITY_MATRIX.md)（下文 E*/M* 编号同该文），结论与待决策见 [检查点 0 报告](PHASE2_CHECKPOINT0_REPORT.md)。
+
+## 0. 用户决定（2026-10-30）
+| # | 决定 | 对方案的影响 |
+| --- | --- | --- |
+| D1 | DLsite 由 Atlas 发起登录，用户亲自完成；**不能把网页直接糊在用户脸上，体验不能割裂** | 见 §3.3，是检查点 2 的验收条件 |
+| D2 | 接受使用 DLsite Play 非公开接口读取用户自己的已购库 | 保持手动/低频、单线程、不绕过任何验证 |
+| D3 | Steam 使用用户自己申请的 Web API Key | 按 §3.2 |
+| D4 | 同意以后引入 7-Zip 处理 RAR 与分卷 | 检查点 5 按真实样本决定格式范围，随程序附许可信息 |
+| D5 | Phase 1 验收通过；“DLsite 一键下载解压”移入 Phase 2 | ROADMAP 已更新 |
 
 ## 1. 当前实际架构与必须保留的约束
 - **已落地**：只有前端（Vite 8 + React 19 + TS strict，TanStack Query/Virtual，Tailwind 4），`npm run preview` 在 127.0.0.1:4173 提供 Demo。**仓库内没有任何后端代码、数据库或 Python 依赖清单**；ARCHITECTURE §1–§6 的 FastAPI/SQLite 设计仍是计划。
@@ -51,6 +60,16 @@
 - 身份：OpenID 2.0（`return_to=http://127.0.0.1:<port>/api/v1/sources/steam/openid/callback`，按规范校验 `check_authentication`）；若回环回调不被接受则改为手动输入 SteamID/个人资料链接。**[待验证]**
 - 库访问：用户自行申请 Web API Key，经 Atlas 设置页输入（只发往本地服务，不回显、不进日志），存凭据存储。不代管或共享 Atlas 自己的 key。
 - 不需要 Steam 密码；Atlas 不接触 Steam 登录凭据。
+
+### 3.3 登录体验要求（D1）
+登录窗口只是 DLsite 官方页面的载体，页面内容由 DLsite 决定。用户要求不割裂，检查点 2 按下面的方式实现并由用户验收：
+- Atlas 内先有自己的连接面板，说明将要做什么；登录窗口由这个面板发起，不是突然弹出的浏览器。
+- 窗口尺寸接近对话框，居中，使用 Atlas 深色标题栏，没有地址栏和浏览器菜单。
+- 窗口打开期间，Atlas 面板显示“请在登录窗口完成”，并可取消。
+- 登录成功后窗口自动关闭，回到 Atlas 面板显示结果，不停留在 DLsite 页面。
+- 不向 DLsite 页面注入样式或脚本（易随对方改版失效，也不应干预其登录页），不提供 Atlas 自绘的账号密码表单（Atlas 不接触密码；E3 也说明后端提交会被拦截）。
+
+**待检查点 2 开始前确认**：主界面现在是浏览器标签页，登录窗口只能是另一个独立窗口。如果希望登录层真正盖在 Atlas 之上，需要把 Atlas 主界面也放进桌面窗口（pywebview），这属于新增桌面容器，需要用户决定。
 
 ## 4. 同步、分类与数据模型
 ### 4.1 最小模型增量（在 ARCHITECTURE §4 基础上）
@@ -121,3 +140,21 @@ ROADMAP 现有 Phase 2 行（含后端骨架与“能力调查”）与 Phase 6 
 ## 9. 不支持与未验证能力（摘要）
 - **不支持**：后端代填密码登录、读取系统浏览器 Cookie、解析 DLsite Nest 数据、Atlas 下载 Steam 游戏、自动破解/猜测归档密码、自动运行 `.exe`。
 - **未验证**：WebView2 内能否完成 DLsite 登录、会话有效期、原始文件下载方式与续传、DLsite 分割文件格式、Steam 私密资料 + 自己 key 的行为、OpenID 回环回调、`steam://` 各命令当前可用性。
+
+## 10. 检查点 1 实际落地与本方案的差异
+后续检查点以 [LOCAL_API.md](LOCAL_API.md) 和代码为准。
+
+| 方案 | 实际 | 原因 |
+| --- | --- | --- |
+| ARCHITECTURE §5 游标分页 | 偏移窗口分页（`offset` + `limit`，排序以 ID 收尾） | 虚拟滚动要能跳到任意位置、返回时恢复位置；游标只能顺序读 |
+| ARCHITECTURE §6 启动 bootstrap + HttpOnly Cookie | Host + Origin + Sec-Fetch-Site + 进程级 CSRF 令牌 | 本检查点无敏感操作，且无桌面启动器发放 bootstrap。**检查点 2 处理凭据前需重新评估是否补上** |
+| §4.1 `source_accounts`、`work_files`、`library_entries` | 按方案建表；`source_accounts` 暂无写入方 | 明确账号归属边界；未连接时为空 |
+| ARCHITECTURE §4 `source_observations`、`playtime_observations` 等观测表 | 未建。来源字段直接存在 `works` | 没有消费者；检查点 3/6 需要时用迁移增加 |
+| ARCHITECTURE §4 `profiles` 表 | 未建。一个数据库就是一个资料库，账号隔离靠每个 profile 一个目录 | 比表内隔离更不容易串库 |
+| 任务表（§4.1、§7） | 未建，只保留 §7 契约 | 检查点 4 才有执行方 |
+| 凭据存储（§5） | `backend/app/core/credentials.py` 提供读/写/删接口，超限直接报错。分片、会话保存未实现，无 API 调用它 | 只建边界 |
+| `Game.file` 改为 `files` | `file` 保留（第一个文件），详情另加 `files[]` | 不改动 Demo 与卡片 |
+| 名称排序 | 规范化后按码位，不是拼音/五十音 | 不为此新增依赖；已写入 API 说明 |
+| ARCHITECTURE §1 OpenAPI 生成 TS 类型 | 未做，前端类型手写，靠端到端测试保证一致 | 检查点 2 接口增多前建议补上 |
+
+后续检查点必须遵守：同步只写 `works`、`work_files`、`library_entries`，只通过 `repositories.works.upsert_source_metadata`；新作品默认 `quarantined`；普通读取一律走 `ORDINARY` 条件；凭据只经 `core/credentials.py`。

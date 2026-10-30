@@ -1,0 +1,25 @@
+name: Backend checkpoint
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4.2.2
+      - uses: actions/setup-python@v5.6.0
+        with:
+          python-version-file: .python-version
+      - run: python -m venv .venv
+      - run: .venv\Scripts\python -m pip install --require-hashes -r requirements.lock
+      - run: .venv\Scripts\python -m pip install --require-hashes -r requirements-dev.lock
+      - run: .venv\Scripts\python -m ruff check app tests
+      - run: .venv\Scripts\python -m ruff format --check app tests
+      - run: .venv\Scripts\python -m mypy
+      - run: .venv\Scripts\python -m pytest

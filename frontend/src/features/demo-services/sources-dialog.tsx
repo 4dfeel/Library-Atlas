@@ -5,13 +5,15 @@ import {
   demoConnections,
   useConnections,
   useDashboard,
+  useRealSources,
   type DemoSize,
   type ConnectionState,
   type Platform,
   type SourceConnection,
+  type SourceStatus,
 } from '@/lib/data';
 import { platformLabels } from '@/lib/utils';
-import { connectionLabels } from './labels';
+import { connectionLabels, realConnectionState } from './labels';
 
 const timeFormat = new Intl.DateTimeFormat('zh-CN', {
   month: 'long',
@@ -19,6 +21,34 @@ const timeFormat = new Intl.DateTimeFormat('zh-CN', {
   hour: '2-digit',
   minute: '2-digit',
 });
+
+function RealSourceRow({ platform, source }: { platform: Platform; source?: SourceStatus }) {
+  const name = platformLabels[platform];
+  return (
+    <section className="source-row" aria-labelledby={`source-${platform}`} data-source={platform}>
+      <div className="source-row-heading">
+        <span className={`source-mark source-${platform}`} aria-hidden="true">
+          {name.slice(0, 1)}
+        </span>
+        <div>
+          <h3 id={`source-${platform}`}>{name}</h3>
+          <p>连接与同步将在后续版本开放。</p>
+        </div>
+        <ConnectionBadge state={realConnectionState(source)} />
+      </div>
+      <dl className="source-facts">
+        <div>
+          <dt>本地作品</dt>
+          <dd>{source ? `${source.workCount.toLocaleString('zh-CN')} 部` : '—'}</dd>
+        </div>
+        <div>
+          <dt>最后同步</dt>
+          <dd>暂无记录</dd>
+        </div>
+      </dl>
+    </section>
+  );
+}
 
 export function ConnectionBadge({ state }: { state: ConnectionState }) {
   return (
@@ -150,6 +180,7 @@ export function SourcesDialog({
   const connections = useConnections();
   // Same cached, privacy-filtered snapshot the Dashboard uses.
   const sources = useDashboard('all', { size, enabled: demoEnabled }).data?.sources;
+  const real = useRealSources(open && !demoEnabled);
   const counts = sources && { steam: sources.steam.works, dlsite: sources.dlsite.works };
   return (
     <Dialog
@@ -171,12 +202,26 @@ export function SourcesDialog({
             状态保存在本浏览器的演示存储中，与未来真实会话完全隔离。
           </p>
         </div>
+      ) : real.isError ? (
+        <p className="service-unavailable" role="alert">
+          <PlugZap size={16} />
+          本地服务没有响应，暂时无法读取来源状态。
+        </p>
       ) : (
         // Demo sessions are never shown as real connections.
-        <p className="service-unavailable">
-          <PlugZap size={16} />
-          真实来源连接尚未接入，Steam 与 DLsite 均未连接。
-        </p>
+        <div className="sources-dialog" data-testid="real-sources">
+          {(['steam', 'dlsite'] as const).map((platform) => (
+            <RealSourceRow
+              key={platform}
+              platform={platform}
+              source={real.data?.find((source) => source.id === platform)}
+            />
+          ))}
+          <p className="dialog-footnote">
+            <PlugZap size={14} />
+            真实来源连接尚未接入，Steam 与 DLsite 均未连接。
+          </p>
+        </div>
       )}
     </Dialog>
   );

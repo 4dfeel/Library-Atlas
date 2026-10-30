@@ -16,6 +16,7 @@ import {
   isActiveTask,
   startDemoDownload,
   useDemoTasks,
+  useWorkspaceMode,
   type DemoSize,
   type GameDetail,
 } from '@/lib/data';
@@ -28,6 +29,7 @@ import { formatBytes } from '@/lib/utils';
 export function DownloadAction({ game, size }: { game: GameDetail; size: DemoSize }) {
   const task = useDemoTasks().find((entry) => entry.workId === game.id);
   const { openTasks } = useShell();
+  const isDemo = useWorkspaceMode() === 'demo';
   if (game.capabilities.officialViewerOnly)
     return (
       <p className="hero-download is-note" data-testid="download-action">
@@ -36,6 +38,14 @@ export function DownloadAction({ game, size }: { game: GameDetail; size: DemoSiz
       </p>
     );
   if (!game.capabilities.download) return null;
+  // Real downloads are a later checkpoint; never run the demo flow on a real work.
+  if (!isDemo)
+    return (
+      <p className="hero-download is-note" data-testid="download-action">
+        <Download size={14} />
+        下载将在后续版本开放
+      </p>
+    );
   const size_ = game.file?.sizeBytes;
   const sizeText = size_ === null || size_ === undefined ? '大小未知' : formatBytes(size_);
   const label = game.capabilities.extract ? '演示下载并解压' : '演示下载';

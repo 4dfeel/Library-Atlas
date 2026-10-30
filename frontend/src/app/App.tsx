@@ -27,7 +27,9 @@ import {
   isActiveTask,
   useDemoTasks,
   useDemoTaskSync,
+  useModeCacheIsolation,
   useResetDemoEdits,
+  useWorkspace,
   type DemoSize,
 } from '@/lib/data';
 import { AppLink } from '@/components/app-link';
@@ -35,11 +37,12 @@ import { dashboardHref, libraryHref, matchRoute, useLocationKey } from '@/lib/ro
 import { DashboardPage } from '@/features/dashboard/dashboard-page';
 import { SourcesDialog } from '@/features/demo-services/sources-dialog';
 import { TasksDialog } from '@/features/demo-services/tasks-dialog';
+import { WorkspaceSwitch } from '@/features/workspace/workspace-switch';
+import { RouteBoundary } from './route-boundary';
 import { ShellContext } from './shell-context';
 import { LibraryPage } from '@/features/library/library-page';
 import { noteDrafts } from '@/features/game-detail/note-drafts';
 
-const demoEnabled = import.meta.env.VITE_DEMO_MODE !== 'false';
 // Route-level split keeps the Library bundle unchanged by the detail page.
 const detailModule = () => import('@/features/game-detail/game-detail-page');
 const GameDetailPage = lazy(() => detailModule().then((m) => ({ default: m.GameDetailPage })));
@@ -112,7 +115,11 @@ export function App() {
   const collapsed = narrow || manualCollapsed;
   const locationKey = useLocationKey();
   const route = matchRoute(window.location.pathname);
-  const [size, setSize] = useState<DemoSize>(sizeFromUrl);
+  const workspace = useWorkspace();
+  const { mode, isDemo, isTestLibrary, serviceDown, serviceMessage, retryService } = workspace;
+  const [demoSize, setSize] = useState<DemoSize>(sizeFromUrl);
+  // Scale is a property of the synthetic dataset; the real library has its own size.
+  const size: DemoSize = isDemo ? demoSize : 1500;
   const [aboutOpen, setAboutOpen] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
   const [sourcesOpen, setSourcesOpen] = useState(false);
@@ -152,6 +159,7 @@ export function App() {
   );
   const runningTasks = useDemoTasks().filter(isActiveTask).length;
   useDemoTaskSync();
+  useModeCacheIsolation();
   const editCount = aboutOpen ? getDemoEditCount(size) : 0;
 
   return (
@@ -221,18 +229,31 @@ export function App() {
                     </span>
                   </div>
                 )}
-                <button className="nav-item" onClick={openAbout} title="演示设置">
+                <button
+                  className="nav-item"
+                  onClick={openAbout}
+                  title={isDemo ? '演示设置' : '资料库设置'}
+                >
                   <Settings2 size={19} />
-                  {!collapsed && <span>演示设置</span>}
+                  {!collapsed && <span>{isDemo ? '演示设置' : '资料库设置'}</span>}
                 </button>
                 <div className="sidebar-profile">
                   <span className="profile-avatar">A</span>
-                  {!collapsed && (
-                    <span>
-                      Atlas 演示空间<small>独立合成数据</small>
-                    </span>
-                  )}
-                  <span className="online-dot" />
+                  {!collapsed &&
+                    (isDemo ? (
+                      <span>
+                        Atlas 演示空间<small>独立合成数据</small>
+                      </span>
+                    ) : isTestLibrary ? (
+                      <span>
+                        隔离测试库<small>合成样本，不是同步结果</small>
+                      </span>
+                    ) : (
+                      <span>
+                        我的资料库<small>保存在这台电脑上</small>
+                      </span>
+                    ))}
+                  <span className="online-dot" data-offline={serviceDown} />
                 </div>
               </div>
             </aside>
@@ -274,14 +295,26 @@ export function App() {
                   </nav>
                 </div>
                 <div className="topbar-right">
-                  <span className="demo-indicator">
-                    <span />
-                    {demoEnabled ? 'DEMO · 演示模式' : '真实数据尚未接入'}
-                  </span>
-                  <span className="topbar-divider" />
-                  <Tooltip
-                    content={demoEnabled ? '下载与解压任务（演示）' : '下载与解压（尚未接入）'}
+                  <button
+                    className="demo-indicator"
+                    data-testid="workspace-indicator"
+                    data-mode={
+                      isDemo ? 'demo' : serviceDown ? 'offline' : isTestLibrary ? 'test' : 'real'
+                    }
+                    title="切换资料空间"
+                    onClick={openAbout}
                   >
+                    <span />
+                    {isDemo
+                      ? 'DEMO · 演示模式'
+                      : serviceDown
+                        ? '本地服务未连接'
+                        : isTestLibrary
+                          ? '测试库 · 合成数据'
+                          : '我的资料库'}
+                  </button>
+                  <span className="topbar-divider" />
+                  <Tooltip content={isDemo ? '下载与解压任务（演示）' : '下载与解压（尚未接入）'}>
                     <Button
                       size="icon"
                       variant="ghost"
@@ -293,41 +326,42 @@ export function App() {
                       {runningTasks > 0 && <span className="tasks-badge">{runningTasks}</span>}
                     </Button>
                   </Tooltip>
-                  <Tooltip content="关于本次演示">
-                    <Button size="icon" variant="ghost" aria-label="关于演示" onClick={openAbout}>
+                  <Tooltip content={isDemo ? '关于本次演示' : '资料库状态'}>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      aria-label={isDemo ? '关于演示' : '资料库状态'}
+                      onClick={openAbout}
+                    >
                       <CircleHelp size={18} />
                     </Button>
                   </Tooltip>
                 </div>
               </header>
 
-              <Suspense fallback={<main className="detail-page" aria-busy="true" />}>
-                {route.name === 'dashboard' ? (
-                  <DashboardPage
-                    key={`dashboard-${locationKey}`}
-                    size={size}
-                    demoEnabled={demoEnabled}
-                  />
-                ) : route.name === 'library' ? (
-                  <LibraryPage
-                    key={`library-${locationKey}`}
-                    size={size}
-                    demoEnabled={demoEnabled}
-                    onAbout={openAbout}
-                    notify={notify}
-                  />
-                ) : route.name === 'game' ? (
-                  <GameDetailPage
-                    key={`${route.id}-${size}`}
-                    id={route.id}
-                    size={size}
-                    demoEnabled={demoEnabled}
-                    notify={notify}
-                  />
-                ) : (
-                  <GameUnavailable size={size} />
-                )}
-              </Suspense>
+              <RouteBoundary key={`${mode}-${locationKey}`}>
+                <Suspense fallback={<main className="detail-page" aria-busy="true" />}>
+                  {route.name === 'dashboard' ? (
+                    <DashboardPage key={`${mode}-dashboard-${locationKey}`} size={size} />
+                  ) : route.name === 'library' ? (
+                    <LibraryPage
+                      key={`${mode}-library-${locationKey}`}
+                      size={size}
+                      onAbout={openAbout}
+                      notify={notify}
+                    />
+                  ) : route.name === 'game' ? (
+                    <GameDetailPage
+                      key={`${mode}-${route.id}-${size}`}
+                      id={route.id}
+                      size={size}
+                      notify={notify}
+                    />
+                  ) : (
+                    <GameUnavailable size={size} />
+                  )}
+                </Suspense>
+              </RouteBoundary>
             </div>
           </div>
           <Dialog
@@ -336,87 +370,115 @@ export function App() {
               setAboutOpen(open);
               if (!open) setConfirmReset(false);
             }}
-            title="你的演示空间"
-            description="当前展示的作品、封面与游玩记录均为合成资料，与真实 Steam / DLsite 库存完全隔离。"
+            title={isDemo ? '你的演示空间' : isTestLibrary ? '隔离测试库' : '我的资料库'}
+            description={
+              isDemo
+                ? '当前展示的作品、封面与游玩记录均为合成资料，与真实 Steam / DLsite 库存完全隔离。'
+                : isTestLibrary
+                  ? '这是用于验证的合成样本库，内容不是平台同步结果，也不会写入你的真实资料。'
+                  : '评分、备注、状态与收藏保存在这台电脑的本地资料库中，与演示空间完全隔离。'
+            }
           >
             <div className="demo-settings">
-              <div>
-                <span className="eyebrow">DATA SCENARIO</span>
-                <h3>选择收藏规模</h3>
-                <p>固定种子生成；两种规模共用前 1500 条记录及其演示修改。</p>
-              </div>
-              <div className="scenario-buttons">
-                {([1500, 5000] as const).map((value) => (
-                  <button
-                    key={value}
-                    className={size === value ? 'selected' : ''}
-                    aria-pressed={size === value}
-                    onClick={() => setDemoSize(value)}
-                  >
-                    <span>
-                      {value.toLocaleString('zh-CN')}
-                      <small>部作品</small>
-                    </span>
-                    {size === value && <Check size={18} />}
-                  </button>
-                ))}
-              </div>
-              <div className="demo-explanation">
-                <ShieldCheck size={18} />
-                <p>
-                  私人、隐藏与待确认条目已在数据选择层排除，按 ID
-                  读取和修改同样受限。评分、备注、状态与收藏只保存在本浏览器的演示存储中，不会写入真实资料。
-                </p>
-              </div>
-              <div className="demo-reset">
-                {confirmReset ? (
-                  <>
-                    <p role="alert">
-                      将清除本浏览器中 {editCount.toLocaleString('zh-CN')}{' '}
-                      部作品的演示修改（评分、备注、状态、收藏），恢复为初始合成资料。未保存的备注草稿也会丢弃。此操作无法撤销。
-                    </p>
-                    <div>
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        disabled={resetEdits.isPending}
-                        onClick={() =>
-                          resetEdits.mutate(undefined, {
-                            onSuccess: () => {
-                              noteDrafts.clear();
-                              setConfirmReset(false);
-                              notify('演示修改已重置');
-                            },
-                            onError: (error) => notify(error.message, 'error'),
-                          })
-                        }
-                      >
-                        <RotateCcw size={14} />
-                        确认重置
-                      </Button>
-                      <Button variant="ghost" size="sm" onClick={() => setConfirmReset(false)}>
-                        取消
-                      </Button>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <p>
-                      已修改 {editCount.toLocaleString('zh-CN')}{' '}
-                      部作品。重置只影响本浏览器的演示存储。
-                    </p>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      disabled={editCount === 0}
-                      onClick={() => setConfirmReset(true)}
-                    >
+              <WorkspaceSwitch />
+              {!isDemo && (
+                <div className="demo-explanation" data-testid="service-status">
+                  <ShieldCheck size={18} />
+                  <p>
+                    {serviceDown
+                      ? (serviceMessage ??
+                        '本地服务没有响应。你的资料没有受到影响；请确认服务已启动。')
+                      : '本地服务已连接。Steam 与 DLsite 尚未连接，同步和下载将在后续版本开放。'}
+                  </p>
+                  {serviceDown && (
+                    <Button variant="ghost" size="sm" onClick={retryService}>
                       <RotateCcw size={14} />
-                      重置演示修改…
+                      重试
                     </Button>
-                  </>
-                )}
-              </div>
+                  )}
+                </div>
+              )}
+              {isDemo && (
+                <>
+                  <div>
+                    <span className="eyebrow">DATA SCENARIO</span>
+                    <h3>选择收藏规模</h3>
+                    <p>固定种子生成；两种规模共用前 1500 条记录及其演示修改。</p>
+                  </div>
+                  <div className="scenario-buttons">
+                    {([1500, 5000] as const).map((value) => (
+                      <button
+                        key={value}
+                        className={size === value ? 'selected' : ''}
+                        aria-pressed={size === value}
+                        onClick={() => setDemoSize(value)}
+                      >
+                        <span>
+                          {value.toLocaleString('zh-CN')}
+                          <small>部作品</small>
+                        </span>
+                        {size === value && <Check size={18} />}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="demo-explanation">
+                    <ShieldCheck size={18} />
+                    <p>
+                      私人、隐藏与待确认条目已在数据选择层排除，按 ID
+                      读取和修改同样受限。评分、备注、状态与收藏只保存在本浏览器的演示存储中，不会写入真实资料。
+                    </p>
+                  </div>
+                  <div className="demo-reset">
+                    {confirmReset ? (
+                      <>
+                        <p role="alert">
+                          将清除本浏览器中 {editCount.toLocaleString('zh-CN')}{' '}
+                          部作品的演示修改（评分、备注、状态、收藏），恢复为初始合成资料。未保存的备注草稿也会丢弃。此操作无法撤销。
+                        </p>
+                        <div>
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            disabled={resetEdits.isPending}
+                            onClick={() =>
+                              resetEdits.mutate(undefined, {
+                                onSuccess: () => {
+                                  noteDrafts.clear();
+                                  setConfirmReset(false);
+                                  notify('演示修改已重置');
+                                },
+                                onError: (error) => notify(error.message, 'error'),
+                              })
+                            }
+                          >
+                            <RotateCcw size={14} />
+                            确认重置
+                          </Button>
+                          <Button variant="ghost" size="sm" onClick={() => setConfirmReset(false)}>
+                            取消
+                          </Button>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <p>
+                          已修改 {editCount.toLocaleString('zh-CN')}{' '}
+                          部作品。重置只影响本浏览器的演示存储。
+                        </p>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          disabled={editCount === 0}
+                          onClick={() => setConfirmReset(true)}
+                        >
+                          <RotateCcw size={14} />
+                          重置演示修改…
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                </>
+              )}
               <Button variant="secondary" onClick={() => setAboutOpen(false)}>
                 继续浏览
                 <ChevronRight size={15} />
@@ -442,13 +504,13 @@ export function App() {
             open={sourcesOpen}
             onOpenChange={setSourcesOpen}
             size={size}
-            demoEnabled={demoEnabled}
+            demoEnabled={isDemo}
           />
           <TasksDialog
             open={tasksOpen}
             onOpenChange={setTasksOpen}
             size={size}
-            demoEnabled={demoEnabled}
+            demoEnabled={isDemo}
           />
         </TooltipPrimitive.Provider>
       </ShellContext.Provider>

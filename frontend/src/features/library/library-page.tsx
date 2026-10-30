@@ -23,8 +23,9 @@ import { Input } from '@/components/ui/input';
 import { FeedbackState } from '@/components/feedback-state';
 import {
   defaultLibraryFilters,
-  useLibrary,
+  useLibraryCollection,
   useToggleFavorite,
+  useWorkspace,
   type DemoScenario,
   type DemoSize,
   type LibraryFilters,
@@ -33,6 +34,7 @@ import {
 import { kindLabels } from '@/lib/utils';
 import { getGridLayout, useMeasuredWidth } from '@/lib/layout';
 import { gameHref, patchHistoryState, readHistoryState } from '@/lib/router';
+import { ReadFailure, RealLibraryEmpty } from '@/features/workspace/service-state';
 import { GameCollection, type CollectionRestore, type ViewMode } from './game-collection';
 import { libraryUrl, parseLibraryUrl } from './library-url';
 
@@ -55,12 +57,10 @@ function scenarioFromUrl(): DemoScenario {
 
 export function LibraryPage({
   size,
-  demoEnabled,
   onAbout,
   notify,
 }: {
   size: DemoSize;
-  demoEnabled: boolean;
   onAbout: () => void;
   notify: (message: string, tone?: 'success' | 'error') => void;
 }) {
@@ -81,9 +81,10 @@ export function LibraryPage({
   const [retryScenario, setRetryScenario] = useState<DemoScenario>(scenarioFromUrl);
   const searchRef = useRef<HTMLInputElement>(null);
   const reduceMotion = useReducedMotion();
-  const query = useLibrary(filters, { size, scenario: demoEnabled ? retryScenario : 'empty' });
+  const { isDemo, isTestLibrary } = useWorkspace();
+  const collection = useLibraryCollection(filters, { size, scenario: retryScenario });
   const favorite = useToggleFavorite(size);
-  const data = query.data;
+  const data = collection.summary;
 
   useEffect(() => {
     const timeout = window.setTimeout(() => setFilters((current) => ({ ...current, search })), 140);
@@ -122,11 +123,11 @@ export function LibraryPage({
   const toggleFavorite = useCallback(
     (id: string) => {
       favorite.mutate(id, {
-        onSuccess: () => notify('收藏已更新 · 演示修改保存在本机'),
+        onSuccess: () => notify(isDemo ? '收藏已更新 · 演示修改保存在本机' : '收藏已更新'),
         onError: () => notify('未能更新收藏，请重试', 'error'),
       });
     },
-    [favorite, notify],
+    [favorite, isDemo, notify],
   );
   const detailHref = useCallback((id: string) => gameHref(id, size), [size]);
   const openGame = useCallback((id: string, anchor: number) => {
@@ -199,7 +200,11 @@ export function LibraryPage({
             );
           })}
           <span className="tabs-spacer" />
-          <span className="demo-data-note">合成数据 · 非真实游玩记录</span>
+          {(isDemo || isTestLibrary) && (
+            <span className="demo-data-note">
+              {isDemo ? '合成数据 · 非真实游玩记录' : '测试数据 · 合成样本，不是同步结果'}
+            </span>
+          )}
         </div>
         <div className="filter-toolbar">
           <div className="search-field">
@@ -340,28 +345,29 @@ export function LibraryPage({
                 <X size={12} />
               </button>
             )}
-            {query.isFetching && !query.isPending && (
+            {collection.isFetching && !collection.isPending && (
               <span className="updating-label">正在更新…</span>
+            )}
+            {collection.isStale && (
+              <button data-testid="library-stale" onClick={collection.refetch}>
+                部分内容未能更新，点此重试
+              </button>
             )}
           </p>
           <span>点击作品查看详情</span>
         </div>
       </section>
 
-      {!demoEnabled ? (
-        <FeedbackState
-          kind="empty"
-          title="真实资料尚未接入"
-          description="此检查点仅提供独立演示空间。开启 VITE_DEMO_MODE 后可浏览合成收藏。"
-        />
-      ) : query.isPending ? (
+      {collection.isPending ? (
         <LoadingState
           onRetry={() => {
             setRetryScenario('normal');
-            void query.refetch();
+            collection.refetch();
           }}
         />
-      ) : query.isError ? (
+      ) : collection.error && !isDemo ? (
+        <ReadFailure error={collection.error} onRetry={collection.refetch} />
+      ) : collection.error ? (
         <FeedbackState
           kind="error"
           title="暂时未能读取作品库"
@@ -369,12 +375,14 @@ export function LibraryPage({
           action="重新加载"
           onAction={() => {
             setRetryScenario('normal');
-            void query.refetch();
+            collection.refetch();
           }}
         />
-      ) : data?.items.length ? (
+      ) : collection.count ? (
         <GameCollection
-          games={data.items}
+          count={collection.count}
+          gameAt={collection.gameAt}
+          onVisibleRange={collection.onVisibleRange}
           view={view}
           onFavorite={toggleFavorite}
           filterKey={JSON.stringify(filters) + size}
@@ -382,6 +390,8 @@ export function LibraryPage({
           onOpenGame={openGame}
           restore={restore}
         />
+      ) : !isDemo && !hasFilters ? (
+        <RealLibraryEmpty />
       ) : (
         <FeedbackState
           kind="empty"
@@ -402,10 +412,14 @@ export function LibraryPage({
       <footer className="library-footer">
         <span>
           <Monitor size={12} />
-          本地演示 · 不连接 Steam / DLsite
+          {isDemo
+            ? '本地演示 · 不连接 Steam / DLsite'
+            : isTestLibrary
+              ? '隔离测试库 · 不连接 Steam / DLsite'
+              : '本地资料库 · 尚未连接 Steam / DLsite'}
         </span>
         <button onClick={onAbout}>
-          {size.toLocaleString('zh-CN')} 款测试场景
+          {isDemo ? `${size.toLocaleString('zh-CN')} 款测试场景` : '资料库状态'}
           <ChevronDown size={12} />
         </button>
         <span>

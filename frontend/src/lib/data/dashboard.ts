@@ -1,6 +1,7 @@
 import { isOrdinaryGame } from './selectors';
 import {
   workKinds,
+  type DemoScenario,
   type Game,
   type GameStatus,
   type LibraryFilters,
@@ -60,6 +61,13 @@ export interface Recommendation {
 export interface PlaytimeBucket {
   label: string;
   count: number;
+}
+
+export interface DashboardRequest {
+  scope: DashboardScope;
+  batch?: number;
+  scenario?: DemoScenario;
+  signal?: AbortSignal;
 }
 
 export interface DashboardResult {
