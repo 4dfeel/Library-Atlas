@@ -16,6 +16,10 @@ const folderText: Record<FolderInfo['kind'], { title: string; note: string }> = 
     title: '下载缓存文件夹',
     note: '下载中的文件先放在这里，完成后移走。',
   },
+  extract: {
+    title: '解压文件夹',
+    note: '解压后的作品放在这里，每部作品一个文件夹。已有文件夹不会被覆盖。',
+  },
 };
 
 function FolderRow({ folder }: { folder: FolderInfo }) {

@@ -15,6 +15,7 @@ import threading
 import time
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, quote, urlparse
 
@@ -178,6 +179,12 @@ class FakeDownloadServer:
             return
         size = int(settings.get("size", 200_000))
         body = b"" if mode == "empty" else file_bytes(work, number, size)
+        served = settings.get("payload")
+        if served:
+            # Real archives from a test's own folder: one path, or one per part.
+            path = served[number - 1] if isinstance(served, list) else served
+            body = Path(path).read_bytes()
+            size = len(body)
         etag = '"v1"' if mode != "changed_etag" or seen == 0 else '"v2"'
         if mode == "weak_etag":
             etag = 'W/"v1"'

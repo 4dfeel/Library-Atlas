@@ -19,6 +19,7 @@ from app.repositories import app_settings
 _KEYS: dict[models.FolderKind, str] = {
     "library": "folder.library",
     "download_cache": "folder.download_cache",
+    "extract": "folder.extract",
 }
 
 
@@ -69,6 +70,19 @@ class FolderService:
     def describe_library(self) -> models.FolderOut:
         return self._describe("library")
 
+    def describe_extract(self) -> models.FolderOut:
+        return self._describe("extract")
+
+    def extract_root(self) -> Path:
+        chosen = self._chosen("extract")
+        if chosen is None:
+            raise AtlasError("folder_not_set", "请先选择解压文件夹。", status=409)
+        if not chosen.is_dir():
+            raise AtlasError(
+                "folder_missing", "解压文件夹现在不存在，可能是硬盘没有连接。", status=409
+            )
+        return chosen
+
     def download_targets(self) -> tuple[Path, Path]:
         """Where a new task will write: finished files and files in progress."""
         library = self._chosen("library")
@@ -114,7 +128,7 @@ class FolderService:
                 continue
             current = self._chosen(other)
             if current is not None and current.resolve() == resolved:
-                raise _invalid("作品文件夹和下载缓存不能是同一个文件夹。")
+                raise _invalid("作品、下载缓存和解压文件夹不能是同一个文件夹。")
         try:
             with tempfile.TemporaryFile(dir=resolved):
                 pass

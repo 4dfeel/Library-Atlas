@@ -194,6 +194,8 @@ download_tasks = Table(
     Column("created_at", String, nullable=False),
     Column("updated_at", String, nullable=False),
     Column("finished_at", String, nullable=True),
+    # Set when the user asked to unpack: its files move on together once all are done.
+    Column("flow_id", String, nullable=True),
     CheckConstraint(
         "state IN ('queued', 'resolving', 'downloading', 'verifying', 'paused', 'done', "
         "'failed', 'cancelled', 'reauth_required', 'interrupted')",
@@ -201,6 +203,38 @@ download_tasks = Table(
     ),
     Index("ix_download_tasks_work", "work_id", "part_number"),
     Index("ix_download_tasks_state", "state", "created_at"),
+)
+
+extract_tasks = Table(
+    "extract_tasks",
+    metadata,
+    Column("id", String, primary_key=True),
+    Column("work_id", String, ForeignKey("works.id"), nullable=False),
+    Column("source_work_id", String, nullable=False),
+    Column("account_fingerprint", String, nullable=True),
+    Column("state", String, nullable=False),
+    Column("attempt", Integer, nullable=False, server_default=text("1")),
+    Column("active_key", String, nullable=True, unique=True),
+    # Which finished downloads this unpacks. Never a path, and never from a request.
+    Column("source_task_ids", Text, nullable=False),
+    Column("root_dir", String, nullable=False),
+    Column("final_name", String, nullable=True),
+    Column("format", String, nullable=True),
+    Column("files_total", Integer, nullable=True),
+    Column("bytes_total", Integer, nullable=True),
+    Column("bytes_done", Integer, nullable=False, server_default=text("0")),
+    Column("error_code", String, nullable=True),
+    Column("cleanup_failed", Integer, nullable=False, server_default=text("0")),
+    Column("created_at", String, nullable=False),
+    Column("updated_at", String, nullable=False),
+    Column("finished_at", String, nullable=True),
+    CheckConstraint(
+        "state IN ('queued', 'checking', 'extracting', 'committing', 'done', 'not_needed', "
+        "'failed', 'cancelled', 'interrupted')",
+        name="ck_extract_tasks_state",
+    ),
+    Index("ix_extract_tasks_work", "work_id", "created_at"),
+    Index("ix_extract_tasks_state", "state", "created_at"),
 )
 
 library_entries = Table(

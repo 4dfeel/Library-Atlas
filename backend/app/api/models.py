@@ -279,7 +279,7 @@ class SyncStatus(ApiModel):
     job: SyncJob | None = None
 
 
-FolderKind = Literal["library", "download_cache"]
+FolderKind = Literal["library", "download_cache", "extract"]
 FolderStatus = Literal["ok", "not_set", "missing"]
 
 
@@ -341,6 +341,7 @@ class DownloadPlanOut(ApiModel):
     parts: list[int]
     total_bytes: int | None
     folder: FolderOut
+    extract_folder: FolderOut
     free_bytes: int | None
 
 
@@ -349,6 +350,53 @@ class DownloadCreate(ApiModel):
 
     work_id: Annotated[str, StringConstraints(min_length=1, max_length=128)]
     parts: Annotated[list[int], Field(max_length=500)] | None = None
+    again: bool = False
+    extract: bool = False  # Only ever from the user's own choice of "download and unpack".
+
+
+ExtractState = Literal[
+    "queued",
+    "checking",
+    "extracting",
+    "committing",
+    "done",
+    "not_needed",
+    "failed",
+    "cancelled",
+    "interrupted",
+]
+
+
+class ExtractTaskOut(ApiModel):
+    id: str
+    work_id: str
+    title: str
+    state: ExtractState
+    format: str | None
+    files_total: int | None
+    bytes_total: int | None
+    bytes_done: int
+    code: str | None
+    message: str | None
+    can_retry: bool
+    location: str | None
+    result_missing: bool
+    cleanup_failed: bool
+    created_at: str
+    finished_at: str | None
+
+
+class ExtractionsOut(ApiModel):
+    tasks: list[ExtractTaskOut]
+    active_count: int
+
+
+class ExtractCreate(ApiModel):
+    """Names a work, never a file: what gets unpacked is decided from its finished downloads."""
+
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, extra="forbid")
+
+    work_id: Annotated[str, StringConstraints(min_length=1, max_length=128)]
     again: bool = False
 
 

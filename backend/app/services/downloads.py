@@ -176,6 +176,8 @@ class DownloadQueue:
         self._wait_seconds = wait_seconds
         self._free_space = free_space
         self._on_shutdown = on_shutdown
+        # Told when every file of a download the user asked to unpack has finished.
+        self.on_flow_finished: Callable[[str], None] | None = None
         self._lock = threading.RLock()
         self._running: dict[str, _Control] = {}
         self._threads: dict[str, threading.Thread] = {}
@@ -339,6 +341,7 @@ class DownloadQueue:
             parts=[file.number for file in plan.files if file.number is not None],
             total_bytes=row.download_size,
             folder=self._folders.describe_library(),
+            extract_folder=self._folders.describe_extract(),
             free_bytes=self._free_bytes(),
         )
 
@@ -356,6 +359,8 @@ class DownloadQueue:
             work = self._downloadable_work(connection, body.work_id)
             account = accounts.get_account(connection)
         library, cache = self._folders.download_targets()
+        if body.extract:
+            self._folders.extract_root()  # Better to ask now than after a long download.
         plan = self._resolve_plan(work.source_work_id)
         if plan.kind == "serial":
             raise AtlasError(
@@ -377,8 +382,29 @@ class DownloadQueue:
             )
             for file in wanted
         ]
+        flow_id = uuid.uuid4().hex if body.extract else None
+        if flow_id:
+            with self._engine.begin() as connection:
+                connection.execute(
+                    update(download_tasks)
+                    .where(download_tasks.c.id.in_(ids))
+                    .values(flow_id=flow_id)
+                )
         self._pump()
+        self._flow_check(flow_id)
         return self.tasks(body.work_id) if ids else self.tasks()
+
+    def _flow_check(self, flow_id: str | None) -> None:
+        if not flow_id or self.on_flow_finished is None:
+            return
+        with self._engine.connect() as connection:
+            rows = connection.execute(
+                select(download_tasks.c.state, download_tasks.c.work_id).where(
+                    download_tasks.c.flow_id == flow_id
+                )
+            ).all()
+        if rows and all(row.state == "done" for row in rows):
+            self.on_flow_finished(rows[0].work_id)
 
     def _create_one(
         self,
@@ -799,6 +825,11 @@ class DownloadQueue:
             )
             self._mark_done(row.id, row.attempt, row.work_id, file_name=name)
         self._remove_quietly(part)
+        with self._engine.connect() as connection:
+            flow_id = connection.execute(
+                select(download_tasks.c.flow_id).where(download_tasks.c.id == row.id)
+            ).scalar()
+        self._flow_check(flow_id)
 
     def _move_to_final(
         self, row: Row[Any], source: Path, target: Path, name: str, digest: str, integrity: str

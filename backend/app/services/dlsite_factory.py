@@ -7,12 +7,14 @@ from app.adapters.dlsite.downloads import PlatformDownloadClient
 from app.adapters.dlsite.library import PlayLibraryClient
 from app.adapters.dlsite.login_host import BrowserLoginHost
 from app.adapters.dlsite.session import PlaySessionChecker
+from app.adapters.system.archives import find_seven_zip
 from app.adapters.system.folder_dialog import DialogFolderPicker, ExplorerFolderOpener
 from app.core.config import Settings
 from app.core.credentials import NAMESPACE, CredentialStoreError, WindowsCredentialStore
 from app.services.dlsite_auth import DlsiteAuth
 from app.services.dlsite_sync import DlsiteSync
 from app.services.downloads import DownloadQueue
+from app.services.extractions import ExtractionService
 from app.services.folders import FolderService
 
 
@@ -52,6 +54,10 @@ def build_dlsite_sync(settings: Settings, engine: Engine, auth: DlsiteAuth) -> D
         control = FakeControl(settings.data_dir)
         return DlsiteSync(engine, auth, lambda _cookies: FakeLibraryClient(control))
     return DlsiteSync(engine, auth, PlayLibraryClient)
+
+
+def build_extraction_service(engine: Engine, folders: FolderService) -> ExtractionService:
+    return ExtractionService(engine, folders, find_seven_zip)
 
 
 def build_download_queue(

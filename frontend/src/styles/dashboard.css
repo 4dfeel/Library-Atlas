@@ -1104,6 +1104,17 @@
   margin-top: 3px;
 }
 
+.download-extract {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+.download-extract .task-progress {
+  width: 180px;
+}
+
 .download-plan {
   display: grid;
   gap: 16px;

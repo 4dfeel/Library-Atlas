@@ -76,7 +76,7 @@ def test_test_profile_is_isolated_from_real_data(tmp_path: Path) -> None:
 def test_fresh_directory_becomes_ready_and_empty(empty_client) -> None:
     ready = empty_client.get("/api/v1/ready")
     assert ready.status_code == 200
-    assert ready.json() == {"status": "ready", "profile": "test", "schemaRevision": "0006"}
+    assert ready.json() == {"status": "ready", "profile": "test", "schemaRevision": "0007"}
     page = empty_client.get("/api/v1/works").json()
     assert page["items"] == []
     assert page["totalVisible"] == 0

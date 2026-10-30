@@ -172,10 +172,48 @@ export interface DownloadPlan {
   parts: number[];
   totalBytes: number | null;
   folder: FolderInfo;
+  extractFolder: FolderInfo;
   freeBytes: number | null;
 }
 
 export type DownloadAction = 'cancel' | 'pause' | 'retry' | 'open-folder';
+
+export type ExtractState =
+  | 'queued'
+  | 'checking'
+  | 'extracting'
+  | 'committing'
+  | 'done'
+  | 'not_needed'
+  | 'failed'
+  | 'cancelled'
+  | 'interrupted';
+
+export interface ExtractTask {
+  id: string;
+  workId: string;
+  title: string;
+  state: ExtractState;
+  format: string | null;
+  filesTotal: number | null;
+  bytesTotal: number | null;
+  bytesDone: number;
+  code: string | null;
+  message: string | null;
+  canRetry: boolean;
+  location: string | null;
+  resultMissing: boolean;
+  cleanupFailed: boolean;
+  createdAt: string;
+  finishedAt: string | null;
+}
+
+export interface ExtractionList {
+  tasks: ExtractTask[];
+  activeCount: number;
+}
+
+export type ExtractAction = 'cancel' | 'retry' | 'open-folder';
 
 export interface ServiceReady {
   status: 'ready' | 'not_ready';
@@ -311,8 +349,29 @@ export class RealLibrarySource implements LibrarySource {
     return apiWrite<DownloadPlan>('POST', `${workPath(workId)}/download-plan`);
   }
 
-  createDownload(workId: string, parts: number[] | null, again: boolean): Promise<DownloadList> {
-    return apiWrite<DownloadList>('POST', '/api/v1/downloads', { workId, parts, again });
+  createDownload(
+    workId: string,
+    parts: number[] | null,
+    again: boolean,
+    extract: boolean,
+  ): Promise<DownloadList> {
+    return apiWrite<DownloadList>('POST', '/api/v1/downloads', { workId, parts, again, extract });
+  }
+
+  extractions(signal?: AbortSignal): Promise<ExtractionList> {
+    return apiGet<ExtractionList>('/api/v1/extractions', undefined, signal);
+  }
+
+  startExtraction(workId: string, again: boolean): Promise<ExtractionList> {
+    return apiWrite<ExtractionList>('POST', '/api/v1/extractions', { workId, again });
+  }
+
+  extractionAction(id: string, action: ExtractAction): Promise<ExtractTask> {
+    return apiWrite<ExtractTask>('POST', `/api/v1/extractions/${encodeURIComponent(id)}/${action}`);
+  }
+
+  clearExtractions(): Promise<ExtractionList> {
+    return apiWrite<ExtractionList>('POST', '/api/v1/extractions/clear');
   }
 
   downloadAction(id: string, action: DownloadAction): Promise<DownloadTask> {

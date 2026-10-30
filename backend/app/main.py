@@ -30,10 +30,12 @@ from app.services.dlsite_factory import (
     build_dlsite_auth,
     build_dlsite_sync,
     build_download_queue,
+    build_extraction_service,
     build_folder_service,
 )
 from app.services.dlsite_sync import DlsiteSync
 from app.services.downloads import DownloadQueue
+from app.services.extractions import ExtractionService
 from app.services.folders import FolderService
 
 logger = logging.getLogger("atlas")
@@ -61,6 +63,7 @@ class ServiceState:
     sync: DlsiteSync | None = None
     covers: CoverCache | None = None
     downloads: DownloadQueue | None = None
+    extractions: ExtractionService | None = None
 
 
 def _error_body(
@@ -131,6 +134,15 @@ def _downloads(request: Request, _engine: EngineDep) -> DownloadQueue:
 
 
 DownloadsDep = Annotated[DownloadQueue, Depends(_downloads)]
+
+
+def _extractions(request: Request, _engine: EngineDep) -> ExtractionService:
+    service = _state(request).extractions
+    assert service is not None  # Built whenever the engine is.
+    return service
+
+
+ExtractionsDep = Annotated[ExtractionService, Depends(_extractions)]
 
 
 def _folders(request: Request, _engine: EngineDep) -> FolderService:
@@ -303,6 +315,32 @@ def _build_api() -> APIRouter:
     def open_download_folder(queue: DownloadsDep, task_id: str) -> models.DownloadTaskOut:
         return queue.open_folder(task_id)
 
+    @api.get("/extractions")
+    def list_extractions(service: ExtractionsDep) -> models.ExtractionsOut:
+        return service.tasks()
+
+    @api.post("/extractions", status_code=202)
+    def create_extraction(
+        service: ExtractionsDep, body: models.ExtractCreate
+    ) -> models.ExtractionsOut:
+        return service.start(body.work_id, again=body.again)
+
+    @api.post("/extractions/clear")
+    def clear_extractions(service: ExtractionsDep) -> models.ExtractionsOut:
+        return service.clear_finished()
+
+    @api.post("/extractions/{task_id}/cancel")
+    def cancel_extraction(service: ExtractionsDep, task_id: str) -> models.ExtractTaskOut:
+        return service.cancel(task_id)
+
+    @api.post("/extractions/{task_id}/retry")
+    def retry_extraction(service: ExtractionsDep, task_id: str) -> models.ExtractTaskOut:
+        return service.retry(task_id)
+
+    @api.post("/extractions/{task_id}/open-folder")
+    def open_extraction_folder(service: ExtractionsDep, task_id: str) -> models.ExtractTaskOut:
+        return service.open_folder(task_id)
+
     @api.get("/settings/folders")
     def get_folders(service: FoldersDep) -> models.FoldersOut:
         return service.folders()
@@ -367,6 +405,8 @@ def create_app(
                 state.engine, state.revision = opened.engine, opened.revision
                 state.not_ready_reason = None
                 state.folders = build_folder_service(settings, opened.engine)
+                state.extractions = build_extraction_service(opened.engine, state.folders)
+                state.extractions.recover()
                 state.dlsite = dlsite_factory(settings, opened.engine)
                 state.covers = CoverCache(settings.data_dir / "cache" / "covers")
                 if state.dlsite is not None:
@@ -377,11 +417,14 @@ def create_app(
                         settings, opened.engine, state.dlsite, state.folders
                     )
                     state.downloads.recover()
+                    state.downloads.on_flow_finished = state.extractions.flow_finished
                     state.dlsite.restore()
             except DatabaseNotReady as error:
                 state.not_ready_reason = error.reason
                 logger.error("database not ready: %s", error.reason)
         yield
+        if state.extractions is not None:
+            state.extractions.shutdown()
         if state.downloads is not None:
             state.downloads.shutdown()
         if state.sync is not None:

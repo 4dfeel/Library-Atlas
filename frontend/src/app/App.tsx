@@ -27,6 +27,7 @@ import {
   isActiveTask,
   useDemoTasks,
   useDownloads,
+  useExtractions,
   useDemoTaskSync,
   useModeCacheIsolation,
   useResetDemoEdits,
@@ -162,7 +163,10 @@ export function App() {
   );
   const demoRunning = useDemoTasks().filter(isActiveTask).length;
   const realDownloads = useDownloads();
-  const runningTasks = isDemo ? demoRunning : realDownloads.activeCount;
+  const realExtractions = useExtractions();
+  const runningTasks = isDemo
+    ? demoRunning
+    : realDownloads.activeCount + realExtractions.activeCount;
   useDemoTaskSync();
   useModeCacheIsolation();
   const editCount = aboutOpen ? getDemoEditCount(size) : 0;
@@ -323,7 +327,7 @@ export function App() {
                   </button>
                   {!isDemo && <AccountMenu />}
                   <span className="topbar-divider" />
-                  <Tooltip content={isDemo ? '下载与解压任务（演示）' : '下载任务'}>
+                  <Tooltip content={isDemo ? '下载与解压任务（演示）' : '下载与解压任务'}>
                     <Button
                       size="icon"
                       variant="ghost"

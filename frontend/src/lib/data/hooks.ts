@@ -23,6 +23,9 @@ import {
   type DownloadAction,
   type DownloadState,
   type DownloadTask,
+  type ExtractAction,
+  type ExtractState,
+  type ExtractTask,
   type SyncStatus,
 } from './real-source';
 import type { DemoScenario, DemoSize, Game, GameDetail, GameUpdate, LibraryFilters } from './types';
@@ -531,8 +534,8 @@ export function useDownloadActions() {
   const refresh = () => queryClient.invalidateQueries({ queryKey: downloadsKey });
   return {
     plan: (workId: string) => realSource.downloadPlan(workId),
-    create: async (workId: string, parts: number[] | null, again: boolean) => {
-      await realSource.createDownload(workId, parts, again);
+    create: async (workId: string, parts: number[] | null, again: boolean, extract: boolean) => {
+      await realSource.createDownload(workId, parts, again, extract);
       await refresh();
     },
     act: async (id: string, action: DownloadAction) => {
@@ -541,6 +544,55 @@ export function useDownloadActions() {
     },
     clear: async () => {
       await realSource.clearDownloads();
+      await refresh();
+    },
+  };
+}
+
+const extractActive = new Set<ExtractState>(['queued', 'checking', 'extracting', 'committing']);
+
+export function isExtractActive(task: Pick<ExtractTask, 'state'>) {
+  return extractActive.has(task.state);
+}
+
+const extractionsKey = [...realRoot, 'extractions'];
+
+/**
+ * The service's unpacking tasks, in real mode only. It stays awake while downloads run too:
+ * a download the user asked to unpack moves on to this queue without any further request.
+ */
+export function useExtractions() {
+  const isReal = useWorkspaceMode() === 'real';
+  const query = useQuery({
+    queryKey: extractionsKey,
+    queryFn: ({ signal }) => realSource.extractions(signal),
+    enabled: isReal,
+    retry: false,
+    refetchInterval: (current) => {
+      const downloads = current.state.data?.activeCount ?? 0;
+      return downloads ? 1_000 : 3_000;
+    },
+  });
+  return {
+    tasks: useMemo(() => query.data?.tasks ?? [], [query.data]),
+    activeCount: query.data?.activeCount ?? 0,
+  };
+}
+
+export function useExtractionActions() {
+  const queryClient = useQueryClient();
+  const refresh = () => queryClient.invalidateQueries({ queryKey: extractionsKey });
+  return {
+    start: async (workId: string, again: boolean) => {
+      await realSource.startExtraction(workId, again);
+      await refresh();
+    },
+    act: async (id: string, action: ExtractAction) => {
+      await realSource.extractionAction(id, action);
+      await refresh();
+    },
+    clear: async () => {
+      await realSource.clearExtractions();
       await refresh();
     },
   };

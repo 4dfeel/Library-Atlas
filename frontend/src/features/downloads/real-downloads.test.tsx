@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { setWorkspaceMode, type DownloadTask } from '@/lib/data';
+import { setWorkspaceMode, type DownloadTask, type ExtractTask } from '@/lib/data';
 import { RealTasksDialog } from './real-downloads';
 
 const task = (values: Partial<DownloadTask>): DownloadTask => ({
@@ -26,12 +26,12 @@ const task = (values: Partial<DownloadTask>): DownloadTask => ({
   ...values,
 });
 
-function show(tasks: DownloadTask[]) {
+function show(tasks: DownloadTask[], extractions: ExtractTask[] = []) {
   vi.stubGlobal(
     'fetch',
-    vi.fn(async () =>
+    vi.fn(async (url: string) =>
       Response.json({
-        tasks,
+        tasks: String(url).includes('extractions') ? extractions : tasks,
         activeCount: tasks.filter((entry) => entry.state === 'downloading').length,
       }),
     ),
@@ -86,11 +86,36 @@ describe('the download queue', () => {
         integrity: 'stream_end',
       }),
     ]);
-    const dialog = await screen.findByRole('dialog', { name: '下载' });
+    const dialog = await screen.findByRole('dialog', { name: '下载与解压' });
     expect(await within(dialog).findByText('已下载')).toBeInTheDocument();
     expect(within(dialog).getByText('完整性保障有限')).toBeInTheDocument();
     expect(dialog).not.toHaveTextContent('已安装');
     expect(dialog).not.toHaveTextContent('可玩');
+  });
+
+  it('keeps a failed unpacking apart from the finished download', async () => {
+    const failed: ExtractTask = {
+      id: 'x',
+      workId: 'w1',
+      title: '解压作品',
+      state: 'failed',
+      format: 'rar',
+      filesTotal: 3,
+      bytesTotal: 2048,
+      bytesDone: 0,
+      code: 'encrypted',
+      message: '这个压缩包有密码，暂不支持。',
+      canRetry: true,
+      location: null,
+      resultMissing: false,
+      cleanupFailed: false,
+      createdAt: '2026-10-31T00:00:00Z',
+      finishedAt: null,
+    };
+    show([task({ state: 'done', bytesDone: 10, fileName: 'a.zip' })], [failed]);
+    expect(await screen.findByText('这个压缩包有密码，暂不支持。')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '重新解压' })).toBeInTheDocument();
+    expect(screen.getByText('已下载')).toBeInTheDocument();
   });
 
   it('says so when a finished file has been moved', async () => {
