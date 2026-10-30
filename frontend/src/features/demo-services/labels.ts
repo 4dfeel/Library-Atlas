@@ -18,6 +18,13 @@ export const phaseLabels: Record<TaskPhase, string> = {
   cancelled: '已取消',
 };
 
+/** Step names in the progress trail; nouns, so a cancelled task does not read as running. */
+export const stepLabels: Partial<Record<TaskPhase, string>> = {
+  downloading: '下载',
+  verifying: '校验',
+  extracting: '解压',
+};
+
 export function taskSummary(task: DemoTask): string {
   const percent = task.progress === null ? '' : ` ${Math.round(task.progress * 100)}%`;
   if (task.phase === 'downloading') return `下载中${percent}`;

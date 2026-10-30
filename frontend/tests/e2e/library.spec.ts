@@ -1,8 +1,6 @@
-import { expect, test, type Page, type TestInfo } from '@playwright/test';
-import { mkdir, writeFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { expect, test, type Page } from '@playwright/test';
+import { recordLayout, screenshot, writeEvidence } from './evidence';
 
-const evidenceRoot = resolve('../artifacts/checkpoint-1');
 const cards = (page: Page) => page.locator('[data-game-card]');
 const scroll = (page: Page) => page.locator('[data-library-scroll]');
 
@@ -10,14 +8,6 @@ async function ready(page: Page, url = '/library') {
   await page.goto(url);
   await expect(cards(page).first()).toBeVisible();
   await page.evaluate(() => document.fonts.ready);
-}
-
-async function screenshot(page: Page, info: TestInfo, name: string) {
-  const dir = resolve(evidenceRoot, 'screenshots', info.project.name);
-  await mkdir(dir, { recursive: true });
-  const path = resolve(dir, `${name}.png`);
-  await page.screenshot({ path, animations: 'disabled' });
-  await info.attach(name, { path, contentType: 'image/png' });
 }
 
 async function noOverflow(page: Page) {
@@ -109,6 +99,14 @@ test('grid, missing covers and long titles across viewport/DPR matrix', async ({
   expect(clamp.height).toBeLessThanOrEqual(clamp.line * 2 + 1);
   await noOverflow(page);
   await screenshot(page, info, 'library-long-title');
+  await recordLayout(page, info, 'library-grid', [
+    'no horizontal scroll',
+    `measured columns ${columns} within [${min}, ${max}]`,
+    'card covers 176–240px wide, 2:3',
+    'equal card heights, no overlap',
+    'missing cover placeholder visible',
+    'long title clamped to 2 lines',
+  ]);
   expect(external).toEqual([]);
 });
 
@@ -117,6 +115,7 @@ test('list view, real filters, empty results and privacy', async ({ page }, info
   await expect(page.getByRole('list', { name: '作品列表' })).toBeVisible();
   await noOverflow(page);
   await screenshot(page, info, 'library-list');
+  await recordLayout(page, info, 'library-list', ['no horizontal scroll', 'rows inside viewport']);
   await page.getByRole('combobox', { name: '类型' }).selectOption('探索');
   await page.getByRole('combobox', { name: '本机状态' }).selectOption('installed');
   await expect(page.locator('.list-genre').first()).toHaveText('探索');
@@ -326,8 +325,5 @@ test('1500/5000 virtualization and measured browser performance', async ({
       viewport: page.viewportSize(),
     });
   }
-  await mkdir(evidenceRoot, { recursive: true });
-  const path = resolve(evidenceRoot, 'performance.json');
-  await writeFile(path, JSON.stringify(measurements, null, 2));
-  await info.attach('performance', { path, contentType: 'application/json' });
+  await writeEvidence(info, 'library.json', measurements);
 });

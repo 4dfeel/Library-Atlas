@@ -143,6 +143,15 @@
   padding-top: 18px;
   border-top: 1px solid #f2f5fa1a;
 }
+.dash-stats,
+.dash-insights,
+.dash-recent,
+.dash-tonight {
+  transition: opacity 120ms ease;
+}
+.dashboard-page[aria-busy='true'] :is(.dash-stats, .dash-insights, .dash-recent, .dash-tonight) {
+  opacity: 0.55;
+}
 .dash-stat {
   min-width: 0;
   padding: 0 clamp(16px, 1.6cqi, 36px);
@@ -204,9 +213,10 @@
 }
 .dash-section-heading {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 8px 12px;
   margin-bottom: 16px;
 }
 .dash-section-heading h2 {
@@ -214,6 +224,8 @@
   align-items: center;
   gap: 8px;
   margin: 0;
+  /* Keep the heading on one line; the action wraps below in a narrow panel instead. */
+  white-space: nowrap;
   font-size: 17px;
   font-weight: 500;
 }
@@ -316,7 +328,8 @@
 }
 .dash-insights {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  /* At most six tracks that span the full width; auto-fill alone left an empty seventh at 4K. */
+  grid-template-columns: repeat(auto-fill, minmax(max(300px, calc((100% - 5 * 48px) / 6)), 1fr));
   gap: 40px 48px;
   padding-top: 32px;
   border-top: 1px solid color-mix(in srgb, var(--border) 45%, transparent);
@@ -724,7 +737,8 @@
   gap: 6px;
   margin-left: auto;
 }
-.task-empty {
+.task-empty,
+.service-unavailable {
   display: flex;
   align-items: center;
   gap: 8px;

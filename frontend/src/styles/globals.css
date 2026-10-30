@@ -1046,7 +1046,9 @@ kbd {
 .list-heading,
 .game-list-row {
   display: grid;
-  grid-template-columns: minmax(260px, 1fr) 160px 130px 150px 50px;
+  /* Name capped so wide screens keep a row's facts next to its title (1080P is unchanged). */
+  grid-template-columns: minmax(260px, 1100px) 160px 130px 150px 50px;
+  justify-content: start;
   align-items: center;
   gap: 16px;
   padding: 0 20px;

@@ -12,7 +12,7 @@ import {
 } from '@/lib/data';
 import { gameHref } from '@/lib/router';
 import { formatBytes } from '@/lib/utils';
-import { phaseLabels, taskSummary } from './labels';
+import { phaseLabels, stepLabels, taskSummary } from './labels';
 
 /** Determinate bar with a percentage, or an indeterminate bar without fake numbers. */
 export function TaskProgress({ task }: { task: DemoTask }) {
@@ -62,7 +62,7 @@ function TaskRow({ task, size }: { task: DemoTask; size: DemoSize }) {
               key={step}
               className={task.phase === step ? 'is-current' : reached ? 'is-done' : ''}
             >
-              {phaseLabels[step]}
+              {stepLabels[step]}
             </li>
           );
         })}
@@ -96,12 +96,28 @@ export function TasksDialog({
   open,
   onOpenChange,
   size,
+  demoEnabled,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   size: DemoSize;
+  demoEnabled: boolean;
 }) {
   const tasks = useDemoTasks();
+  if (!demoEnabled)
+    return (
+      <Dialog
+        open={open}
+        onOpenChange={onOpenChange}
+        title="下载与解压"
+        description="演示模式已关闭，不显示任何演示任务。"
+      >
+        <p className="service-unavailable">
+          <Download size={16} />
+          真实下载与解压尚未接入。
+        </p>
+      </Dialog>
+    );
   return (
     <Dialog
       open={open}

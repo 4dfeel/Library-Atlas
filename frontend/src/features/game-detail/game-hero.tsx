@@ -19,6 +19,7 @@ import {
   openActionLabels,
   platformLabels,
   statusLabels,
+  usageVerbs,
 } from '@/lib/utils';
 
 type Notify = (message: string, tone?: 'success' | 'error') => void;
@@ -238,8 +239,13 @@ export function GameHero({
                   <Fact label="作品类型">
                     <strong className="fact-date">{kindLabels[game.kind]}</strong>
                   </Fact>
-                  <Fact label="制作方">
-                    <strong className="fact-date">{game.maker}</strong>
+                  {/* Same usage record the Dashboard's recent row uses; maker is in the archive. */}
+                  <Fact label={`最近${usageVerbs[game.kind]}`}>
+                    {lastPlayed ? (
+                      <strong className="fact-date">{lastPlayed}</strong>
+                    ) : (
+                      <span className="fact-empty">暂无记录</span>
+                    )}
                   </Fact>
                   <Fact label="发售日">
                     {formatDate(game.releaseDate) ? (

@@ -44,6 +44,13 @@ function TextAlternative({ rows }: { rows: [string, string][] }) {
   );
 }
 
+/** "50–100 小时" → "50–100": the unit sits in the module note, so ticks stay apart at 300 px. */
+const shortHours = (label: string) =>
+  label
+    .replace(/\s*小时以上$/, '+')
+    .replace(/\s*小时$/, '')
+    .replace(/^<\s*/, '<');
+
 export function PlaytimeChart({ buckets }: { buckets: DashboardResult['playtimeBuckets'] }) {
   const reduceMotion = useReducedMotion();
   return (
@@ -52,7 +59,14 @@ export function PlaytimeChart({ buckets }: { buckets: DashboardResult['playtimeB
         <ResponsiveContainer width="100%" height={196}>
           <BarChart data={buckets} margin={{ top: 22, right: 4, bottom: 0, left: -18 }}>
             <CartesianGrid vertical={false} stroke={colors.border} strokeOpacity={0.5} />
-            <XAxis dataKey="label" tick={axisTick} tickLine={false} axisLine={false} interval={0} />
+            <XAxis
+              dataKey="label"
+              tick={axisTick}
+              tickLine={false}
+              axisLine={false}
+              interval={0}
+              tickFormatter={shortHours}
+            />
             <YAxis tick={axisTick} tickLine={false} axisLine={false} allowDecimals={false} />
             <Tooltip
               cursor={{ fill: colors.surface, opacity: 0.6 }}

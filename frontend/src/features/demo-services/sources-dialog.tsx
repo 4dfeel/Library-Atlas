@@ -140,30 +140,44 @@ export function SourcesDialog({
   open,
   onOpenChange,
   size,
+  demoEnabled,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   size: DemoSize;
+  demoEnabled: boolean;
 }) {
   const connections = useConnections();
   // Same cached, privacy-filtered snapshot the Dashboard uses.
-  const sources = useDashboard('all', { size }).data?.sources;
+  const sources = useDashboard('all', { size, enabled: demoEnabled }).data?.sources;
   const counts = sources && { steam: sources.steam.works, dlsite: sources.dlsite.works };
   return (
     <Dialog
       open={open}
       onOpenChange={onOpenChange}
       title="来源连接"
-      description="仅演示：不会要求、接收或保存任何密码、Cookie 或令牌。真实连接将在后续阶段由你在平台官方页面登录完成。"
+      description={
+        demoEnabled
+          ? '仅演示：不会要求、接收或保存任何密码、Cookie 或令牌。真实连接将在后续阶段由你在平台官方页面登录完成。'
+          : '真实连接将在后续阶段由你在平台官方页面登录完成；不会要求、接收或保存任何密码。'
+      }
     >
-      <div className="sources-dialog">
-        <SourceRow connection={connections.steam} works={counts?.steam} />
-        <SourceRow connection={connections.dlsite} works={counts?.dlsite} />
-        <p className="dialog-footnote">
-          <PlugZap size={14} />
-          状态保存在本浏览器的演示存储中，与未来真实会话完全隔离。
+      {demoEnabled ? (
+        <div className="sources-dialog">
+          <SourceRow connection={connections.steam} works={counts?.steam} />
+          <SourceRow connection={connections.dlsite} works={counts?.dlsite} />
+          <p className="dialog-footnote">
+            <PlugZap size={14} />
+            状态保存在本浏览器的演示存储中，与未来真实会话完全隔离。
+          </p>
+        </div>
+      ) : (
+        // Demo sessions are never shown as real connections.
+        <p className="service-unavailable">
+          <PlugZap size={16} />
+          真实来源连接尚未接入，Steam 与 DLsite 均未连接。
         </p>
-      </div>
+      )}
     </Dialog>
   );
 }

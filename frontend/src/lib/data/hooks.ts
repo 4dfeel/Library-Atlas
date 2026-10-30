@@ -83,9 +83,15 @@ export function getDemoEditCount(size: DemoSize): number {
 
 export function useDashboard(
   scope: DashboardScope,
-  { size, scenario = 'normal', batch = 0 }: LibraryOptions & { batch?: number },
+  {
+    size,
+    scenario = 'normal',
+    batch = 0,
+    enabled = true,
+  }: LibraryOptions & { batch?: number; enabled?: boolean },
 ) {
   return useQuery({
+    enabled,
     queryKey: [...demoRoot, size, 'ordinary-dashboard', scope, batch, scenario],
     queryFn: ({ signal }) => getDemoSource(size).dashboard({ scope, batch, scenario, signal }),
     staleTime: 60_000,

@@ -279,7 +279,9 @@ export function App() {
                     {demoEnabled ? 'DEMO · 演示模式' : '真实数据尚未接入'}
                   </span>
                   <span className="topbar-divider" />
-                  <Tooltip content="下载与解压任务（演示）">
+                  <Tooltip
+                    content={demoEnabled ? '下载与解压任务（演示）' : '下载与解压（尚未接入）'}
+                  >
                     <Button
                       size="icon"
                       variant="ghost"
@@ -436,8 +438,18 @@ export function App() {
               </motion.div>
             )}
           </AnimatePresence>
-          <SourcesDialog open={sourcesOpen} onOpenChange={setSourcesOpen} size={size} />
-          <TasksDialog open={tasksOpen} onOpenChange={setTasksOpen} size={size} />
+          <SourcesDialog
+            open={sourcesOpen}
+            onOpenChange={setSourcesOpen}
+            size={size}
+            demoEnabled={demoEnabled}
+          />
+          <TasksDialog
+            open={tasksOpen}
+            onOpenChange={setTasksOpen}
+            size={size}
+            demoEnabled={demoEnabled}
+          />
         </TooltipPrimitive.Provider>
       </ShellContext.Provider>
     </MotionConfig>

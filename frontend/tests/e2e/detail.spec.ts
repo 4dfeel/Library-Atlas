@@ -1,8 +1,6 @@
-import { expect, test, type Page, type TestInfo } from '@playwright/test';
-import { mkdir, writeFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { expect, test, type Page } from '@playwright/test';
+import { noPrivateData, recordLayout, screenshot, writeEvidence } from './evidence';
 
-const evidenceRoot = resolve('../artifacts/checkpoint-2');
 const title = (page: Page) => page.getByTestId('detail-title');
 const libraryScroll = (page: Page) => page.locator('[data-library-scroll]');
 const searchBox = (page: Page) => page.getByRole('textbox', { name: '搜索作品' });
@@ -31,14 +29,6 @@ async function openDetail(page: Page, id: string, query = '') {
       (image) => image.complete,
     ),
   );
-}
-
-async function screenshot(page: Page, info: TestInfo, name: string) {
-  const dir = resolve(evidenceRoot, 'screenshots', info.project.name);
-  await mkdir(dir, { recursive: true });
-  const path = resolve(dir, `${name}.png`);
-  await page.screenshot({ path, animations: 'disabled' });
-  await info.attach(name, { path, contentType: 'image/png' });
 }
 
 type Box = { x: number; y: number; right: number; bottom: number; width: number; height: number };
@@ -86,11 +76,6 @@ async function detailLayout(page: Page) {
   expect(body).toBeLessThanOrEqual(900);
 }
 
-async function noPrivateData(page: Page) {
-  await expect(page.locator('body')).not.toContainText('PRIVATE_SENTINEL');
-  expect(await page.locator('body').ariaSnapshot()).not.toContain('PRIVATE_SENTINEL');
-}
-
 test('complete detail across the viewport/DPR matrix', async ({ page }, info) => {
   const external: string[] = [];
   page.on('request', (request) => {
@@ -106,16 +91,18 @@ test('complete detail across the viewport/DPR matrix', async ({ page }, info) =>
   await detailLayout(page);
   await noPrivateData(page);
   await screenshot(page, info, 'detail-complete');
+  await recordLayout(page, info, 'detail-complete', [
+    'no horizontal scroll',
+    'title/cover/actions/back inside viewport and not overlapping',
+    'cover 2:3; 1440px local backdrop',
+    'body measure <= 900px',
+  ]);
   await page.locator('.detail-page').evaluate((element) => element.scrollTo({ top: 99999 }));
   await screenshot(page, info, 'detail-complete-body');
   expect(external).toEqual([]);
 });
 
-test('edge states render honest semantics without overflow', async ({ page }, info) => {
-  test.skip(
-    !['1080p', 'narrow', '4k-200'].includes(info.project.name),
-    'Representative states: 1080P, 1280×720 and one high-DPR viewport.',
-  );
+test('missing art and long mixed titles across the viewport/DPR matrix', async ({ page }, info) => {
   await openDetail(page, samples.noBackdrop);
   await expect(page.locator('.detail-hero')).toHaveAttribute('aria-labelledby', 'detail-title');
   await expect(page.locator('[data-backdrop="ambient"]')).toBeVisible();
@@ -134,8 +121,32 @@ test('edge states render honest semantics without overflow', async ({ page }, in
   await detailLayout(page);
   await screenshot(page, info, 'detail-no-art');
 
-  await openDetail(page, samples.unplayed);
+  // Chinese, Japanese and English in one title; and one with no break opportunities.
+  await openDetail(page, samples.longTitle);
+  await expect(title(page)).toHaveText(
+    '跨越星海的最后一封信：遠い銀河の向こうへ — A Journey Beyond the Infinite Horizon · 完整典藏纪念版',
+  );
+  await detailLayout(page);
+  await screenshot(page, info, 'detail-long-title');
+  await openDetail(page, 'demo-00030');
+  await detailLayout(page);
+  await screenshot(page, info, 'detail-long-title-unbroken');
+  await recordLayout(page, info, 'detail-art-and-titles', [
+    'no horizontal scroll',
+    'title/cover/actions/back inside viewport and not overlapping',
+    'cover 2:3',
+    'title wraps without clipping',
+    'body measure <= 900px',
+  ]);
+});
+
+test('edge states render honest semantics without overflow', async ({ page }, info) => {
+  test.skip(
+    !['1080p', 'narrow', '4k-200'].includes(info.project.name),
+    'Representative states: 1080P, 1280×720 and one high-DPR viewport.',
+  );
   const facts = page.locator('.hero-facts');
+  await openDetail(page, samples.unplayed);
   await expect(facts).toContainText('尚未开始');
   await expect(facts).toContainText('暂无记录');
   await expect(page.getByTestId('detail-status')).toHaveText('未开始');
@@ -146,13 +157,6 @@ test('edge states render honest semantics without overflow', async ({ page }, in
   await expect(page.getByTestId('achievements')).toContainText('不以 0% 显示');
   await expect(page.getByRole('progressbar')).toHaveCount(0);
   await screenshot(page, info, 'detail-no-achievements');
-
-  await openDetail(page, samples.longTitle);
-  await expect(title(page)).toHaveText(/A Journey Beyond the Infinite Horizon · 完整典藏纪念版$/);
-  await detailLayout(page);
-  await screenshot(page, info, 'detail-long-title');
-  await openDetail(page, 'demo-00030');
-  await detailLayout(page);
 
   await openDetail(page, samples.noRecord);
   await expect(page.getByText('未评分')).toBeVisible();
@@ -168,7 +172,10 @@ test('edge states render honest semantics without overflow', async ({ page }, in
 });
 
 test('loading, error, unavailable and private IDs', async ({ page }, info) => {
-  test.skip(!['1080p', 'narrow'].includes(info.project.name), 'Feedback states at 1080P/720P.');
+  test.skip(
+    !['1080p', 'narrow', '4k-200'].includes(info.project.name),
+    'Feedback states at 1080P, 720P and DPR 2.',
+  );
   await page.goto(`/library/${samples.complete}?state=loading`);
   await expect(page.getByRole('status', { name: '正在读取作品详情' })).toBeVisible();
   expect(
@@ -360,7 +367,10 @@ test('demo edits sync with the Library, persist, fail visibly and reset', async 
 });
 
 test('failed images fall back once without broken icons or retries', async ({ page }, info) => {
-  test.skip(!['1080p', '4k-200'].includes(info.project.name), 'Checked at DPR 1 and 2.');
+  test.skip(
+    !['1080p', 'narrow', '4k-200'].includes(info.project.name),
+    'Checked at 1080P, 720P and DPR 2.',
+  );
   const attempts = new Map<string, number>();
   await page.route(/\/demo\/(covers|backdrops)\//, (route) => {
     const url = route.request().url();
@@ -470,10 +480,7 @@ test('detail open/return timing at 1500 and 5000 records', async ({ page, browse
     for (const value of [...openSamples, ...backSamples]) expect(value).toBeLessThan(1000);
     expect(Math.max(...coverRequests)).toBeLessThanOrEqual(2);
   }
-  await mkdir(evidenceRoot, { recursive: true });
-  const path = resolve(evidenceRoot, 'performance.json');
-  await writeFile(path, JSON.stringify(results, null, 2));
-  await info.attach('performance', { path, contentType: 'application/json' });
+  await writeEvidence(info, 'detail.json', results);
 });
 
 test('work-kind tabs, platform filter and a DLsite detail', async ({ page }, info) => {
@@ -501,11 +508,62 @@ test('work-kind tabs, platform filter and a DLsite detail', async ({ page }, inf
 
   await openDetail(page, 'demo-00027');
   await expect(page.locator('.platform-chip')).toHaveText('DLsite');
-  await expect(page.locator('.hero-facts')).toContainText('制作方');
+  await expect(page.locator('.hero-facts')).toContainText('最近收听');
   await expect(page.locator('.hero-facts')).not.toContainText('累计游玩');
   await expect(page.getByRole('heading', { name: /成就进度/ })).toHaveCount(0);
   await expect(page.locator('.hero-actions')).toContainText('播放作品');
   await expect(page.locator('.hero-actions')).toContainText('未接入 DLsite');
   await detailLayout(page);
   await screenshot(page, info, 'detail-dlsite');
+});
+
+test('every source and work kind shows only the fields that apply', async ({ page }, info) => {
+  test.skip(
+    !['1080p', 'narrow', '4k-200'].includes(info.project.name),
+    'Representative states: 1080P, 1280×720 and one high-DPR viewport.',
+  );
+  const cases = [
+    { id: 'demo-00001', name: 'steam-game', kind: '游戏', usage: '最近游玩', action: '启动游戏' },
+    { id: 'demo-00033', name: 'dlsite-game', kind: '游戏', usage: '最近游玩', action: '启动游戏' },
+    {
+      id: 'demo-00042',
+      name: 'dlsite-image',
+      kind: '漫画/图像',
+      usage: '最近阅读',
+      action: '浏览作品',
+    },
+    { id: 'demo-00027', name: 'dlsite-audio', kind: '音声', usage: '最近收听', action: '播放作品' },
+    { id: 'demo-00048', name: 'dlsite-video', kind: '视频', usage: '最近观看', action: '播放作品' },
+    {
+      id: 'demo-00054',
+      name: 'dlsite-other',
+      kind: '其他',
+      usage: '最近打开',
+      action: '打开文件夹',
+    },
+  ];
+  for (const sample of cases) {
+    await openDetail(page, sample.id);
+    const steam = sample.name.startsWith('steam');
+    await expect(page.locator('.platform-chip')).toHaveText(steam ? 'Steam' : 'DLsite');
+    await expect(page.locator('.hero-eyebrow')).toContainText(`${sample.kind} · `);
+    await expect(page.locator('.hero-facts')).toContainText(sample.usage);
+    await expect(page.locator('.hero-actions')).toContainText(sample.action);
+    // Game-only fields appear for Steam games only; nothing is filled with fake values.
+    await expect(page.locator('.hero-facts')).toContainText(steam ? '累计游玩' : '作品类型');
+    if (!steam) await expect(page.locator('.hero-facts')).not.toContainText('累计游玩');
+    await expect(page.getByTestId('achievements')).toHaveCount(steam ? 1 : 0);
+    await expect(page.getByTestId('download-action')).toHaveCount(steam ? 0 : 1);
+    if (sample.id === 'demo-00048')
+      await expect(page.getByTestId('download-action')).toContainText('仅限 DLsite 官方阅读器');
+    await detailLayout(page);
+    await noPrivateData(page);
+    await screenshot(page, info, `detail-kind-${sample.name}`);
+  }
+  await recordLayout(page, info, 'detail-kinds', [
+    'Steam/DLsite × game/image/audio/video/other',
+    'kind-specific usage label and open action',
+    'no play time/achievements/download where not applicable',
+    'detail layout checks',
+  ]);
 });

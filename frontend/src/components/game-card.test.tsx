@@ -71,7 +71,16 @@ describe('GameCard', () => {
       </TooltipPrimitive.Provider>,
     );
     const link = screen.getByRole('link', { name: game.title });
+    // Stand in for the browser after React: jsdom cannot open a new tab.
+    let leftToBrowser = false;
+    const browserDefault = (event: MouseEvent) => {
+      leftToBrowser = !event.defaultPrevented;
+      event.preventDefault();
+    };
+    window.addEventListener('click', browserDefault);
     fireEvent.click(link, { ctrlKey: true });
+    window.removeEventListener('click', browserDefault);
+    expect(leftToBrowser).toBe(true);
     expect(pushState).not.toHaveBeenCalled();
     fireEvent.click(link);
     expect(onOpen).toHaveBeenCalledOnce();

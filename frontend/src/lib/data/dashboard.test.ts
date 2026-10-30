@@ -40,6 +40,28 @@ describe('identity and capabilities', () => {
   });
 });
 
+describe('demo dataset', () => {
+  it('keeps the documented cover, backdrop, privacy and source distribution', () => {
+    for (const size of [1500, 5000] as const) {
+      const rows = generateDemoGames(size);
+      const count = (match: (game: Game) => boolean) => rows.filter(match).length;
+      // 24 hand-made covers; the rest procedural; ~9% deliberately missing.
+      expect(count((game) => game.cover.kind === 'art')).toBe(24);
+      const missing = count((game) => game.cover.kind === 'missing') / size;
+      expect(missing).toBeGreaterThanOrEqual(0.08);
+      expect(missing).toBeLessThanOrEqual(0.1);
+      expect(count((game) => game.background === null) / size).toBeCloseTo(0.2, 2);
+      expect(count((game) => game.visibility !== 'normal')).toBe(size === 1500 ? 37 : 128);
+      // Same seed, same output.
+      expect(generateDemoGames(size)).toEqual(rows);
+    }
+    const visible = ordinary;
+    expect(visible).toHaveLength(1463);
+    expect(visible.filter((game) => game.platform === 'steam')).toHaveLength(984);
+    expect(visible.filter((game) => game.platform === 'dlsite')).toHaveLength(479);
+  });
+});
+
 describe('dashboard aggregation', () => {
   it('applies privacy before every count, pick and chart', () => {
     for (const scope of dashboardScopes) {

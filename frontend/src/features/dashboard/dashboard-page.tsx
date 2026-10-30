@@ -612,7 +612,14 @@ export function DashboardPage({ size, demoEnabled }: { size: DemoSize; demoEnabl
     : null;
   const libraryAll = libraryHrefFor(size, scopeLibraryFilters(scope));
   return (
-    <main className="dashboard-page" data-testid="dashboard" data-scope={scope}>
+    <main
+      className="dashboard-page"
+      data-testid="dashboard"
+      data-scope={scope}
+      // The previous range stays on screen, dimmed, until the new one aggregates.
+      data-ready={!query.isPlaceholderData}
+      aria-busy={query.isPlaceholderData}
+    >
       <section className="dash-hero" aria-labelledby="dash-title">
         {featured ? (
           <HeroBackdrop key={featured.id} game={featured} />
@@ -681,8 +688,8 @@ export function DashboardPage({ size, demoEnabled }: { size: DemoSize; demoEnabl
                   游玩时长分布
                 </h2>
                 <p className="dash-module-note">
-                  仅含时长大于 0 的游戏；{data.totals.unstartedGames.toLocaleString('zh-CN')}{' '}
-                  款未开始、
+                  横轴单位：小时。仅含时长大于 0 的游戏；
+                  {data.totals.unstartedGames.toLocaleString('zh-CN')} 款未开始、
                   {data.totals.unknownPlaytimeGames.toLocaleString('zh-CN')} 款无记录未计入。
                 </p>
                 {data.totals.playedGames ? (

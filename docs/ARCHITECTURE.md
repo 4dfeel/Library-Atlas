@@ -137,3 +137,4 @@ scripts/                 # Windows 启动、构建和检查
 - `selectDashboard` 为纯函数：先可见性过滤，再按范围（all / games / steam / dlsite-games / dlsite-media）聚合；每个范围对应一组 Library 筛选（新增 `kind=non-game`），计数一致性有单测。
 - `demo-connections`、`demo-tasks` 为页面级单例外部 store（`useSyncExternalStore`）：一个任务服务、一个计时器，任务按作品去重，取消后不再完成，刷新丢弃未完成任务；完成结果写入演示编辑存储的 `downloaded`（v1 增量字段，不清空既有修改）。连接状态只保存粗粒度状态到 localStorage，不含任何凭据。
 - 以上均为前端演示边界，不代表后端设计已落地。真实认证、会话存储、库同步、下载器与文件系统操作仍属 Phase 2 及以后，按 §9 的约束在后端实现。
+- 检查点 4 补充：`VITE_DEMO_MODE=false` 时来源连接与下载任务弹层不渲染任何演示状态（只说明“尚未接入”），首页聚合查询也不执行；首页范围切换期间的占位数据以 `data-ready=false` / `aria-busy` 标示，测试与性能计时以真实结果到位为准。

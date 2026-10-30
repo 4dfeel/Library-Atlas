@@ -31,9 +31,7 @@ jobs:
         with:
           name: phase-1-windows-evidence
           path: |
-            artifacts/checkpoint-1/
-            artifacts/checkpoint-2/
-            artifacts/checkpoint-3/
+            artifacts/phase-1-acceptance/
             frontend/playwright-report/
             frontend/test-results/
           retention-days: 7

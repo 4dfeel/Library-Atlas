@@ -1,8 +1,6 @@
-import { expect, test, type Page, type TestInfo } from '@playwright/test';
-import { mkdir, writeFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { expect, test, type Page } from '@playwright/test';
+import { recordLayout, screenshot, writeEvidence } from './evidence';
 
-const evidenceRoot = resolve('../artifacts/checkpoint-3');
 const dashboard = (page: Page) => page.getByTestId('dashboard');
 
 async function openDashboard(page: Page, query = '') {
@@ -14,14 +12,6 @@ async function openDashboard(page: Page, query = '') {
       (image) => image.complete,
     ),
   );
-}
-
-async function screenshot(page: Page, info: TestInfo, name: string) {
-  const dir = resolve(evidenceRoot, 'screenshots', info.project.name);
-  await mkdir(dir, { recursive: true });
-  const path = resolve(dir, `${name}.png`);
-  await page.screenshot({ path, animations: 'disabled' });
-  await info.attach(name, { path, contentType: 'image/png' });
 }
 
 async function scrollMain(page: Page, top: number) {
@@ -68,6 +58,17 @@ async function layoutChecks(page: Page) {
     if (inner && outer)
       expect(inner.x + inner.width).toBeLessThanOrEqual(outer.x + outer.width + 1);
   }
+  // Horizontal axis ticks never run into each other.
+  const ticks = await page
+    .locator('[data-chart="playtime"] .recharts-xAxis .recharts-cartesian-axis-tick text')
+    .evaluateAll((nodes) =>
+      nodes.map((node) => {
+        const r = node.getBoundingClientRect();
+        return { x: r.x, right: r.right };
+      }),
+    );
+  for (let index = 1; index < ticks.length; index++)
+    expect(ticks[index]!.x).toBeGreaterThanOrEqual(ticks[index - 1]!.right + 2);
 }
 
 test('dashboard across the viewport/DPR matrix', async ({ page }, info) => {
@@ -98,6 +99,28 @@ test('dashboard across the viewport/DPR matrix', async ({ page }, info) => {
   await scrollMain(page, 99999);
   await expect(page.locator('[data-chart="playtime"] svg').first()).toBeVisible();
   await layoutChecks(page);
+  // Wide layouts use more insight columns; type stays within its clamp instead of growing with vw.
+  const insightColumns = await page
+    .locator('.dash-insights')
+    .evaluate((node) => getComputedStyle(node).gridTemplateColumns.split(' ').length);
+  const mainWidth = (await page.locator('main').boundingBox())!.width;
+  // No empty tracks: every column holds a module, so the grid spans its full width.
+  expect(insightColumns).toBeLessThanOrEqual(await page.locator('.dash-insights > *').count());
+  if (mainWidth >= 2400) expect(insightColumns).toBe(6);
+  else expect(insightColumns).toBeGreaterThanOrEqual(mainWidth >= 1500 ? 4 : 2);
+  const titleSize = await page
+    .locator('.dash-feature-title')
+    .evaluate((node) => Number.parseFloat(getComputedStyle(node).fontSize));
+  expect(titleSize).toBeLessThanOrEqual(52);
+  await recordLayout(page, info, 'dashboard', [
+    'no horizontal scroll',
+    'modules inside viewport',
+    'feature title above actions; cover 2:3',
+    'charts inside modules',
+    `featured + 4 stats in first screen${info.project.name === 'narrow' ? ' (featured only at 720p)' : ''}`,
+    `insight columns ${insightColumns} at main width ${Math.round(mainWidth)}`,
+    `feature title ${titleSize}px (clamp max 52px)`,
+  ]);
   await screenshot(page, info, 'dashboard-insights');
   expect(external).toEqual([]);
 });
@@ -115,6 +138,7 @@ test('ranges switch real data and link to the matching Library', async ({ page }
   for (const [label, scope, hasGames] of cases) {
     await scopes.getByRole('button', { name: label }).click();
     await expect(dashboard(page)).toHaveAttribute('data-scope', scope);
+    await expect(dashboard(page)).toHaveAttribute('data-ready', 'true');
     await expect(page).toHaveURL(scope === 'all' ? /\/$/ : new RegExp(`scope=${scope}`));
     await expect(page.locator('#playtime-title')).toHaveCount(hasGames ? 1 : 0);
     await expect(page.locator('#genre-title')).toHaveCount(hasGames ? 1 : 0);
@@ -133,6 +157,7 @@ test('ranges switch real data and link to the matching Library', async ({ page }
   }
   // The headline count opens the same set in the Library.
   await scopes.getByRole('button', { name: 'DLsite 其他作品' }).click();
+  await expect(dashboard(page)).toHaveAttribute('data-ready', 'true');
   const count = (await page.getByTestId('stat-works').locator('a').innerText()).replace(/\D/g, '');
   await page.getByTestId('stat-works').locator('a').click();
   await expect(page).toHaveURL(/\/library\?.*kind=non-game/);
@@ -169,7 +194,10 @@ test('dashboard → detail → back, and recommendations stay put until asked', 
 });
 
 test('demo source connections: expire, fail, retry, disconnect', async ({ page }, info) => {
-  test.skip(!['1080p', 'narrow'].includes(info.project.name), 'Panel states at 1080P/720P.');
+  test.skip(
+    !['1080p', 'narrow', '4k-200'].includes(info.project.name),
+    'Panel states at 1080P, 720P and DPR 2.',
+  );
   await openDashboard(page, '?state=source-expired');
   const dlsite = page.locator('.dash-sources [data-source="dlsite"]');
   await expect(dlsite).toContainText('会话已过期');
@@ -191,6 +219,7 @@ test('demo source connections: expire, fail, retry, disconnect', async ({ page }
   await steam.getByRole('button', { name: '断开（演示）' }).click();
   await expect(steam).toContainText('未连接');
   await expect(steam).toContainText('不会删除本地作品');
+  await screenshot(page, info, 'sources-disconnected');
   await page.keyboard.press('Escape');
   await expect(dialog).not.toBeVisible();
   await expect(page.getByRole('button', { name: '管理来源连接' })).toBeFocused();
@@ -208,7 +237,10 @@ test('demo source connections: expire, fail, retry, disconnect', async ({ page }
 test('demo download and extract: progress, failure, retry, cancel, reload', async ({
   page,
 }, info) => {
-  test.skip(!['1080p', 'narrow'].includes(info.project.name), 'Task flow at 1080P/720P.');
+  test.skip(
+    !['1080p', 'narrow', '4k-200'].includes(info.project.name),
+    'Task flow at 1080P, 720P and DPR 2.',
+  );
   await page.clock.install();
   await page.goto('/library/demo-00033');
   await expect(page.getByTestId('detail-title')).toBeVisible();
@@ -219,7 +251,7 @@ test('demo download and extract: progress, failure, retry, cancel, reload', asyn
   await expect(action).toContainText(/下载中 \d+%/);
   await page.getByRole('button', { name: /下载任务/ }).click();
   const dialog = page.getByRole('dialog', { name: '下载与解压（演示）' });
-  await expect(dialog.locator('[data-task="demo-00033"] .is-current')).toHaveText('下载中');
+  await expect(dialog.locator('[data-task="demo-00033"] .is-current')).toHaveText('下载');
   await screenshot(page, info, 'tasks-downloading');
   await page.keyboard.press('Escape');
   await page.clock.runFor(250 * 30);
@@ -249,6 +281,11 @@ test('demo download and extract: progress, failure, retry, cancel, reload', asyn
   await page.clock.runFor(250 * 60);
   await expect(page.getByTestId('download-action')).toContainText('已取消');
   await expect(page.locator('.hero-install')).toHaveText('未下载');
+  await page.getByRole('button', { name: /下载任务/ }).click();
+  await expect(dialog.locator('[data-task="demo-00027"]')).toContainText('已取消');
+  await expect(dialog.locator('[data-task="demo-00027"] .is-skipped')).toHaveText('无需解压');
+  await screenshot(page, info, 'tasks-cancelled');
+  await page.keyboard.press('Escape');
 
   // Steam and viewer-only works offer no download.
   await page.goto('/library/demo-00001');
@@ -271,7 +308,10 @@ test('demo download and extract: progress, failure, retry, cancel, reload', asyn
 });
 
 test('dashboard feedback states', async ({ page }, info) => {
-  test.skip(!['1080p', 'narrow'].includes(info.project.name), 'Feedback states at 1080P/720P.');
+  test.skip(
+    !['1080p', 'narrow', '4k-200'].includes(info.project.name),
+    'Feedback states at 1080P, 720P and DPR 2.',
+  );
   await page.goto('/?state=loading');
   await expect(page.getByRole('status', { name: '正在整理首页' })).toBeVisible();
   await screenshot(page, info, 'dashboard-loading');
@@ -334,8 +374,8 @@ test('dashboard timing at 1500 and 5000 works', async ({ page, browser }, info) 
             button.click();
             await new Promise<void>((done) => {
               const check = () =>
-                document.querySelector(`[data-scope="${scope}"]`) &&
-                !document.querySelector('[data-testid="dashboard"] [aria-busy="true"]')
+                // The new range's own numbers, not the dimmed previous range.
+                document.querySelector(`[data-scope="${scope}"][data-ready="true"]`)
                   ? done()
                   : requestAnimationFrame(check);
               check();
@@ -362,8 +402,5 @@ test('dashboard timing at 1500 and 5000 works', async ({ page, browser }, info) 
     });
     for (const value of [...loads, ...switches]) expect(value).toBeLessThan(1500);
   }
-  await mkdir(evidenceRoot, { recursive: true });
-  const path = resolve(evidenceRoot, 'performance.json');
-  await writeFile(path, JSON.stringify(results, null, 2));
-  await info.attach('performance', { path, contentType: 'application/json' });
+  await writeEvidence(info, 'dashboard.json', results);
 });
