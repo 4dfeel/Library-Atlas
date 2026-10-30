@@ -217,10 +217,14 @@ test.describe('sync', () => {
     await shot(page, 'library-list-columns');
     await heading.getByRole('button', { name: /按大小排序/ }).click();
     await expect(page).toHaveURL(/sort=size-desc/);
-    await expect(page.locator('.list-size').first()).toHaveText('286 MB');
+    // Earlier tests in this service may have synced more works, so no fixed largest size.
+    const firstSize = page.locator('.list-size').first();
+    await expect(firstSize).toHaveText(/\d (MB|GB)$/);
+    const largest = (await firstSize.textContent())!;
     await heading.getByRole('button', { name: /按大小排序/ }).click();
     await expect(page).toHaveURL(/sort=size-asc/);
-    await expect(page.locator('.list-size').first()).not.toHaveText('—');
+    await expect(firstSize).not.toHaveText(largest);
+    await expect(firstSize).not.toHaveText('—');
     const scroller = page.getByTestId('library-scroll');
     await scroller.evaluate((node) => node.scrollTo({ top: node.scrollHeight }));
     await expect(page.locator('.list-size').last()).toHaveText('—');

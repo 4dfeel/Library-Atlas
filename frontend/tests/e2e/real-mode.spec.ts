@@ -458,6 +458,8 @@ test.describe('large synthetic libraries', () => {
           .poll(() => scroller.evaluate((node) => node.scrollTop))
           .toBeGreaterThan(leftAt);
         await expect(page.locator(`[data-game-id="${targetId}"]`)).toBeVisible();
+        // Deep in the list the search box is tucked away; the way back is part of the page.
+        await page.getByRole('button', { name: '回到顶部' }).click();
 
         const timings: Record<string, number[]> = { search: [], kind: [] };
         const measure = async (bucket: string, action: () => Promise<void>) => {
