@@ -10,7 +10,14 @@ import {
   type GameDetail,
 } from '@/lib/data';
 import { AppLink } from '@/components/app-link';
-import { formatDate, statusLabels } from '@/lib/utils';
+import {
+  availabilityLabel,
+  formatDate,
+  kindLabels,
+  openActionLabels,
+  platformLabels,
+  statusLabels,
+} from '@/lib/utils';
 
 type Notify = (message: string, tone?: 'success' | 'error') => void;
 
@@ -99,6 +106,8 @@ export function GameHero({
     : game.favorite;
   const titleLength = Array.from(game.title).length;
   const titleClass = titleLength > 60 ? ' title-xlong' : titleLength > 28 ? ' title-long' : '';
+  // Only Steam reports play time and achievements; other platforms show metadata.
+  const tracksPlay = game.platform === 'steam';
   const lastPlayed = formatDate(game.lastPlayedAt);
   const achievements = game.achievements;
   const percent =
@@ -113,7 +122,7 @@ export function GameHero({
       <div className="detail-frame hero-inner">
         <AppLink to={backHref} className="back-link" onClick={onBack} data-testid="back-to-library">
           <ArrowLeft size={16} />
-          返回游戏库
+          返回作品库
         </AppLink>
         <div className="hero-main">
           <div className="hero-cover">
@@ -122,7 +131,12 @@ export function GameHero({
           <div className="hero-copy">
             <div className="hero-eyebrow">
               <span className="demo-chip">DEMO · 合成资料</span>
-              <span>{game.genre}</span>
+              <span className="platform-chip" data-platform={game.platform}>
+                {platformLabels[game.platform]}
+              </span>
+              <span>
+                {kindLabels[game.kind]} · {game.genre}
+              </span>
               {game.subtitle && <span className="hero-subtitle">{game.subtitle}</span>}
             </div>
             <h1
@@ -141,7 +155,7 @@ export function GameHero({
               </span>
               <span className={`hero-install${game.installed ? ' is-installed' : ''}`}>
                 {game.installed ? <Download size={13} /> : <HardDrive size={13} />}
-                {game.installed ? '已安装' : '未安装'}
+                {availabilityLabel(game)}
               </span>
             </div>
             <div className="hero-actions">
@@ -170,46 +184,67 @@ export function GameHero({
               </Button>
               <Button variant="ghost" disabled aria-describedby="launch-unavailable">
                 <Play size={16} />
-                启动游戏
+                {openActionLabels[game.kind]}
               </Button>
               <span id="launch-unavailable" className="unavailable-note">
-                暂不可用 · 演示模式未接入 Steam
+                暂不可用 · 演示模式未接入 {platformLabels[game.platform]}
               </span>
             </div>
             <dl className="hero-facts">
-              <Fact label="累计游玩">
-                {game.playtimeMinutes === null ? (
-                  <span className="fact-empty">暂无游玩数据</span>
-                ) : game.playtimeMinutes === 0 ? (
-                  <span className="fact-empty">尚未开始</span>
-                ) : (
-                  <>
-                    <strong>{formatHours(game.playtimeMinutes).value}</strong>
-                    <span className="fact-unit">{formatHours(game.playtimeMinutes).unit}</span>
-                  </>
-                )}
-              </Fact>
-              <Fact label="最近游玩">
-                {lastPlayed ? (
-                  <strong className="fact-date">{lastPlayed}</strong>
-                ) : (
-                  <span className="fact-empty">暂无记录</span>
-                )}
-              </Fact>
-              <Fact label="成就进度 · 演示">
-                {achievements ? (
-                  <>
-                    <strong>{achievements.unlocked}</strong>
-                    <span className="fact-unit">/ {achievements.total}</span>
-                    <span className="fact-percent">
-                      <Trophy size={13} />
-                      {percent}%
-                    </span>
-                  </>
-                ) : (
-                  <span className="fact-empty">未提供</span>
-                )}
-              </Fact>
+              {tracksPlay ? (
+                <>
+                  <Fact label="累计游玩">
+                    {game.playtimeMinutes === null ? (
+                      <span className="fact-empty">暂无游玩数据</span>
+                    ) : game.playtimeMinutes === 0 ? (
+                      <span className="fact-empty">尚未开始</span>
+                    ) : (
+                      <>
+                        <strong>{formatHours(game.playtimeMinutes).value}</strong>
+                        <span className="fact-unit">{formatHours(game.playtimeMinutes).unit}</span>
+                      </>
+                    )}
+                  </Fact>
+                  <Fact label="最近游玩">
+                    {lastPlayed ? (
+                      <strong className="fact-date">{lastPlayed}</strong>
+                    ) : (
+                      <span className="fact-empty">暂无记录</span>
+                    )}
+                  </Fact>
+                  <Fact label="成就进度 · 演示">
+                    {achievements ? (
+                      <>
+                        <strong>{achievements.unlocked}</strong>
+                        <span className="fact-unit">/ {achievements.total}</span>
+                        <span className="fact-percent">
+                          <Trophy size={13} />
+                          {percent}%
+                        </span>
+                      </>
+                    ) : (
+                      <span className="fact-empty">未提供</span>
+                    )}
+                  </Fact>
+                </>
+              ) : (
+                // The platform reports no play history or achievements; show what it does.
+                <>
+                  <Fact label="作品类型">
+                    <strong className="fact-date">{kindLabels[game.kind]}</strong>
+                  </Fact>
+                  <Fact label="制作方">
+                    <strong className="fact-date">{game.maker}</strong>
+                  </Fact>
+                  <Fact label="发售日">
+                    {formatDate(game.releaseDate) ? (
+                      <strong className="fact-date">{formatDate(game.releaseDate)}</strong>
+                    ) : (
+                      <span className="fact-empty">未提供</span>
+                    )}
+                  </Fact>
+                </>
+              )}
               <Fact label="加入收藏">
                 <strong className="fact-date">{formatDate(game.addedAt) ?? '未记录'}</strong>
               </Fact>

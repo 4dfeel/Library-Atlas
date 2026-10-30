@@ -1,4 +1,4 @@
-import type { DemoSize, Game, GameStatus, Visibility } from './types';
+import type { DemoSize, Game, GameStatus, Platform, Visibility, WorkKind } from './types';
 
 const featured = [
   ['星穹观测站', 'ASTRAL OBSERVATORY', '探索'],
@@ -64,6 +64,35 @@ const genres = [
 ] as const;
 const statuses: readonly GameStatus[] = ['unplayed', 'playing', 'completed', 'paused'];
 
+// Fictional makers only; none refer to a real studio or circle.
+const makers = [
+  'Atlas Original',
+  '北风工作室',
+  'Lumen Works',
+  '月影社',
+  'Paper Harbor',
+  '星屑工房',
+  'Quiet Orbit',
+  '灯塔制作组',
+] as const;
+const dlsiteKinds: readonly WorkKind[] = ['game', 'image', 'audio', 'video', 'game', 'other'];
+const kindGenres: Record<Exclude<WorkKind, 'game'>, readonly [string, string]> = {
+  image: ['插画集', '漫画'],
+  video: ['动画', '短片'],
+  audio: ['有声剧', '环境音'],
+  other: ['设定集', '原声集'],
+};
+
+/**
+ * Index-based so the seeded sequence stays unchanged. Featured art entries are
+ * Steam games; about a third of the rest are DLsite works of every kind. All
+ * synthetic and all-ages; nothing mirrors a real catalogue.
+ */
+function sourceFor(index: number): { platform: Platform; kind: WorkKind } {
+  if (index < 24 || index % 3 !== 2) return { platform: 'steam', kind: 'game' };
+  return { platform: 'dlsite', kind: dlsiteKinds[Math.floor(index / 3) % dlsiteKinds.length]! };
+}
+
 function seededRandom(seed: number): () => number {
   let value = seed >>> 0;
   return () => {
@@ -99,14 +128,29 @@ export function generateDemoGames(size: DemoSize): readonly Game[] {
       title = 'TheLastObservatoryBeyondTheEndOfTheKnownUniverseCollectorsEditionWithoutAnySpaces';
     if (visibility !== 'normal') title = `PRIVATE_SENTINEL_${visibility.toUpperCase()}_${index}`;
     const playtimeMinutes = status === 'unplayed' ? 0 : Math.round(30 + random() * 14_000);
+    const { platform, kind } = sourceFor(index);
+    const dlsite = platform === 'dlsite';
     return {
       id: `demo-${String(index + 1).padStart(5, '0')}`,
+      platform,
+      kind,
+      maker: makers[index % makers.length]!,
+      releaseDate:
+        index % 41 === 13
+          ? null
+          : new Date(
+              Date.UTC(2015 + (index % 11), (index * 7) % 12, 1 + (index % 27)),
+            ).toISOString(),
       title,
       subtitle: entry?.[1] ?? `ATLAS ORIGINALS · VOL. ${String(index + 1).padStart(4, '0')}`,
-      genre: entry?.[2] ?? genres[index % genres.length] ?? '探索',
+      genre:
+        kind === 'game'
+          ? (entry?.[2] ?? genres[index % genres.length] ?? '探索')
+          : kindGenres[kind][index % 2]!,
       status,
       installed: index < 7 || random() > 0.66,
-      playtimeMinutes: index % 173 === 0 && index > 24 ? null : playtimeMinutes,
+      // DLsite reports no usable play history; unknown stays null, never 0.
+      playtimeMinutes: dlsite || (index % 173 === 0 && index > 24) ? null : playtimeMinutes,
       favorite: index === 0 || index === 3 || index === 7 || random() > 0.84,
       visibility,
       cover: {
@@ -119,7 +163,7 @@ export function generateDemoGames(size: DemoSize): readonly Game[] {
           : `/demo/backdrops/backdrop-${String((index % 24) + 1).padStart(2, '0')}.svg`,
       addedAt: new Date(Date.UTC(2026, 9, 30) - index * 86_400_000).toISOString(),
       lastPlayedAt:
-        status === 'unplayed'
+        status === 'unplayed' || dlsite
           ? null
           : new Date(Date.UTC(2026, 9, 30) - (index % 60) * 86_400_000).toISOString(),
     };

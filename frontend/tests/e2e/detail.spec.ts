@@ -5,7 +5,7 @@ import { resolve } from 'node:path';
 const evidenceRoot = resolve('../artifacts/checkpoint-2');
 const title = (page: Page) => page.getByTestId('detail-title');
 const libraryScroll = (page: Page) => page.locator('[data-library-scroll]');
-const searchBox = (page: Page) => page.getByRole('textbox', { name: '搜索游戏' });
+const searchBox = (page: Page) => page.getByRole('textbox', { name: '搜索作品' });
 
 /** Stable public samples; see docs/PHASE1_CHECKPOINT2_REPORT.md. */
 const samples = {
@@ -170,7 +170,7 @@ test('edge states render honest semantics without overflow', async ({ page }, in
 test('loading, error, unavailable and private IDs', async ({ page }, info) => {
   test.skip(!['1080p', 'narrow'].includes(info.project.name), 'Feedback states at 1080P/720P.');
   await page.goto(`/library/${samples.complete}?state=loading`);
-  await expect(page.getByRole('status', { name: '正在读取游戏详情' })).toBeVisible();
+  await expect(page.getByRole('status', { name: '正在读取作品详情' })).toBeVisible();
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= document.documentElement.clientWidth,
@@ -179,7 +179,7 @@ test('loading, error, unavailable and private IDs', async ({ page }, info) => {
   await screenshot(page, info, 'detail-loading');
 
   await page.goto(`/library/${samples.complete}?state=error`);
-  await expect(page.getByRole('alert')).toContainText('暂时未能读取游戏详情');
+  await expect(page.getByRole('alert')).toContainText('暂时未能读取作品详情');
   await screenshot(page, info, 'detail-error');
   await page.getByRole('button', { name: '重新加载' }).click();
   await expect(title(page)).toHaveText('星穹观测站');
@@ -189,14 +189,14 @@ test('loading, error, unavailable and private IDs', async ({ page }, info) => {
     await page.goto(`/library/${id}`);
     const unavailable = page.getByTestId('game-unavailable');
     await expect(unavailable).toBeVisible();
-    await expect(unavailable.getByRole('heading', { name: '找不到这款游戏' })).toBeFocused();
+    await expect(unavailable.getByRole('heading', { name: '找不到这部作品' })).toBeFocused();
     await noPrivateData(page);
     await expect(page.locator('.detail-hero, [data-cover], textarea')).toHaveCount(0);
     texts.push(await page.locator('main').innerText());
   }
   expect(new Set(texts).size).toBe(1);
   await screenshot(page, info, 'detail-unavailable');
-  await page.getByRole('button', { name: '返回游戏库' }).click();
+  await page.getByRole('button', { name: '返回作品库' }).click();
   await expect(page).toHaveURL(/\/library$/);
   await expect(page.locator('[data-game-card]').first()).toBeVisible();
 });
@@ -224,7 +224,7 @@ test('grid and list round trips restore Library state and history works', async 
   // List view, deep scroll, then browser Back/Forward and refresh.
   await page.goto('/library?view=list&sort=playtime-desc');
   const scroll = libraryScroll(page);
-  await expect(page.getByRole('list', { name: '游戏列表' })).toBeVisible();
+  await expect(page.getByRole('list', { name: '作品列表' })).toBeVisible();
   await scroll.evaluate((element) => {
     element.scrollTop = 4600;
   });
@@ -235,13 +235,15 @@ test('grid and list round trips restore Library state and history works', async 
     .filter({ has: page.locator('.game-link') })
     .nth(3);
   const rowId = await row.getAttribute('data-game-id');
-  const listedStatus = await row.locator('.list-status').innerText();
-  await row.locator('.game-link').click();
+  // Pin by ID: the virtual list may re-render between locator resolutions.
+  const pinned = page.locator(`[data-game-id="${rowId}"]`);
+  const listedStatus = await pinned.locator('.list-status').innerText();
+  await pinned.locator('.game-link').click();
   await expect(page.getByTestId('detail-status')).toHaveText(listedStatus);
   await page.reload();
   await expect(title(page)).toBeVisible();
   await page.goBack();
-  await expect(page.getByRole('list', { name: '游戏列表' })).toBeVisible();
+  await expect(page.getByRole('list', { name: '作品列表' })).toBeVisible();
   await expect(page.getByRole('combobox', { name: '排序' })).toHaveValue('playtime-desc');
   await expect
     .poll(() => scroll.evaluate((element) => element.scrollTop))
@@ -285,10 +287,10 @@ test('keyboard: Ctrl+K, note shortcuts, status and rating, reduced motion', asyn
   await expect(page.getByText('已保存到本机演示存储').first()).toBeVisible();
   await expect(page.getByRole('button', { name: '编辑备注' })).toBeFocused();
 
-  const status = page.getByRole('group', { name: '游戏状态' });
+  const status = page.getByRole('group', { name: '进度状态' });
   await status.getByRole('radio', { name: '未开始' }).focus();
   await page.keyboard.press('ArrowRight');
-  await expect(status.getByRole('radio', { name: '在玩' })).toBeChecked();
+  await expect(status.getByRole('radio', { name: '进行中' })).toBeChecked();
   const rating = page.getByRole('group', { name: /个人评分/ });
   await rating.getByRole('radio', { name: '1 星' }).focus();
   await page.keyboard.press('ArrowRight');
@@ -305,7 +307,7 @@ test('demo edits sync with the Library, persist, fail visibly and reset', async 
 }, info) => {
   test.skip(!['1080p', 'narrow'].includes(info.project.name), 'Edit flow at 1080P/720P.');
   await openDetail(page, samples.complete);
-  const status = page.getByRole('group', { name: '游戏状态' });
+  const status = page.getByRole('group', { name: '进度状态' });
   await status.getByText('搁置').click();
   await expect(status.getByText('已保存到本机演示存储')).toBeVisible();
   await expect(page.getByTestId('detail-status')).toHaveText('搁置');
@@ -336,11 +338,11 @@ test('demo edits sync with the Library, persist, fail visibly and reset', async 
   await expect(page.locator('.hero-actions').getByRole('button', { name: '已收藏' })).toBeVisible();
 
   await page.getByRole('button', { name: '关于演示', exact: true }).click();
-  await expect(page.getByText('已修改 1 款游戏')).toBeVisible();
+  await expect(page.getByText('已修改 1 部作品')).toBeVisible();
   await page.getByRole('button', { name: '重置演示修改…' }).click();
   await expect(page.getByRole('dialog').getByRole('alert')).toContainText('无法撤销');
   await page.getByRole('button', { name: '确认重置' }).click();
-  await expect(page.getByText('已修改 0 款游戏')).toBeVisible();
+  await expect(page.getByText('已修改 0 部作品')).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(page.getByTestId('detail-status')).toHaveText('已完成');
 
@@ -450,8 +452,8 @@ test('detail open/return timing at 1500 and 5000 records', async ({ page, browse
     await page.goto(`/library/demo-04000${suffix}`);
     if (size === 5000) {
       await expect(title(page)).toBeVisible();
-      await page.getByRole('group', { name: '游戏状态' }).getByText('在玩').click();
-      await expect(page.getByTestId('detail-status')).toHaveText('在玩');
+      await page.getByRole('group', { name: '进度状态' }).getByText('进行中').click();
+      await expect(page.getByTestId('detail-status')).toHaveText('进行中');
     } else await expect(page.getByTestId('game-unavailable')).toBeVisible();
     const sorted = (values: number[]) => [...values].sort((a, b) => a - b);
     results.push({
@@ -472,4 +474,38 @@ test('detail open/return timing at 1500 and 5000 records', async ({ page, browse
   const path = resolve(evidenceRoot, 'performance.json');
   await writeFile(path, JSON.stringify(results, null, 2));
   await info.attach('performance', { path, contentType: 'application/json' });
+});
+
+test('work-kind tabs, platform filter and a DLsite detail', async ({ page }, info) => {
+  test.skip(!['1080p', 'narrow', '4k'].includes(info.project.name), 'Representative viewports.');
+  await page.goto('/library');
+  await expect(page.locator('[data-game-card]').first()).toBeVisible();
+  const kinds = page.getByRole('group', { name: '作品类型' });
+  await kinds.getByRole('button', { name: /音声/ }).click();
+  await expect(page).toHaveURL(/kind=audio/);
+  await expect(page.locator('[data-game-card]').first()).toContainText('音声 · DLsite');
+  for (const meta of await page.locator('.game-card-meta > span:first-child').allTextContents())
+    expect(meta).toBe('音声 · DLsite');
+  await page.evaluate(() => document.fonts.ready);
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+    ),
+  ).toBe(true);
+  await screenshot(page, info, 'library-kind-audio');
+  await kinds.getByRole('button', { name: /全部/ }).click();
+  await page.getByRole('combobox', { name: '平台' }).selectOption('steam');
+  await expect(page.locator('[data-game-card]').first()).toBeVisible();
+  for (const meta of await page.locator('.game-card-meta > span:first-child').allTextContents())
+    expect(meta).not.toContain('DLsite');
+
+  await openDetail(page, 'demo-00027');
+  await expect(page.locator('.platform-chip')).toHaveText('DLsite');
+  await expect(page.locator('.hero-facts')).toContainText('制作方');
+  await expect(page.locator('.hero-facts')).not.toContainText('累计游玩');
+  await expect(page.getByRole('heading', { name: /成就进度/ })).toHaveCount(0);
+  await expect(page.locator('.hero-actions')).toContainText('播放作品');
+  await expect(page.locator('.hero-actions')).toContainText('未接入 DLsite');
+  await detailLayout(page);
+  await screenshot(page, info, 'detail-dlsite');
 });

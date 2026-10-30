@@ -1701,3 +1701,32 @@ kbd {
     min-height: 32px;
   }
 }
+
+/* Favorites toggle matches the filter selects; selected uses the accent tint. */
+.favorite-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.favorite-filter > span {
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.favorite-filter:hover {
+  color: var(--text-primary);
+}
+.favorite-filter.selected {
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: var(--text-primary);
+}
+.favorite-filter.selected svg {
+  color: var(--warning);
+}

@@ -55,7 +55,9 @@ export function getCoverSource(game: Game): string | null {
   if (game.cover.kind === 'art')
     return `/demo/covers/cover-${String(game.cover.index).padStart(2, '0')}.svg`;
   const index = game.cover.index;
-  const [dark, mid, light] = palettes[index % palettes.length] ?? palettes[0];
+  // Offset by index/18 so works of one kind (a fixed index stride) still vary.
+  const [dark, mid, light] =
+    palettes[(index + Math.floor(index / 18)) % palettes.length] ?? palettes[0];
   const horizon = 340 + (index % 7) * 25;
   const moonX = 100 + (index % 5) * 88;
   const title = coverTitleLines(game.title)

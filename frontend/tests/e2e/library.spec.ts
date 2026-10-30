@@ -59,7 +59,7 @@ test('grid, missing covers and long titles across viewport/DPR matrix', async ({
   });
   await ready(page);
   await expect(page.getByText('DEMO · 演示模式', { exact: true })).toBeVisible();
-  await expect(page.getByRole('heading', { name: '我的游戏库' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '我的作品库' })).toBeVisible();
   const columns = Number(await scroll(page).getAttribute('data-columns'));
   const expectedColumns: Record<string, [number, number]> = {
     '1080p': [7, 8],
@@ -90,13 +90,13 @@ test('grid, missing covers and long titles across viewport/DPR matrix', async ({
   expect(await page.locator('body').ariaSnapshot()).not.toContain('PRIVATE_SENTINEL');
   await screenshot(page, info, 'library-grid');
 
-  await page.getByRole('textbox', { name: '搜索游戏' }).fill('晨雾回廊');
+  await page.getByRole('textbox', { name: '搜索作品' }).fill('晨雾回廊');
   await expect(cards(page).first()).toContainText('晨雾回廊');
   await expect(page.locator('[data-cover-kind="missing"]').first()).toBeVisible();
   await noOverflow(page);
   await screenshot(page, info, 'library-missing-cover');
 
-  await page.getByRole('textbox', { name: '搜索游戏' }).fill('跨越星海');
+  await page.getByRole('textbox', { name: '搜索作品' }).fill('跨越星海');
   await expect(cards(page)).toHaveCount(1);
   const title = page.locator('.game-title');
   await expect(title).toContainText('A Journey Beyond');
@@ -114,39 +114,39 @@ test('grid, missing covers and long titles across viewport/DPR matrix', async ({
 
 test('list view, real filters, empty results and privacy', async ({ page }, info) => {
   await ready(page, '/library?view=list');
-  await expect(page.getByRole('list', { name: '游戏列表' })).toBeVisible();
+  await expect(page.getByRole('list', { name: '作品列表' })).toBeVisible();
   await noOverflow(page);
   await screenshot(page, info, 'library-list');
   await page.getByRole('combobox', { name: '类型' }).selectOption('探索');
-  await page.getByRole('combobox', { name: '安装状态' }).selectOption('installed');
+  await page.getByRole('combobox', { name: '本机状态' }).selectOption('installed');
   await expect(page.locator('.list-genre').first()).toHaveText('探索');
   for (const genre of await page.locator('.list-genre').allTextContents())
     expect(genre).toBe('探索');
   for (const installed of await page.locator('.list-install').allTextContents())
     expect(installed).toContain('已安装');
   await page.getByRole('combobox', { name: '游玩状态' }).selectOption('playing');
-  await expect(page.locator('.list-status').first()).toContainText('在玩');
+  await expect(page.locator('.list-status').first()).toContainText('进行中');
   await page.getByRole('combobox', { name: '排序' }).selectOption('playtime-desc');
-  await page.getByRole('textbox', { name: '搜索游戏' }).fill('a-no-result-collection');
+  await page.getByRole('textbox', { name: '搜索作品' }).fill('a-no-result-collection');
   await expect(page.getByText('还没有找到这段冒险')).toBeVisible();
   await noOverflow(page);
   await screenshot(page, info, 'library-no-results');
-  await page.getByRole('textbox', { name: '搜索游戏' }).fill('PRIVATE_SENTINEL');
+  await page.getByRole('textbox', { name: '搜索作品' }).fill('PRIVATE_SENTINEL');
   await expect(page.getByText('还没有找到这段冒险')).toBeVisible();
   expect(await page.locator('body').ariaSnapshot()).not.toContain('PRIVATE_SENTINEL_PRIVATE_');
   await page.getByRole('button', { name: '清除筛选', exact: true }).last().click();
   await expect(cards(page).first()).toBeVisible();
   await page.keyboard.press('Control+k');
-  await expect(page.getByRole('textbox', { name: '搜索游戏' })).toBeFocused();
+  await expect(page.getByRole('textbox', { name: '搜索作品' })).toBeFocused();
 });
 
 test('feedback states recover and dialog returns focus', async ({ page }, info) => {
   await page.goto('/library?state=loading');
-  await expect(page.getByRole('status', { name: '正在读取本地游戏库' })).toBeVisible();
+  await expect(page.getByRole('status', { name: '正在读取本地作品库' })).toBeVisible();
   await noOverflow(page);
   await screenshot(page, info, 'library-loading');
   await page.goto('/library?state=error');
-  await expect(page.getByRole('alert')).toContainText('暂时未能读取游戏库');
+  await expect(page.getByRole('alert')).toContainText('暂时未能读取作品库');
   await screenshot(page, info, 'library-error');
   await page.getByRole('button', { name: '重新加载' }).click();
   await expect(cards(page).first()).toBeVisible();
@@ -178,9 +178,9 @@ test('favorites and container resize preserve the visible collection anchor', as
   await page.setViewportSize({ width: 1440, height: 900 });
   await expect(scroll(page)).toHaveAttribute('data-columns', '5');
   await expect(focusedGame).toBeFocused();
-  await page.getByRole('textbox', { name: '搜索游戏' }).focus();
+  await page.getByRole('textbox', { name: '搜索作品' }).focus();
   await page.setViewportSize({ width: 1920, height: 1080 });
-  await expect(page.getByRole('textbox', { name: '搜索游戏' })).toBeFocused();
+  await expect(page.getByRole('textbox', { name: '搜索作品' })).toBeFocused();
   await page.setViewportSize({ width: 1440, height: 900 });
   await scroll(page).evaluate((element) => {
     element.scrollTop = 3600;
@@ -239,7 +239,7 @@ test('1500/5000 virtualization and measured browser performance', async ({
     for (let index = 0; index < 20; index++) {
       const expectedTitle = index % 2 ? '跨越星海' : '星穹观测站';
       await page.evaluate((expectedTitle) => {
-        const input = document.querySelector<HTMLInputElement>('input[aria-label="搜索游戏"]')!;
+        const input = document.querySelector<HTMLInputElement>('input[aria-label="搜索作品"]')!;
         const target = window as unknown as { atlasSearchTiming: Promise<number> };
         target.atlasSearchTiming = new Promise<number>((resolveTiming) => {
           input.addEventListener(
@@ -264,7 +264,7 @@ test('1500/5000 virtualization and measured browser performance', async ({
         });
       }, expectedTitle);
       const start = performance.now();
-      await page.getByRole('textbox', { name: '搜索游戏' }).fill(expectedTitle);
+      await page.getByRole('textbox', { name: '搜索作品' }).fill(expectedTitle);
       await expect(cards(page)).toHaveCount(1);
       await expect(cards(page).first()).toContainText(index % 2 ? '跨越星海' : '星穹观测站');
       latencies.push(performance.now() - start);
@@ -274,16 +274,16 @@ test('1500/5000 virtualization and measured browser performance', async ({
         ),
       );
     }
-    await page.getByRole('textbox', { name: '搜索游戏' }).fill('');
+    await page.getByRole('textbox', { name: '搜索作品' }).fill('');
     await expect(cards(page)).not.toHaveCount(1);
-    await page.getByRole('combobox', { name: '安装状态' }).selectOption('installed');
+    await page.getByRole('combobox', { name: '本机状态' }).selectOption('installed');
     await expect
       .poll(async () =>
         Number(await page.getByTestId('library-results').getAttribute('data-count')),
       )
       .toBeLessThan(size / 2);
     await expect(cards(page).first().locator('.installed-badge')).toBeVisible();
-    await page.getByRole('combobox', { name: '安装状态' }).selectOption('all');
+    await page.getByRole('combobox', { name: '本机状态' }).selectOption('all');
     await expect
       .poll(async () =>
         Number(await page.getByTestId('library-results').getAttribute('data-count')),

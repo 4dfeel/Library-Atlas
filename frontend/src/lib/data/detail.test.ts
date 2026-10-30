@@ -84,7 +84,7 @@ describe('detail reads by stable ID', () => {
     for (const id of ids) {
       const error = await source.getGame({ id }).catch((caught: unknown) => caught);
       expect(error).toBeInstanceOf(GameUnavailableError);
-      expect((error as Error).message).toBe('游戏暂不可用。');
+      expect((error as Error).message).toBe('作品暂不可用。');
       expect(JSON.stringify(error)).not.toContain('PRIVATE_SENTINEL');
     }
   });

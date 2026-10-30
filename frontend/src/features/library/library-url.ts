@@ -1,4 +1,9 @@
-import { defaultLibraryFilters, type LibraryFilters, type LibrarySort } from '@/lib/data';
+import {
+  defaultLibraryFilters,
+  workKinds,
+  type LibraryFilters,
+  type LibrarySort,
+} from '@/lib/data';
 import type { ViewMode } from './game-collection';
 
 /**
@@ -12,6 +17,8 @@ export interface LibraryUrlState {
 
 const statuses = new Set(['all', 'unplayed', 'playing', 'completed', 'paused']);
 const installed = new Set(['all', 'installed', 'not-installed']);
+const kinds = new Set(['all', ...workKinds]);
+const platforms = new Set(['all', 'steam', 'dlsite']);
 const sorts = new Set<LibrarySort>([
   'curated',
   'name-asc',
@@ -25,12 +32,16 @@ export function parseLibraryUrl(search: string): LibraryUrlState {
   const status = params.get('status') ?? 'all';
   const install = params.get('installed') ?? 'all';
   const sort = (params.get('sort') ?? 'curated') as LibrarySort;
+  const kind = params.get('kind') ?? 'all';
+  const platform = params.get('platform') ?? 'all';
   return {
     filters: {
       search: (params.get('q') ?? '').slice(0, 200),
       genre: params.get('genre') || defaultLibraryFilters.genre,
       status: statuses.has(status) ? (status as LibraryFilters['status']) : 'all',
       installed: installed.has(install) ? (install as LibraryFilters['installed']) : 'all',
+      kind: kinds.has(kind) ? (kind as LibraryFilters['kind']) : 'all',
+      platform: platforms.has(platform) ? (platform as LibraryFilters['platform']) : 'all',
       favoritesOnly: params.get('fav') === '1',
       sort: sorts.has(sort) ? sort : 'curated',
     },
@@ -48,6 +59,8 @@ export function libraryUrl(current: string, { filters, view }: LibraryUrlState):
   set('genre', filters.genre, 'all');
   set('status', filters.status, 'all');
   set('installed', filters.installed, 'all');
+  set('kind', filters.kind, 'all');
+  set('platform', filters.platform, 'all');
   set('fav', filters.favoritesOnly ? '1' : '0', '0');
   set('sort', filters.sort, 'curated');
   set('view', view, 'grid');

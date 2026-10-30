@@ -1,4 +1,10 @@
-import type { Game, LibraryFilters, LibraryResult } from './types';
+import {
+  workKinds,
+  type Game,
+  type LibraryFilters,
+  type LibraryResult,
+  type WorkKind,
+} from './types';
 
 const collator = new Intl.Collator('zh-CN', { numeric: true, sensitivity: 'base' });
 
@@ -13,12 +19,14 @@ export function selectLibrary(games: readonly Game[], filters: LibraryFilters): 
   const items = visible.filter((game) => {
     if (
       search &&
-      !`${game.title} ${game.subtitle}`
+      !`${game.title} ${game.subtitle} ${game.maker}`
         .normalize('NFKC')
         .toLocaleLowerCase('zh-CN')
         .includes(search)
     )
       return false;
+    if (filters.kind !== 'all' && game.kind !== filters.kind) return false;
+    if (filters.platform !== 'all' && game.platform !== filters.platform) return false;
     if (filters.genre !== 'all' && game.genre !== filters.genre) return false;
     if (filters.status !== 'all' && game.status !== filters.status) return false;
     if (filters.installed === 'installed' && !game.installed) return false;
@@ -48,9 +56,19 @@ export function selectLibrary(games: readonly Game[], filters: LibraryFilters): 
     items,
     totalVisible: visible.length,
     filteredCount: items.length,
-    genres: [...new Set(visible.map((game) => game.genre))].sort(collator.compare),
+    // Genres follow the selected work kind so the dropdown never offers empty choices.
+    genres: [
+      ...new Set(
+        visible
+          .filter((game) => filters.kind === 'all' || game.kind === filters.kind)
+          .map((game) => game.genre),
+      ),
+    ].sort(collator.compare),
     installedCount: visible.filter((game) => game.installed).length,
     favoriteCount: visible.filter((game) => game.favorite).length,
+    kindCounts: Object.fromEntries(
+      workKinds.map((kind) => [kind, visible.filter((game) => game.kind === kind).length]),
+    ) as Record<WorkKind, number>,
     mode: 'demo',
   };
 }

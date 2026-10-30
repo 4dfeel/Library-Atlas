@@ -58,7 +58,7 @@ scripts/                 # Windows 启动、构建和检查
 | 表 | 主要字段/约束 |
 | --- | --- |
 | profiles | id、mode(real/demo)、steam_id(nullable)、display_name；MVP 单活动账号 |
-| games | id、steam_app_id(unique nullable)、canonical_title、metadata_status；不直接包含账号隐私 |
+| games（作品） | id、platform(steam/dlsite)、external_id、unique(platform,external_id)、kind(game/image/video/audio/other)、maker、release_date(nullable)、canonical_title、metadata_status；不直接包含账号隐私。原 steam_app_id 由 platform=steam + external_id 表示 |
 | library_entries | id、profile_id、game_id、ownership_status(unknown/observed_owned/not_currently_observed)、first_seen_at；unique(profile_id,game_id) |
 | local_preferences | entry_id(unique)、visibility(normal/hidden/private/quarantined)、visibility_confirmed_at、title_override、backlog_status、priority、notes、version |
 | source_observations | id、entry_id、source、field_name、value_json、observed_at、scope、confidence；校验字段白名单与大小 |
@@ -123,3 +123,11 @@ scripts/                 # Windows 启动、构建和检查
 前端 `LibrarySource` 是替换边界：组件 → TanStack Query hooks → Demo source → 先按 visibility=normal 过滤的查询结果。Demo 默认启用（`VITE_DEMO_MODE=false` 可关闭），默认生成规模 1500，`?size=5000` 启用压力场景。数据为固定种子、会话内存存储，收藏只保留至刷新。真实 source 尚未实现；这里的前端可见性过滤仅适用于合成数据，不能充当未来真实数据的安全边界。
 
 图片分为三类：24 张本地原创 SVG 叙事插画、可见卡片按需生成的程序化 SVG、明确缺失的统一占位。SVG 不需 srcset，任意 DPR 下保持矢量清晰；未来位图源仍必须提供 sizes/srcset。字体依赖包打入 dist，通过 unicode-range 按需取本地 WOFF2，运行时不联网取字体。原始私人哨兵仅存在 Demo source 内部，普通 hooks 不返回它们；它们不是用户真实隐私资料。
+
+## 9. 多平台扩展：DLsite（2026-10-30 用户决定，待 Phase 2 调查）
+- **模型**：上表 games 改为平台中立的作品表；前端 `Game` 类型已包含 `platform`、`kind`、`maker`、`releaseDate`（类型名沿用历史名称，含义为“任意平台的作品条目”）。可见性、本地偏好、收藏、Backlog 与平台无关。
+- **适配器**：`adapters/dlsite/` 与 Steam 并列，输出同一标准化观测；按 (platform, external_id) 幂等合并，缺项不删除库存。新条目进入 quarantined，直至用户确认。
+- **会话凭据**：用户在官方登录页完成登录（含验证码/二步验证），后端仅保存会话 Cookie 至 Windows Credential Manager 并以引用访问；不保存密码，不进数据库、日志、前端、导出或错误上报。会话失效返回明确的 `reauth_required` 状态，不自动重试登录。只读请求，限速，手动或低频触发。
+- **打开作品**：后端按作品类型执行：游戏只启动用户确认并登记的可执行文件；其他类型交给系统默认程序或资源管理器。使用参数数组启动，不经 shell 拼接；扫描到的程序不自动运行。
+- **下载解压（候选）**：仅限会话可访问的已购作品下载链接与 DLsite 主机白名单；断点续传、大小与完整性校验、限定写入目录；解压逐项校验目标路径（拒绝绝对路径与 `..`）、限制展开大小与文件数。需许可证认证的作品不处理授权。引入 7-Zip/unrar 等组件前另行征询。
+- **待调查**：Nest 本地数据位置与格式（是否加密）、网站购买列表与下载链接的获取方式及稳定性、使用条款对自动化读取/下载的限制、作品编号格式、封面与元数据许可。结论写入 §7 能力表后再实现。

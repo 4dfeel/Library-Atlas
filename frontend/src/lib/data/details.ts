@@ -59,6 +59,18 @@ const tagPool = [
 ];
 
 const categoryPool = ['长篇旅程', '周末短篇', '治愈系收藏', '剧情优先', '挑战清单', '值得重玩'];
+// Non-game works get descriptive tags only; no gameplay terms on audio or images.
+const workTagPool = [
+  '单人向',
+  '氛围',
+  '治愈',
+  '原声出色',
+  '短篇',
+  '叙事驱动',
+  '手绘风格',
+  '慢节奏',
+  '全年龄',
+];
 
 const noteSamples = [
   '第二章的音乐非常好，适合安静的晚上慢慢玩。',
@@ -86,6 +98,13 @@ function pick<T>(pool: readonly T[], count: number, random: () => number): T[] {
 
 function proceduralDescription(game: Game, index: number): string | null {
   if (index % 19 === 7) return null;
+  if (game.kind !== 'game')
+    return {
+      image: `《${game.title}》收录一组以旅途与季节为主题的原创插画，适合慢慢翻阅。`,
+      video: `《${game.title}》是一部安静的短篇动画，讲述一座海边小城的黄昏。`,
+      audio: `《${game.title}》以环境声与旁白构成，适合在夜晚放松时聆听。`,
+      other: `《${game.title}》收录设定资料与创作笔记，是系列作品的补充读物。`,
+    }[game.kind];
   const openings = [
     `《${game.title}》是一段关于离开与回归的旅程。`,
     `在《${game.title}》的世界里，地图会随着你的记忆不断改变。`,
@@ -102,7 +121,11 @@ function proceduralDescription(game: Game, index: number): string | null {
 /** Deterministic and side-effect free; called only when a detail is requested. */
 export function describeDemoGame(game: Game, index: number): DemoDetailFields {
   const random = seededRandom(0x44455441 ^ Math.imul(index + 1, 0x9e3779b1));
-  const tags = pick(tagPool, 3 + Math.floor(random() * 3), random);
+  const tags = pick(
+    game.kind === 'game' ? tagPool : workTagPool,
+    3 + Math.floor(random() * 3),
+    random,
+  );
   const categories =
     index % 9 === 5 ? [] : pick(categoryPool, 1 + Math.floor(random() * 2), random);
   const total = 18 + Math.floor(random() * 50);
@@ -113,8 +136,11 @@ export function describeDemoGame(game: Game, index: number): DemoDetailFields {
         ? 0.7 + random() * 0.3
         : 0.08 + random() * 0.55;
   // Featured sample 潮汐之后 and every seventh record deliberately have no data.
+  // DLsite exposes no achievements, so its works never get invented progress.
   const achievements =
-    index === 1 || index % 7 === 3 ? null : { unlocked: Math.round(total * progress), total };
+    game.platform === 'dlsite' || index === 1 || index % 7 === 3
+      ? null
+      : { unlocked: Math.round(total * progress), total };
   // Featured sample 赤沙行者 deliberately has neither rating nor note.
   const rated = index === 0 || (index !== 2 && game.status !== 'unplayed' && random() > 0.45);
   const rating = rated ? 3 + Math.floor(random() * 3) : null;

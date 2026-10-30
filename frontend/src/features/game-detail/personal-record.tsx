@@ -58,7 +58,7 @@ function StatusField({ game, size, notify }: { game: GameDetail; size: DemoSize;
   const shown = mutation.isPending ? (mutation.variables.status ?? game.status) : game.status;
   return (
     <fieldset className="record-field">
-      <legend>游戏状态</legend>
+      <legend>进度状态</legend>
       <div className="status-segments">
         {statusOrder.map((status) => (
           <label key={status} className={`status-segment status-${status}`}>
@@ -71,7 +71,7 @@ function StatusField({ game, size, notify }: { game: GameDetail; size: DemoSize;
                 mutation.mutate(
                   { status },
                   {
-                    onSuccess: () => notify(`游戏状态已改为「${statusLabels[status]}」`),
+                    onSuccess: () => notify(`进度状态已改为「${statusLabels[status]}」`),
                   },
                 )
               }
@@ -85,7 +85,7 @@ function StatusField({ game, size, notify }: { game: GameDetail; size: DemoSize;
         pending={mutation.isPending}
         error={mutation.error}
         saved={mutation.isSuccess}
-        idle="修改后会同步到游戏库的状态显示与筛选。"
+        idle="修改后会同步到作品库的状态显示与筛选。"
       />
     </fieldset>
   );
@@ -244,7 +244,7 @@ function NoteField({ game, size, notify }: { game: GameDetail; size: DemoSize; n
             value={draft}
             maxLength={noteMaxLength + 200}
             rows={5}
-            placeholder="写下你对这款游戏的想法、进度或计划…"
+            placeholder="写下你对这部作品的想法、进度或计划…"
             onChange={(event) => {
               setDraft(event.target.value);
               if (mutation.isError) mutation.reset();

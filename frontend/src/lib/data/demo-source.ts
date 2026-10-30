@@ -47,7 +47,7 @@ function validateUpdate(update: GameUpdate): GameUpdate {
   const clean: GameUpdate = {};
   if ('status' in update) {
     if (typeof update.status !== 'string' || !statuses.has(update.status))
-      throw new GameUpdateError('游戏状态无效。');
+      throw new GameUpdateError('进度状态无效。');
     clean.status = update.status;
   }
   if ('rating' in update) {

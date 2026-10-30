@@ -2,7 +2,7 @@ import { useVirtualizer, defaultRangeExtractor } from '@tanstack/react-virtual';
 import { useLayoutEffect, useRef, useState } from 'react';
 import { Download, Star } from 'lucide-react';
 import type { Game } from '@/lib/data';
-import { formatPlaytime, statusLabels } from '@/lib/utils';
+import { availabilityLabel, statusLabels, workMeta } from '@/lib/utils';
 import { GameCard, GameCover } from '@/components/game-card';
 import { getGridLayout, useMeasuredWidth } from '@/lib/layout';
 import { AppLink } from '@/components/app-link';
@@ -128,10 +128,10 @@ export function GameCollection({
     >
       {view === 'list' && (
         <div className="list-heading" aria-hidden="true">
-          <span>游戏名称</span>
+          <span>作品名称</span>
           <span>类型</span>
-          <span>游玩状态</span>
-          <span>累计游玩</span>
+          <span>进度状态</span>
+          <span>游玩 / 来源</span>
           <span>收藏</span>
         </div>
       )}
@@ -141,7 +141,7 @@ export function GameCollection({
         data-columns={columns}
         style={{ height: virtualizer.getTotalSize() }}
         role="list"
-        aria-label={view === 'grid' ? '游戏网格' : '游戏列表'}
+        aria-label={view === 'grid' ? '作品网格' : '作品列表'}
       >
         {virtualizer.getVirtualItems().map((row) => (
           <div
@@ -207,14 +207,8 @@ export function GameCollection({
                           </AppLink>
                         </h3>
                         <span className="list-install">
-                          {game.installed ? (
-                            <>
-                              <Download size={12} />
-                              已安装
-                            </>
-                          ) : (
-                            '未安装'
-                          )}
+                          {game.installed && <Download size={12} />}
+                          {availabilityLabel(game)}
                         </span>
                       </div>
                     </div>
@@ -223,7 +217,7 @@ export function GameCollection({
                       <i />
                       {statusLabels[game.status]}
                     </span>
-                    <span className="list-playtime">{formatPlaytime(game.playtimeMinutes)}</span>
+                    <span className="list-playtime">{workMeta(game)}</span>
                     <button
                       data-focus-key="favorite"
                       className={`list-favorite${game.favorite ? ' is-favorite' : ''}`}

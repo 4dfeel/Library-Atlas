@@ -824,3 +824,14 @@
 .feedback-state h2:focus {
   outline: none;
 }
+.platform-chip {
+  padding: 1px 7px;
+  border-radius: 4px;
+  border: 1px solid #f2f5fa2e;
+  background: #0b0e14a6;
+  color: var(--text-primary);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  line-height: 1.7;
+}

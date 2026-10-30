@@ -53,7 +53,7 @@ function Brand({ collapsed }: { collapsed: boolean }) {
       {!collapsed && (
         <div>
           <span>LIBRARY ATLAS</span>
-          <small>你的私人游戏地图</small>
+          <small>你的私人作品地图</small>
         </div>
       )}
     </div>
@@ -147,7 +147,7 @@ export function App() {
                 collapsed={collapsed}
               />
               <AppLink
-                aria-label="游戏库"
+                aria-label="作品库"
                 to={libraryHref(size)}
                 className="nav-item active"
                 aria-current={route.name === 'library' ? 'page' : undefined}
@@ -155,7 +155,7 @@ export function App() {
                 <LibraryBig size={19} />
                 {!collapsed && (
                   <>
-                    <span>游戏库</span>
+                    <span>作品库</span>
                     <ChevronRight className="nav-chevron" size={16} />
                   </>
                 )}
@@ -233,14 +233,14 @@ export function App() {
                   <span className="breadcrumb-root">我的空间</span>
                   <ChevronRight size={13} />
                   {route.name === 'library' ? (
-                    <span aria-current="page">游戏库</span>
+                    <span aria-current="page">作品库</span>
                   ) : (
                     <>
                       <AppLink to={libraryHref(size)} className="breadcrumb-link">
-                        游戏库
+                        作品库
                       </AppLink>
                       <ChevronRight size={13} />
-                      <span aria-current="page">游戏详情</span>
+                      <span aria-current="page">作品详情</span>
                     </>
                   )}
                 </nav>
@@ -289,7 +289,7 @@ export function App() {
             if (!open) setConfirmReset(false);
           }}
           title="你的演示空间"
-          description="当前展示的游戏、封面与游玩记录均为合成资料，与真实 Steam 库存完全隔离。"
+          description="当前展示的作品、封面与游玩记录均为合成资料，与真实 Steam / DLsite 库存完全隔离。"
         >
           <div className="demo-settings">
             <div>
@@ -307,7 +307,7 @@ export function App() {
                 >
                   <span>
                     {value.toLocaleString('zh-CN')}
-                    <small>款游戏</small>
+                    <small>部作品</small>
                   </span>
                   {size === value && <Check size={18} />}
                 </button>
@@ -325,7 +325,7 @@ export function App() {
                 <>
                   <p role="alert">
                     将清除本浏览器中 {editCount.toLocaleString('zh-CN')}{' '}
-                    款游戏的演示修改（评分、备注、状态、收藏），恢复为初始合成资料。未保存的备注草稿也会丢弃。此操作无法撤销。
+                    部作品的演示修改（评分、备注、状态、收藏），恢复为初始合成资料。未保存的备注草稿也会丢弃。此操作无法撤销。
                   </p>
                   <div>
                     <Button
@@ -355,7 +355,7 @@ export function App() {
                 <>
                   <p>
                     已修改 {editCount.toLocaleString('zh-CN')}{' '}
-                    款游戏。重置只影响本浏览器的演示存储。
+                    部作品。重置只影响本浏览器的演示存储。
                   </p>
                   <Button
                     variant="ghost"

@@ -9,7 +9,7 @@ import {
   type GameDetail,
 } from '@/lib/data';
 import { libraryHref, navigate, readHistoryState } from '@/lib/router';
-import { formatDate } from '@/lib/utils';
+import { availabilityLabel, formatDate, kindLabels, platformLabels } from '@/lib/utils';
 import { GameHero } from './game-hero';
 import { PersonalRecord } from './personal-record';
 
@@ -42,8 +42,8 @@ function DetailBody({ game }: { game: GameDetail }) {
   return (
     <>
       <section className="detail-about" aria-labelledby="about-title">
-        <span className="eyebrow">ABOUT THE GAME</span>
-        <h2 id="about-title">游戏简介</h2>
+        <span className="eyebrow">ABOUT THIS WORK</span>
+        <h2 id="about-title">作品简介</h2>
         {game.description ? (
           <div className="about-text">
             {game.description.split('\n\n').map((paragraph, index) => (
@@ -51,9 +51,9 @@ function DetailBody({ game }: { game: GameDetail }) {
             ))}
           </div>
         ) : (
-          <p className="section-empty">这款游戏暂未提供简介。</p>
+          <p className="section-empty">这部作品暂未提供简介。</p>
         )}
-        <p className="source-note">简介与标签为 Library Atlas 合成演示资料，不对应任何真实游戏。</p>
+        <p className="source-note">简介与标签为 Library Atlas 合成演示资料，不对应任何真实作品。</p>
       </section>
 
       <div className="detail-facets">
@@ -70,38 +70,41 @@ function DetailBody({ game }: { game: GameDetail }) {
           </ul>
         </section>
 
-        <section className="detail-section" aria-labelledby="achievements-title">
-          <h2 id="achievements-title">
-            <Trophy size={15} />
-            成就进度<span className="field-rule">演示</span>
-          </h2>
-          {achievements ? (
-            <div className="achievement-progress" data-testid="achievements">
-              <div className="achievement-numbers">
-                <strong>{percent}%</strong>
-                <span>
-                  已解锁 {achievements.unlocked} / {achievements.total}
-                </span>
+        {/* Only Steam exposes achievements; other platforms omit the section. */}
+        {game.platform === 'steam' && (
+          <section className="detail-section" aria-labelledby="achievements-title">
+            <h2 id="achievements-title">
+              <Trophy size={15} />
+              成就进度<span className="field-rule">演示</span>
+            </h2>
+            {achievements ? (
+              <div className="achievement-progress" data-testid="achievements">
+                <div className="achievement-numbers">
+                  <strong>{percent}%</strong>
+                  <span>
+                    已解锁 {achievements.unlocked} / {achievements.total}
+                  </span>
+                </div>
+                <div
+                  className="progress-track"
+                  role="progressbar"
+                  aria-label="成就解锁进度"
+                  aria-valuemin={0}
+                  aria-valuemax={achievements.total}
+                  aria-valuenow={achievements.unlocked}
+                  aria-valuetext={`${achievements.unlocked} / ${achievements.total}，${percent}%`}
+                >
+                  <span style={{ width: `${percent}%` }} />
+                </div>
+                {achievements.unlocked === 0 && <p className="section-empty">尚未解锁任何成就。</p>}
               </div>
-              <div
-                className="progress-track"
-                role="progressbar"
-                aria-label="成就解锁进度"
-                aria-valuemin={0}
-                aria-valuemax={achievements.total}
-                aria-valuenow={achievements.unlocked}
-                aria-valuetext={`${achievements.unlocked} / ${achievements.total}，${percent}%`}
-              >
-                <span style={{ width: `${percent}%` }} />
-              </div>
-              {achievements.unlocked === 0 && <p className="section-empty">尚未解锁任何成就。</p>}
-            </div>
-          ) : (
-            <p className="section-empty" data-testid="achievements">
-              未提供成就信息。该条目没有成就数据，不以 0% 显示。
-            </p>
-          )}
-        </section>
+            ) : (
+              <p className="section-empty" data-testid="achievements">
+                未提供成就信息。该条目没有成就数据，不以 0% 显示。
+              </p>
+            )}
+          </section>
+        )}
 
         <section className="detail-section" aria-labelledby="archive-title">
           <h2 id="archive-title">
@@ -124,8 +127,25 @@ function DetailBody({ game }: { game: GameDetail }) {
               </dd>
             </div>
             <div>
-              <dt>安装状态</dt>
-              <dd>{game.installed ? '已安装在本机（演示）' : '未安装'}</dd>
+              <dt>平台</dt>
+              <dd>
+                {platformLabels[game.platform]} · {kindLabels[game.kind]}
+              </dd>
+            </div>
+            <div>
+              <dt>制作方</dt>
+              <dd>{game.maker}</dd>
+            </div>
+            <div>
+              <dt>发售日</dt>
+              <dd>{formatDate(game.releaseDate) ?? <span className="muted">未提供</span>}</dd>
+            </div>
+            <div>
+              <dt>本机状态</dt>
+              <dd>
+                {availabilityLabel(game)}
+                {game.installed && '（演示）'}
+              </dd>
             </div>
             <div>
               <dt>加入收藏</dt>
@@ -133,7 +153,7 @@ function DetailBody({ game }: { game: GameDetail }) {
             </div>
             <div>
               <dt>资料来源</dt>
-              <dd>合成演示数据 · 未连接 Steam</dd>
+              <dd>合成演示数据 · 未连接 {platformLabels[game.platform]}</dd>
             </div>
           </dl>
         </section>
@@ -144,8 +164,8 @@ function DetailBody({ game }: { game: GameDetail }) {
 
 function DetailSkeleton() {
   return (
-    <div className="detail-page detail-loading" role="status" aria-label="正在读取游戏详情">
-      <p className="sr-only">正在读取游戏详情</p>
+    <div className="detail-page detail-loading" role="status" aria-label="正在读取作品详情">
+      <p className="sr-only">正在读取作品详情</p>
       <div className="detail-hero skeleton-hero">
         <div className="detail-frame hero-inner">
           <span className="skeleton-block back-skeleton" />
@@ -190,7 +210,7 @@ function DetailSkeleton() {
 export function GameUnavailable({ size }: { size: DemoSize }) {
   const headingRef = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
-    document.title = '游戏不可用 · Library Atlas';
+    document.title = '作品不可用 · Library Atlas';
     headingRef.current?.focus({ preventScroll: true });
   }, []);
   return (
@@ -199,9 +219,9 @@ export function GameUnavailable({ size }: { size: DemoSize }) {
         kind="empty"
         icon={Compass}
         eyebrow="OFF THE MAP"
-        title="找不到这款游戏"
-        description="它不在当前演示收藏中，或暂时无法在普通页面查看。请返回游戏库继续浏览。"
-        action="返回游戏库"
+        title="找不到这部作品"
+        description="它不在当前演示收藏中，或暂时无法在普通页面查看。请返回作品库继续浏览。"
+        action="返回作品库"
         headingRef={headingRef}
         onAction={() => navigate(libraryHref(size))}
       />
@@ -234,7 +254,7 @@ export function GameDetailPage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [game?.id]);
   useEffect(() => {
-    if (!game) document.title = '游戏详情 · Library Atlas';
+    if (!game) document.title = '作品详情 · Library Atlas';
   }, [game]);
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -268,8 +288,8 @@ export function GameDetailPage({
       <main className="detail-page detail-feedback">
         <FeedbackState
           kind="error"
-          title="暂时未能读取游戏详情"
-          description="演示资料仍然安全，请重试；也可以先返回游戏库。"
+          title="暂时未能读取作品详情"
+          description="演示资料仍然安全，请重试；也可以先返回作品库。"
           action="重新加载"
           onAction={() => {
             if (scenario !== 'normal') setScenario('normal');
@@ -284,7 +304,7 @@ export function GameDetailPage({
               navigate(back.href);
             }}
           >
-            返回游戏库
+            返回作品库
           </a>
         </FeedbackState>
       </main>

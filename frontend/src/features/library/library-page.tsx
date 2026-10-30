@@ -2,12 +2,16 @@ import { motion, useReducedMotion } from 'motion/react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ArrowDownWideNarrow,
-  BookOpen,
   ChevronDown,
-  Download,
+  Clapperboard,
+  Gamepad2,
+  Headphones,
+  Image,
   Layers3,
+  LayoutGrid,
   List,
   Monitor,
+  Package,
   Search,
   SlidersHorizontal,
   Star,
@@ -23,11 +27,23 @@ import {
   type DemoScenario,
   type DemoSize,
   type LibraryFilters,
+  type WorkKind,
+  workKinds,
 } from '@/lib/data';
+import { kindLabels } from '@/lib/utils';
 import { getGridLayout, useMeasuredWidth } from '@/lib/layout';
 import { gameHref, patchHistoryState, readHistoryState } from '@/lib/router';
 import { GameCollection, type CollectionRestore, type ViewMode } from './game-collection';
 import { libraryUrl, parseLibraryUrl } from './library-url';
+
+const kindIcons: Record<WorkKind | 'all', typeof LayoutGrid> = {
+  all: LayoutGrid,
+  game: Gamepad2,
+  image: Image,
+  video: Clapperboard,
+  audio: Headphones,
+  other: Package,
+};
 
 function scenarioFromUrl(): DemoScenario {
   const value = new URLSearchParams(window.location.search).get('state');
@@ -87,7 +103,7 @@ export function LibraryPage({
     return () => window.removeEventListener('keydown', handleSearch);
   }, []);
   useEffect(() => {
-    document.title = '游戏库 · Library Atlas';
+    document.title = '作品库 · Library Atlas';
     if (restore.focusSearch) {
       searchRef.current?.focus();
       patchHistoryState({ focusSearch: undefined });
@@ -119,6 +135,8 @@ export function LibraryPage({
     filters.genre !== 'all' ||
     filters.status !== 'all' ||
     filters.installed !== 'all' ||
+    filters.kind !== 'all' ||
+    filters.platform !== 'all' ||
     filters.favoritesOnly;
 
   return (
@@ -133,7 +151,7 @@ export function LibraryPage({
         <div className="intro-copy">
           <span className="eyebrow">THE COLLECTION</span>
           <div className="title-line">
-            <h1 id="library-title">我的游戏库</h1>
+            <h1 id="library-title">我的作品库</h1>
             <span className="title-count">{(data?.totalVisible ?? 0).toLocaleString('zh-CN')}</span>
           </div>
           <p>每一段冒险，都有它的位置。</p>
@@ -154,41 +172,24 @@ export function LibraryPage({
         </div>
       </motion.section>
 
-      <section className="library-controls" aria-label="游戏库工具栏">
-        <div className="collection-tabs" aria-label="快捷筛选">
-          <button
-            aria-pressed={!filters.favoritesOnly && filters.installed === 'all'}
-            className={!filters.favoritesOnly && filters.installed === 'all' ? 'selected' : ''}
-            onClick={() => {
-              update('favoritesOnly', false);
-              update('installed', 'all');
-            }}
-          >
-            <BookOpen size={16} />
-            全部游戏<span>{(data?.totalVisible ?? 0).toLocaleString('zh-CN')}</span>
-          </button>
-          <button
-            aria-pressed={filters.installed === 'installed'}
-            className={filters.installed === 'installed' ? 'selected' : ''}
-            onClick={() => {
-              update('favoritesOnly', false);
-              update('installed', 'installed');
-            }}
-          >
-            <Download size={16} />
-            已安装<span>{(data?.installedCount ?? 0).toLocaleString('zh-CN')}</span>
-          </button>
-          <button
-            aria-pressed={filters.favoritesOnly}
-            className={filters.favoritesOnly ? 'selected' : ''}
-            onClick={() => {
-              update('favoritesOnly', true);
-              update('installed', 'all');
-            }}
-          >
-            <Star size={16} />
-            我的收藏<span>{(data?.favoriteCount ?? 0).toLocaleString('zh-CN')}</span>
-          </button>
+      <section className="library-controls" aria-label="作品库工具栏">
+        <div className="collection-tabs" role="group" aria-label="作品类型">
+          {(['all', ...workKinds] as const).map((kind) => {
+            const Icon = kindIcons[kind];
+            const count = kind === 'all' ? data?.totalVisible : data?.kindCounts[kind];
+            return (
+              <button
+                key={kind}
+                aria-pressed={filters.kind === kind}
+                className={filters.kind === kind ? 'selected' : ''}
+                onClick={() => setFilters((current) => ({ ...current, kind, genre: 'all' }))}
+              >
+                <Icon size={16} />
+                {kind === 'all' ? '全部' : kindLabels[kind]}
+                <span>{(count ?? 0).toLocaleString('zh-CN')}</span>
+              </button>
+            );
+          })}
           <span className="tabs-spacer" />
           <span className="demo-data-note">合成数据 · 非真实游玩记录</span>
         </div>
@@ -197,7 +198,7 @@ export function LibraryPage({
             <Search size={17} />
             <Input
               ref={searchRef}
-              aria-label="搜索游戏"
+              aria-label="搜索作品"
               placeholder="搜索你的下一段冒险…"
               value={search}
               onChange={(event) => setSearch(event.target.value)}
@@ -249,18 +250,40 @@ export function LibraryPage({
           </div>
           <div className="filter-select install-filter">
             <select
-              aria-label="安装状态"
+              aria-label="本机状态"
               value={filters.installed}
               onChange={(event) =>
                 update('installed', event.target.value as LibraryFilters['installed'])
               }
             >
-              <option value="all">全部安装状态</option>
-              <option value="installed">已安装</option>
-              <option value="not-installed">未安装</option>
+              <option value="all">全部本机状态</option>
+              <option value="installed">已安装 / 已下载</option>
+              <option value="not-installed">未在本机</option>
             </select>
             <ChevronDown size={13} />
           </div>
+          <div className="filter-select">
+            <select
+              aria-label="平台"
+              value={filters.platform}
+              onChange={(event) =>
+                update('platform', event.target.value as LibraryFilters['platform'])
+              }
+            >
+              <option value="all">全部平台</option>
+              <option value="steam">Steam</option>
+              <option value="dlsite">DLsite</option>
+            </select>
+            <ChevronDown size={13} />
+          </div>
+          <button
+            className={`favorite-filter${filters.favoritesOnly ? ' selected' : ''}`}
+            aria-pressed={filters.favoritesOnly}
+            onClick={() => update('favoritesOnly', !filters.favoritesOnly)}
+          >
+            <Star size={15} fill={filters.favoritesOnly ? 'currentColor' : 'none'} />
+            仅收藏<span>{(data?.favoriteCount ?? 0).toLocaleString('zh-CN')}</span>
+          </button>
           <span className="toolbar-spacer" />
           <div className="filter-select sort-select">
             <ArrowDownWideNarrow size={16} />
@@ -302,7 +325,7 @@ export function LibraryPage({
           data-count={data?.filteredCount ?? 0}
         >
           <p aria-live="polite">
-            <span>{(data?.filteredCount ?? 0).toLocaleString('zh-CN')}</span> 款游戏
+            <span>{(data?.filteredCount ?? 0).toLocaleString('zh-CN')}</span> 部作品
             {hasFilters && (
               <button onClick={reset}>
                 清除筛选
@@ -313,7 +336,7 @@ export function LibraryPage({
               <span className="updating-label">正在更新…</span>
             )}
           </p>
-          <span>点击游戏名称查看详情</span>
+          <span>点击作品查看详情</span>
         </div>
       </section>
 
@@ -333,7 +356,7 @@ export function LibraryPage({
       ) : query.isError ? (
         <FeedbackState
           kind="error"
-          title="暂时未能读取游戏库"
+          title="暂时未能读取作品库"
           description="你的演示收藏仍然安全。请重试，继续探索。"
           action="重新加载"
           onAction={() => {
@@ -358,7 +381,7 @@ export function LibraryPage({
           description={
             hasFilters
               ? '试试其他关键词，或放宽筛选条件。'
-              : '这里还没有游戏。切换回完整演示，看看未来收藏的模样。'
+              : '这里还没有作品。切换回完整演示，看看未来收藏的模样。'
           }
           action={hasFilters ? '清除筛选' : '浏览演示收藏'}
           onAction={() => {
@@ -371,7 +394,7 @@ export function LibraryPage({
       <footer className="library-footer">
         <span>
           <Monitor size={12} />
-          本地演示 · 不连接 Steam
+          本地演示 · 不连接 Steam / DLsite
         </span>
         <button onClick={onAbout}>
           {size.toLocaleString('zh-CN')} 款测试场景
@@ -404,10 +427,10 @@ function LoadingState({ onRetry }: { onRetry: () => void }) {
         gridTemplateColumns: `repeat(${columns}, minmax(0, ${cardWidth}px))`,
         gridAutoRows: `${rowHeight - 20}px`,
       }}
-      aria-label="正在读取本地游戏库"
+      aria-label="正在读取本地作品库"
       role="status"
     >
-      <p className="sr-only">正在读取本地游戏库</p>
+      <p className="sr-only">正在读取本地作品库</p>
       {delayed && (
         <div className="loading-explanation">
           读取时间比预期更长。

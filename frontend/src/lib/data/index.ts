@@ -4,6 +4,7 @@ export {
   GameUpdateError,
   noteMaxLength,
   ratingScale,
+  workKinds,
 } from './types';
 export type {
   DemoSize,
@@ -17,7 +18,9 @@ export type {
   LibraryResult,
   LibrarySort,
   LibrarySource,
+  Platform,
   Visibility,
+  WorkKind,
 } from './types';
 export {
   getDemoEditCount,

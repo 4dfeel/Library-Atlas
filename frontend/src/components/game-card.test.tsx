@@ -6,6 +6,10 @@ import { GameCard, GameCover } from './game-card';
 
 const game: Game = {
   id: 'demo-unit',
+  platform: 'steam',
+  kind: 'game',
+  maker: 'Atlas Original',
+  releaseDate: null,
   title: '跨越银河之后的漫长旅途 / A Very Long Journey 日本語 Special Edition',
   subtitle: '',
   genre: '冒险',
@@ -32,7 +36,7 @@ describe('GameCard', () => {
       'href',
       '/library/demo-unit',
     );
-    expect(screen.getByText('在玩')).toBeVisible();
+    expect(screen.getByText('进行中')).toBeVisible();
     expect(screen.getByText('2 小时')).toBeVisible();
     expect(screen.getByText('已安装')).toBeVisible();
   });

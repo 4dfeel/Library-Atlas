@@ -126,8 +126,8 @@ describe('demo source behavior', () => {
   it('rejects writes to private and absent IDs without exposing titles', async () => {
     const source = new DemoLibrarySource(1500, { store: createMemoryEditStore() });
     const privateGame = generateDemoGames(1500).find((game) => game.visibility === 'private')!;
-    await expect(source.toggleFavorite(privateGame.id)).rejects.toThrow('游戏暂不可用。');
-    await expect(source.toggleFavorite('unknown')).rejects.toThrow('游戏暂不可用。');
+    await expect(source.toggleFavorite(privateGame.id)).rejects.toThrow('作品暂不可用。');
+    await expect(source.toggleFavorite('unknown')).rejects.toThrow('作品暂不可用。');
   });
 
   it('supports explicit empty and error previews', async () => {

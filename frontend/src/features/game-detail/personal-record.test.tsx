@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const settled = (scope: HTMLElement) =>
   waitFor(() => expect(within(scope).queryByText('正在保存…')).not.toBeInTheDocument());
-import { useGameDetail } from '@/lib/data';
+import { defaultLibraryFilters, useGameDetail } from '@/lib/data';
 import { getDemoSource } from '@/lib/data/demo-source';
 import { PersonalRecord } from './personal-record';
 import { noteDrafts } from './note-drafts';
@@ -91,19 +91,12 @@ describe('personal record (demo)', () => {
 
   it('changes status through the shared source used by the Library', async () => {
     const { user } = renderRecord('demo-00001');
-    const status = await screen.findByRole('group', { name: '游戏状态' });
+    const status = await screen.findByRole('group', { name: '进度状态' });
     await user.click(within(status).getByRole('radio', { name: '搁置' }));
     expect(await within(status).findByText('已保存到本机演示存储')).toBeVisible();
     expect(within(status).getByRole('radio', { name: '搁置' })).toBeChecked();
     const list = await getDemoSource(1500).list({
-      filters: {
-        search: '星穹观测站',
-        genre: 'all',
-        status: 'paused',
-        installed: 'all',
-        favoritesOnly: false,
-        sort: 'curated',
-      },
+      filters: { ...defaultLibraryFilters, search: '星穹观测站', status: 'paused' },
     });
     expect(list.items.map((game) => game.id)).toEqual(['demo-00001']);
   });

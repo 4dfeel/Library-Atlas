@@ -25,6 +25,8 @@ describe('Library URL state', () => {
         genre: '探索',
         status: 'playing' as const,
         installed: 'installed' as const,
+        kind: 'audio' as const,
+        platform: 'dlsite' as const,
         favoritesOnly: true,
         sort: 'playtime-desc' as const,
       },
@@ -42,7 +44,11 @@ describe('Library URL state', () => {
   });
 
   it('falls back to defaults for unknown values', () => {
-    expect(parseLibraryUrl('?status=deleted&installed=maybe&sort=random&view=table')).toEqual({
+    expect(
+      parseLibraryUrl(
+        '?status=deleted&installed=maybe&kind=book&platform=gog&sort=random&view=table',
+      ),
+    ).toEqual({
       filters: defaultLibraryFilters,
       view: 'grid',
     });

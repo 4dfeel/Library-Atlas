@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Download, ImageOff, Star } from 'lucide-react';
 import { getCoverSource, type Game } from '@/lib/data';
-import { formatPlaytime, statusLabels } from '@/lib/utils';
+import { availabilityLabel, statusLabels, workMeta } from '@/lib/utils';
 import { AppLink } from '@/components/app-link';
 import { Tooltip } from './ui/tooltip';
 
@@ -75,12 +75,12 @@ export function GameCard({
         {game.installed && (
           <span className="installed-badge">
             <Download size={12} />
-            已安装
+            {availabilityLabel(game)}
           </span>
         )}
         <Tooltip
           content={
-            game.favorite ? '取消收藏 · 演示修改保存在本机' : '收藏游戏 · 演示修改保存在本机'
+            game.favorite ? '取消收藏 · 演示修改保存在本机' : '收藏作品 · 演示修改保存在本机'
           }
         >
           <button
@@ -100,7 +100,7 @@ export function GameCard({
             content={
               <>
                 <strong>{game.title}</strong>
-                <span className="tooltip-description">打开游戏详情</span>
+                <span className="tooltip-description">打开作品详情</span>
               </>
             }
           >
@@ -116,7 +116,7 @@ export function GameCard({
           </Tooltip>
         </h3>
         <div className="game-card-meta">
-          <span>{formatPlaytime(game.playtimeMinutes)}</span>
+          <span>{workMeta(game)}</span>
           <span className={`status-label status-${game.status}`}>
             <i className="status-dot" />
             {statusLabels[game.status]}
