@@ -160,6 +160,27 @@
 
 `state`：`queued` `resolving` `downloading` `verifying` `paused` `done` `failed` `cancelled` `reauth_required` `interrupted`。`code`：`session_expired` `session_changed` `account_changed` `login_required` `challenged` `no_permission` `file_gone` `file_changed` `unexpected_host` `not_a_file` `empty_file` `size_mismatch` `response_changed` `platform_unavailable` `folder_missing` `folder_invalid` `disk_full` `write_failed` `interrupted` `cancelled` `unexpected`。创建时另有 `folder_not_set` `download_serial` `download_unsupported`。
 
+### 解压
+| 接口 | 说明 |
+| --- | --- |
+| `GET /extractions` | `{tasks,activeCount}`，只含普通可见作品 |
+| `POST /extractions` | `{workId,again?}`，返回 202。只能指定作品，要解压什么由已完成的下载决定 |
+| `POST /extractions/{id}/cancel` `retry` `open-folder` | 重试不会重新下载 |
+| `POST /extractions/clear` | 清除已取消和失败的记录，不动结果和下载 |
+
+`POST /downloads` 另接受 `extract`：全部文件完成后自动解压。方案响应另有 `extractFolder`。
+
+任务：`id,workId,title,state,format?,filesTotal?,bytesTotal?,bytesDone,code?,message?,canRetry,location?,resultMissing,cleanupFailed,createdAt,finishedAt?`。`state`：`queued` `checking` `extracting` `committing` `done` `not_needed` `failed` `cancelled` `interrupted`。`code`：`no_download` `missing_parts` `input_changed` `account_changed` `tool_missing` `unsupported_format` `encrypted` `name_encoding` `unsafe_path` `duplicate_path` `special_entry` `too_large` `damaged` `extract_failed` `output_mismatch` `disk_full` `write_failed` `folder_missing` `interrupted` `cancelled` `unexpected`。
+
+### 更新与介绍图
+| 接口 | 说明 |
+| --- | --- |
+| `GET`、`PUT /settings/updates` | `{autoCheck,lastCheckedAt?}`；写入时只接受 `autoCheck` |
+| `GET /works/{id}/gallery` | `{images:[{url,width?,height?}],intro?,unavailable}`。`url` 是 Atlas 地址 |
+| `GET /works/{id}/gallery/{index}` | 图片本身，按序号，不接受地址 |
+
+`GET /downloads` 另返回 `updates:[{workId,title}]`，任务另有 `bytesPerSecond?`。文件夹类型增加 `extract`。
+
 ### 文件夹设置
 | 接口 | 说明 |
 | --- | --- |

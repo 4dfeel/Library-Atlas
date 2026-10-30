@@ -21,6 +21,7 @@ import {
   type LibrarySummary,
   type SyncJob,
   type DownloadAction,
+  type DownloadList,
   type DownloadState,
   type DownloadTask,
   type ExtractAction,
@@ -497,6 +498,7 @@ export function isDownloadActive(task: Pick<DownloadTask, 'state'>) {
 }
 
 const downloadsKey = [...realRoot, 'downloads'];
+const emptyUpdates: DownloadList['updates'] = [];
 
 /**
  * The service's queue, in real mode only. It is read here and never computed here, so it
@@ -524,6 +526,7 @@ export function useDownloads() {
   }, [finished, queryClient]);
   return {
     tasks,
+    updates: query.data?.updates ?? emptyUpdates,
     activeCount: query.data?.activeCount ?? 0,
     failed: query.isError,
   };
@@ -596,4 +599,37 @@ export function useExtractionActions() {
       await refresh();
     },
   };
+}
+
+export function useUpdateSettings() {
+  const queryClient = useQueryClient();
+  const key = [...realRoot, 'update-settings'];
+  const query = useQuery({
+    queryKey: key,
+    queryFn: ({ signal }) => realSource.updateSettings(signal),
+    enabled: useWorkspaceMode() === 'real',
+    retry: false,
+  });
+  return {
+    settings: query.data,
+    setAuto: (enabled: boolean) => {
+      void realSource
+        .setUpdateSettings(enabled)
+        .then((next) => queryClient.setQueryData(key, next))
+        .catch(() => queryClient.invalidateQueries({ queryKey: key }));
+    },
+  };
+}
+
+/** Real works only; a work's page asks once, and the service keeps the list for a week. */
+export function useWorkGallery(workId: string) {
+  const isReal = useWorkspaceMode() === 'real';
+  const query = useQuery({
+    queryKey: [...realRoot, 'gallery', workId],
+    queryFn: ({ signal }) => realSource.gallery(workId, signal),
+    enabled: isReal,
+    retry: false,
+    staleTime: 3_600_000,
+  });
+  return { gallery: query.data, loading: isReal && query.isPending };
 }

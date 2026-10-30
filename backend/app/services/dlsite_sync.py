@@ -26,6 +26,7 @@ from app.adapters.dlsite.library import (
 )
 from app.adapters.dlsite.session import SessionCookie
 from app.api import models
+from app.db.engine import writing
 from app.db.schema import library_entries, source_accounts, sync_jobs, works
 from app.domain.dlsite_works import map_work, owned_works
 from app.repositories.accounts import DLSITE_ACCOUNT_ID
@@ -80,7 +81,7 @@ class DlsiteSync:
 
     def recover(self) -> None:
         """A job still marked active after a restart was cut off. It is reported, not rerun."""
-        with self._engine.begin() as connection:
+        with writing(self._engine).begin() as connection:
             connection.execute(
                 update(sync_jobs)
                 .where(sync_jobs.c.state.in_(_ACTIVE))
@@ -127,7 +128,7 @@ class DlsiteSync:
                 return self.status()  # The same job, not a second one.
             cookies, generation = self._auth.session_for_sync()
             job_id = uuid.uuid4().hex
-            with self._engine.begin() as connection:
+            with writing(self._engine).begin() as connection:
                 connection.execute(
                     sync_jobs.insert().values(id=job_id, state="preparing", started_at=_now())
                 )
@@ -154,7 +155,7 @@ class DlsiteSync:
     # --- the job ---
 
     def _progress(self, job_id: str, **values: Any) -> None:
-        with self._engine.begin() as connection:
+        with writing(self._engine).begin() as connection:
             connection.execute(update(sync_jobs).where(sync_jobs.c.id == job_id).values(**values))
 
     def _check(self, generation: int) -> None:
@@ -235,7 +236,7 @@ class DlsiteSync:
                 raise _Stop("failed", "response_changed")
             self._check(generation)
             self._progress(job_id, state="saving")
-            with self._engine.begin() as connection:
+            with writing(self._engine).begin() as connection:
                 for work in usable:
                     if work.source_work_id in seen:
                         continue
@@ -272,7 +273,7 @@ class DlsiteSync:
         logger.info("sync type codes: %s", ",".join(f"{k}={v}" for k, v in sorted(kinds.items())))
         self._check(generation)
         now = _now()
-        with self._engine.begin() as connection:
+        with writing(self._engine).begin() as connection:
             # Only a complete read can say what is no longer listed, and even then the
             # work and its records stay: it is a note, not a deletion.
             if totals["skipped"] == 0:

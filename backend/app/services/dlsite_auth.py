@@ -31,6 +31,7 @@ from app.api import models
 from app.core.credentials import CredentialStore, CredentialStoreError
 from app.core.errors import AtlasError
 from app.core.session_vault import SessionCorrupt, SessionVault
+from app.db.engine import writing
 from app.repositories import accounts, app_settings
 
 logger = logging.getLogger("atlas")
@@ -223,7 +224,7 @@ class DlsiteAuth:
             raise AtlasError(
                 "credential_store_unavailable", "无法删除保存的账号密码，请重试。", status=503
             ) from None
-        with self._engine.begin() as connection:
+        with writing(self._engine).begin() as connection:
             app_settings.delete(connection, _REMEMBERED_ALIAS)
         return self.connection()
 
@@ -282,7 +283,7 @@ class DlsiteAuth:
                 return
             try:
                 self._vault.save(encode_session(cookies))
-                with self._engine.begin() as connection:
+                with writing(self._engine).begin() as connection:
                     accounts.save_connected(
                         connection,
                         credential_ref=f"{self._library_id}/dlsite/session",
@@ -301,7 +302,7 @@ class DlsiteAuth:
             if attempt.remember is not None:
                 try:
                     self._saved_login.save(attempt.remember)
-                    with self._engine.begin() as connection:
+                    with writing(self._engine).begin() as connection:
                         app_settings.put(connection, _REMEMBERED_ALIAS, attempt.alias or "")
                 except (CredentialStoreError, SQLAlchemyError) as error:
                     logger.error("login not remembered: %s", type(error).__name__)
@@ -345,7 +346,7 @@ class DlsiteAuth:
                 "credential_store_unavailable", MESSAGES["store_unavailable"], status=503
             ) from None
         except (SessionCorrupt, ValueError):
-            with self._engine.begin() as connection:
+            with writing(self._engine).begin() as connection:
                 accounts.set_state(connection, "reauth_required")
             with self._lock:
                 self._problem = "session_missing"
@@ -362,7 +363,7 @@ class DlsiteAuth:
                 return
             self._problem = "session_expired"
             self._unverified = False
-            with self._engine.begin() as connection:
+            with writing(self._engine).begin() as connection:
                 accounts.set_state(connection, "reauth_required")
 
     # --- session check ---
@@ -409,14 +410,14 @@ class DlsiteAuth:
             self._unverified = False
             self._problem = problem
             if result is SessionCheck.VALID:
-                with self._engine.begin() as connection:
+                with writing(self._engine).begin() as connection:
                     accounts.mark_verified(connection)
             elif result is SessionCheck.UNAVAILABLE:
                 self._unverified = True
                 self._problem = "platform_unavailable"
             elif result is SessionCheck.EXPIRED or problem == "session_missing":
                 self._problem = "session_expired" if result else problem
-                with self._engine.begin() as connection:
+                with writing(self._engine).begin() as connection:
                     accounts.set_state(connection, "reauth_required")
             elif problem == "store_unavailable":
                 self._unverified = True
@@ -429,7 +430,7 @@ class DlsiteAuth:
             self._generation += 1
             self._unverified = False
             self._problem = None
-            with self._engine.begin() as connection:
+            with writing(self._engine).begin() as connection:
                 accounts.disable(connection)
         self._cleanup()
         return self.connection()
@@ -442,7 +443,7 @@ class DlsiteAuth:
                 self._problem = "disconnect_failed"
             return
         self._remove_browser_data()
-        with self._engine.begin() as connection:
+        with writing(self._engine).begin() as connection:
             accounts.cleanup_done(connection)
         with self._lock:
             self._problem = None

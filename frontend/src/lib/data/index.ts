@@ -45,6 +45,8 @@ export {
   isExtractActive,
   useExtractionActions,
   useExtractions,
+  useUpdateSettings,
+  useWorkGallery,
   isSyncActive,
   useDownloadActions,
   useDownloads,

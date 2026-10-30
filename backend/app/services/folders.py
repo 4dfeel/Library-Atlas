@@ -14,6 +14,7 @@ from app.adapters.system.folder_dialog import FolderOpener, FolderPicker
 from app.api import models
 from app.core.config import Settings
 from app.core.errors import AtlasError
+from app.db.engine import writing
 from app.repositories import app_settings
 
 _KEYS: dict[models.FolderKind, str] = {
@@ -138,7 +139,7 @@ class FolderService:
 
     def set_folder(self, kind: models.FolderKind, raw: str) -> models.FoldersOut:
         path = self._validate(kind, raw)
-        with self._engine.begin() as connection:
+        with writing(self._engine).begin() as connection:
             app_settings.put(connection, _KEYS[kind], str(path))
         return self.folders()
 

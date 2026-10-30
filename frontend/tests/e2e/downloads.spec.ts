@@ -110,7 +110,7 @@ test.describe('downloads', () => {
     const work = await freshWork();
     await openWork(page, work);
     await shot(page, 'download-ready');
-    await action(page).getByRole('button', { name: '下载', exact: true }).click();
+    await action(page).getByRole('button', { name: '仅下载' }).click();
 
     // The transfer is the service's: progress is real bytes, and survives leaving the page.
     const bar = action(page).getByRole('progressbar');
@@ -122,7 +122,7 @@ test.describe('downloads', () => {
 
     await expect(action(page).getByTestId('download-done')).toBeVisible({ timeout: 30_000 });
     await expect(page.getByText('已安装', { exact: true })).toHaveCount(0);
-    await expect(action(page)).toContainText('解压将在后续版本开放');
+    await expect(action(page).getByRole('button', { name: '解压', exact: true })).toBeVisible();
     await shot(page, 'download-done');
     const folder = join(library, work.sourceId);
     expect(await readdir(folder)).toEqual([`${work.sourceId}.zip`]);
@@ -139,7 +139,7 @@ test.describe('downloads', () => {
     await behave({ parts: 3, size: MB });
     const work = await freshWork();
     await openWork(page, work);
-    await action(page).getByRole('button', { name: '下载', exact: true }).click();
+    await action(page).getByRole('button', { name: '仅下载' }).click();
     const plan = page.getByTestId('download-plan');
     await expect(plan).toBeVisible();
     await expect(plan).toContainText('分成 3 个文件');
@@ -165,7 +165,7 @@ test.describe('downloads', () => {
     await control({ pick: chosen });
     await rm(library, { recursive: true, force: true });
     await openWork(page, work);
-    await action(page).getByRole('button', { name: '下载', exact: true }).click();
+    await action(page).getByRole('button', { name: '仅下载' }).click();
     const plan = page.getByTestId('download-plan');
     await expect(plan).toContainText('现在不存在');
     await expect(plan.getByRole('button', { name: '开始下载' })).toBeDisabled();
@@ -182,7 +182,7 @@ test.describe('downloads', () => {
     await behave({ mode: 'login_page' });
     const work = await freshWork();
     await openWork(page, work);
-    await action(page).getByRole('button', { name: '下载', exact: true }).click();
+    await action(page).getByRole('button', { name: '仅下载' }).click();
     await expect(action(page)).toContainText('不是文件', { timeout: 15_000 });
     await shot(page, 'download-failed');
     await expect
@@ -197,7 +197,7 @@ test.describe('downloads', () => {
     await behave({ mode: 'slow', size: 16 * MB, delay: 0.03 });
     const work = await freshWork();
     await openWork(page, work);
-    await action(page).getByRole('button', { name: '下载', exact: true }).click();
+    await action(page).getByRole('button', { name: '仅下载' }).click();
     await expect(action(page).getByRole('progressbar')).toBeVisible();
     // A second click from anywhere cannot make a second task.
     const again = await call('/downloads', 'POST', { workId: work.id });
@@ -205,10 +205,11 @@ test.describe('downloads', () => {
       (await again.json()).tasks.filter((t: Work & { workId: string }) => t.workId === work.id),
     ).toHaveLength(1);
 
-    await page.getByRole('button', { name: /下载任务/ }).click();
-    const dialog = page.getByRole('dialog', { name: '下载' });
-    const row = dialog.locator('[data-download-task]').filter({ hasText: '下载中' }).first();
-    await expect(row).toBeVisible({ timeout: 10_000 });
+    await page.getByTestId('download-bar').click();
+    await expect(page).toHaveURL(/\/downloads$/);
+    const dialog = page.getByTestId('downloads-page');
+    const row = dialog.getByTestId('downloads-current');
+    await expect(row).toContainText('下载中', { timeout: 10_000 });
     await shot(page, 'download-queue');
     await noHorizontalScroll(page);
     await row.getByRole('button', { name: '暂停' }).click();
@@ -230,7 +231,7 @@ test.describe('downloads', () => {
     await behave({ mode: 'slow', size: 16 * MB, delay: 0.03 });
     const work = await freshWork();
     await openWork(page, work);
-    await action(page).getByRole('button', { name: '下载', exact: true }).click();
+    await action(page).getByRole('button', { name: '仅下载' }).click();
     await expect(action(page).getByRole('progressbar')).toBeVisible();
     await service.restart();
     token = (await (await fetch(`${service.origin}/api/v1/session`)).json()).csrfToken;
@@ -250,7 +251,7 @@ test.describe('downloads', () => {
     await behave({ mode: 'slow', size: 8 * MB, delay: 0.03 });
     const work = await freshWork();
     await openWork(page, work);
-    await action(page).getByRole('button', { name: '下载', exact: true }).click();
+    await action(page).getByRole('button', { name: '仅下载' }).click();
     await page.getByRole('button', { name: '添加备注' }).click();
     const note = page.locator('textarea').first();
     await note.fill('写到一半的备注');

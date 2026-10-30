@@ -5,14 +5,20 @@ The account name selects the behavior. A control file in the test directory lets
 tests change the platform's answer and break the store while the service is running.
 """
 
+import hashlib
 import json
+import struct
 import threading
+import zlib
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
+import httpx
+
 from app.adapters.dlsite.library import PlatformUnavailable, ResponseChanged, SessionRejected
 from app.adapters.dlsite.login_host import LoginEvent, LoginProcess, LoginRequest
+from app.adapters.dlsite.product import Product, ProductImage
 from app.adapters.dlsite.session import SessionCheck, SessionCookie
 from app.core.credentials import CredentialStoreError
 
@@ -142,6 +148,58 @@ class FakeFolderOpener:
         return None
 
 
+def _png(width: int, height: int, color: bytes) -> bytes:
+    """A flat made-up picture: real image bytes, with nothing to look at."""
+
+    def chunk(kind: bytes, data: bytes) -> bytes:
+        body = kind + data
+        return struct.pack(">I", len(data)) + body + struct.pack(">I", zlib.crc32(body))
+
+    row = b"\x00" + color * width
+    header = struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)
+    return (
+        b"\x89PNG\r\n\x1a\n"
+        + chunk(b"IHDR", header)
+        + chunk(b"IDAT", zlib.compress(row * height))
+        + chunk(b"IEND", b"")
+    )
+
+
+def synthetic_image_transport() -> httpx.BaseTransport:
+    """Answers image requests in a test library, so no test ever reaches the platform."""
+
+    def answer(request: httpx.Request) -> httpx.Response:
+        color = hashlib.sha256(str(request.url).encode()).digest()[:3]
+        # Store images come in both shapes: the first of each set stands upright.
+        width, height = (360, 640) if "_0." in str(request.url) else (640, 360)
+        return httpx.Response(
+            200, headers={"content-type": "image/png"}, content=_png(width, height, color)
+        )
+
+    return httpx.MockTransport(answer)
+
+
+class FakeProductClient:
+    """A made-up store record. The control file's `gallery` can be `none` or `offline`."""
+
+    def __init__(self, control: FakeControl) -> None:
+        self._control = control
+
+    def get(self, site: str, source_work_id: str) -> Product:
+        behavior = self._control.read().get("gallery")
+        if behavior == "offline":
+            raise PlatformUnavailable
+        if behavior == "none":
+            return Product()
+        return Product(
+            tuple(
+                ProductImage(f"https://img.dlsite.jp/{source_work_id}_{index}.png")
+                for index in range(6)
+            ),
+            "这是合成的作品简介，不对应任何真实作品。",
+        )
+
+
 _FAKE_TYPES = ("RPG", "ADV", "MNG", "ICG", "SOU", "MUS", "MOV", "ET3", "ZZZ")
 
 
@@ -190,6 +248,7 @@ class FakeLibraryClient:
                     "work_type": _FAKE_TYPES[index % len(_FAKE_TYPES)],
                     "regist_date": f"20{10 + index % 16}-06-01T00:00:00+09:00",
                     "content_size": None if index % 5 == 0 else (index + 1) * 10_000_000,
+                    "upgrade_date": settings.get("upgrade"),
                     "tags": [{"class": "genre", "name": "合成样本"}],
                     "work_files": {},
                 }

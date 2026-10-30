@@ -310,7 +310,7 @@ def test_a_file_arrives_whole_in_the_chosen_folder(api: TestClient, rig: Rig) ->
 
 
 def test_nothing_is_read_or_written_before_the_user_asks(api: TestClient, rig: Rig) -> None:
-    assert api.get(BASE).json() == {"tasks": [], "activeCount": 0}
+    assert api.get(BASE).json() == {"tasks": [], "activeCount": 0, "updates": []}
     api.get("/api/v1/works", params={"limit": 100})
     assert final_files(rig) == []
 
@@ -726,6 +726,24 @@ def test_a_finished_file_is_kept_until_asked_again(api: TestClient, rig: Rig) ->
     again = start(api, work["id"], again=True)
     ended(api, again[0]["id"])
     assert len(final_files(rig)) == 2
+
+
+def test_edits_and_new_tasks_are_not_refused_while_transfers_write_progress(
+    api: TestClient, rig: Rig
+) -> None:
+    """Reading then writing in one transaction used to fail at once if a transfer had just
+    written progress. Every request here must wait its turn and succeed."""
+    rig.behave(mode="slow", size=2_000_000, delay=0.01)
+    works_ = work_ids(api)
+    tasks = [start(api, work["id"])[0] for work in works_[:2]]
+    statuses: list[int] = []
+    deadline = time.monotonic() + 1.5
+    while time.monotonic() < deadline:
+        statuses.append(api.post(f"/api/v1/works/{works_[3]['id']}/favorite/toggle").status_code)
+        statuses.append(api.post(BASE, json={"workId": works_[0]["id"]}).status_code)
+    assert set(statuses) <= {200, 202}, statuses
+    for task in tasks:
+        assert ended(api, task["id"])["state"] == "done"
 
 
 def test_only_a_few_run_at_once(api: TestClient, rig: Rig) -> None:

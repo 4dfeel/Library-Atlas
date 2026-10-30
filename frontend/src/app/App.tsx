@@ -35,9 +35,18 @@ import {
   type DemoSize,
 } from '@/lib/data';
 import { AppLink } from '@/components/app-link';
-import { dashboardHref, libraryHref, matchRoute, settingsHref, useLocationKey } from '@/lib/router';
+import {
+  dashboardHref,
+  downloadsHref,
+  libraryHref,
+  matchRoute,
+  navigate,
+  settingsHref,
+  useLocationKey,
+} from '@/lib/router';
 import { DashboardPage } from '@/features/dashboard/dashboard-page';
 import { SourcesDialog } from '@/features/demo-services/sources-dialog';
+import { DownloadBar, DownloadsPage } from '@/features/downloads/downloads-page';
 import { TasksDialog } from '@/features/demo-services/tasks-dialog';
 import { AccountMenu } from '@/features/workspace/account-menu';
 import { WorkspaceSwitch } from '@/features/workspace/workspace-switch';
@@ -156,7 +165,11 @@ export function App() {
   };
   const openAbout = useCallback(() => setAboutOpen(true), []);
   const openSources = useCallback(() => setSourcesOpen(true), []);
-  const openTasks = useCallback(() => setTasksOpen(true), []);
+  // A real library has a whole page for this; the demo keeps its dialog.
+  const openTasks = useCallback(() => {
+    if (isDemo) setTasksOpen(true);
+    else navigate(downloadsHref());
+  }, [isDemo]);
   const shell = useMemo(
     () => ({ notify, openSources, openTasks }),
     [notify, openSources, openTasks],
@@ -295,6 +308,8 @@ export function App() {
                       <span aria-current="page">作品库</span>
                     ) : route.name === 'settings' ? (
                       <span aria-current="page">设置</span>
+                    ) : route.name === 'downloads' ? (
+                      <span aria-current="page">下载</span>
                     ) : (
                       <>
                         <AppLink to={libraryHref(size)} className="breadcrumb-link">
@@ -365,6 +380,8 @@ export function App() {
                     />
                   ) : route.name === 'settings' ? (
                     <SettingsPage key={`${mode}-settings`} onDemoSettings={openAbout} />
+                  ) : route.name === 'downloads' && !isDemo ? (
+                    <DownloadsPage size={size} />
                   ) : route.name === 'game' ? (
                     <GameDetailPage
                       key={`${mode}-${route.id}-${size}`}
@@ -377,6 +394,7 @@ export function App() {
                   )}
                 </Suspense>
               </RouteBoundary>
+              {!isDemo && <DownloadBar />}
             </div>
           </div>
           <Dialog

@@ -97,6 +97,7 @@ class SourceMetadata:
     alt_titles: tuple[str, ...] = field(default_factory=tuple)
     source_url: str | None = None
     download_size: int | None = None
+    upgraded_at: str | None = None
 
 
 @dataclass(frozen=True)
@@ -410,6 +411,7 @@ def upsert_source_metadata(
         "metadata_updated_at": now,
         "source_url": metadata.source_url,
         "download_size": metadata.download_size,
+        "upgraded_at": metadata.upgraded_at,
     }
     changes = values
     if keep_missing:

@@ -1159,3 +1159,447 @@
   gap: 8px;
   font-size: 13px;
 }
+
+.download-bar {
+  position: relative;
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  height: 40px;
+  overflow: hidden;
+  padding: 0 24px;
+  border: 0;
+  border-radius: 0;
+  border-top: 1px solid color-mix(in srgb, var(--border) 48%, transparent);
+  background: var(--sidebar);
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.download-bar:hover,
+.download-bar:focus-visible {
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--sidebar) 86%, var(--text-primary));
+}
+
+.download-bar.is-active {
+  color: var(--text-primary);
+}
+
+.download-bar > svg,
+.download-bar-text {
+  position: relative;
+}
+
+.download-bar-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.download-bar-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  transition: width 0.4s ease;
+}
+
+.downloads-current {
+  display: grid;
+  flex: none;
+  grid-template-columns: minmax(0, 300px) minmax(160px, 1fr) minmax(320px, 520px);
+  align-items: center;
+  gap: 24px;
+  min-height: 188px;
+  padding: 20px 40px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 40%, transparent);
+  background: color-mix(in srgb, var(--sidebar) 70%, transparent);
+}
+
+.downloads-current.is-idle {
+  display: flex;
+  min-height: 112px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.downloads-current-cover {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: 6px;
+  object-fit: cover;
+  background: var(--sidebar);
+}
+
+.downloads-current-cover.is-empty,
+.queue-row-cover.is-empty {
+  display: grid;
+  place-items: center;
+  color: var(--text-muted);
+}
+
+.downloads-current-title {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.downloads-current-title a {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--text-primary);
+  text-decoration: none;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.downloads-current-title span {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.downloads-current-numbers {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.downloads-stats {
+  display: flex;
+  gap: 28px;
+  margin: 0;
+}
+
+.downloads-stats dt {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.downloads-stats dd {
+  margin: 2px 0 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.downloads-line {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 12px;
+  font-size: 12px;
+}
+
+.downloads-line .task-progress {
+  grid-column: 1 / -1;
+}
+
+.downloads-current-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 32px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.downloads-current-remaining {
+  margin-right: auto;
+}
+
+.downloads-frame {
+  display: grid;
+  gap: 28px;
+  padding-block: 24px 48px;
+}
+
+.downloads-section header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-height: 32px;
+  margin-bottom: 8px;
+}
+
+.downloads-section h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.downloads-section h2 span {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.downloads-section header i {
+  flex: 1;
+  height: 1px;
+  background: color-mix(in srgb, var(--border) 60%, transparent);
+}
+
+.downloads-section > p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.downloads-auto {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-muted);
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.queue-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.queue-row {
+  display: grid;
+  grid-template-columns: 136px minmax(0, 1fr) 112px auto;
+  align-items: center;
+  gap: 16px;
+  padding: 8px;
+  border-radius: 8px;
+}
+
+.queue-row:hover {
+  background: color-mix(in srgb, var(--sidebar) 70%, transparent);
+}
+
+.queue-row-cover {
+  width: 136px;
+  height: 76px;
+  border-radius: 4px;
+  object-fit: cover;
+  background: var(--sidebar);
+}
+
+.queue-row-main {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.queue-row-title {
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 500;
+  text-decoration: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.queue-row-detail {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  min-width: 0;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.queue-row-detail .download-path {
+  max-width: 320px;
+  font-size: 12px;
+}
+
+.queue-row-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.queue-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+@media (max-width: 1360px) {
+  .downloads-current {
+    grid-template-columns: 180px minmax(0, 1fr);
+    padding: 16px 24px;
+  }
+
+  .downloads-current-numbers {
+    grid-column: 1 / -1;
+  }
+
+  .queue-row {
+    grid-template-columns: 96px minmax(0, 1fr) auto;
+  }
+
+  .queue-row-cover {
+    width: 96px;
+    height: 54px;
+  }
+
+  .queue-row-status {
+    grid-column: 3;
+    grid-row: 1;
+  }
+
+  .queue-row-actions {
+    grid-column: 2 / -1;
+  }
+}
+
+.work-gallery {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: 10px;
+  margin-bottom: 32px;
+}
+
+.work-gallery-stage {
+  position: relative;
+  display: grid;
+  place-items: center;
+  height: clamp(320px, 42cqi, 720px);
+  overflow: hidden;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--sidebar) 80%, black);
+}
+
+.work-gallery.is-loading .work-gallery-stage {
+  animation: gallery-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes gallery-pulse {
+  50% {
+    opacity: 0.6;
+  }
+}
+
+/* Out of the grid's flow: otherwise a tall image stretches its row and is cut off by the stage. */
+.work-gallery-stage > img {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.work-gallery-note {
+  position: absolute;
+  bottom: 12px;
+  left: 50%;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  transform: translateX(-50%);
+  border-radius: 6px;
+  background: rgb(0 0 0 / 65%);
+  color: #fff;
+  font-size: 12px;
+}
+
+.work-gallery-arrow {
+  position: absolute;
+  top: 50%;
+  display: grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  transform: translateY(-50%);
+  border: 0;
+  border-radius: 6px;
+  background: rgb(0 0 0 / 55%);
+  color: #fff;
+  cursor: pointer;
+  z-index: 1;
+}
+
+.work-gallery-arrow:hover,
+.work-gallery-arrow:focus-visible {
+  background: rgb(0 0 0 / 80%);
+}
+
+.work-gallery-arrow.is-prev {
+  left: 12px;
+}
+
+.work-gallery-arrow.is-next {
+  right: 12px;
+}
+
+.work-gallery-strip {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.work-gallery-strip button {
+  flex: none;
+  width: 112px;
+  height: 64px;
+  overflow: hidden;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--sidebar) 80%, black);
+  opacity: 0.65;
+  cursor: pointer;
+}
+
+.work-gallery-strip button:hover,
+.work-gallery-strip button:focus-visible,
+.work-gallery-strip button.is-current {
+  opacity: 1;
+}
+
+.work-gallery-strip button.is-current {
+  border-color: var(--warning);
+}
+
+.work-gallery-strip img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.work-gallery-count {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  text-align: right;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .work-gallery.is-loading .work-gallery-stage {
+    animation: none;
+  }
+
+  .download-bar-fill {
+    transition: none;
+  }
+}

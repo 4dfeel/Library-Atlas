@@ -3,7 +3,7 @@
 ## 范围与决策
 - 产品需求见 `docs/PRODUCT.md`，视觉规范见 `docs/DESIGN.md`，架构见 `docs/ARCHITECTURE.md`，阶段门禁见 `docs/ROADMAP.md`。
 - 按已批准 Phase 工作。Phase 0 仅文档与初始化检查；必须等待用户审核本文件、DESIGN 和 ARCHITECTURE 后进入 Phase 1。
-- Phase 0、Phase 1 已获用户确认（2026-10-30），见 [Phase 1 验收报告](docs/PHASE1_ACCEPTANCE_REPORT.md)。Phase 2 检查点 0、1 已交付；[检查点 2](docs/PHASE2_CHECKPOINT2_REPORT.md)（DLsite 登录与会话）已实现并经用户确认；[检查点 3](docs/PHASE2_CHECKPOINT3_REPORT.md)（作品同步）已实现，待用户确认；[检查点 4](docs/PHASE2_CHECKPOINT4_REPORT.md)（下载）已实现，待真实下载验证；检查点 5 起（解压、Steam）须逐点另行授权。
+- Phase 0、Phase 1 已获用户确认（2026-10-30），见 [Phase 1 验收报告](docs/PHASE1_ACCEPTANCE_REPORT.md)。Phase 2 检查点 0、1 已交付；[检查点 2](docs/PHASE2_CHECKPOINT2_REPORT.md)（DLsite 登录与会话）已实现并经用户确认；[检查点 3](docs/PHASE2_CHECKPOINT3_REPORT.md)（作品同步）已实现，待用户确认；[检查点 4](docs/PHASE2_CHECKPOINT4_REPORT.md)（下载）与[检查点 5](docs/PHASE2_CHECKPOINT5_REPORT.md)（解压、一键流程）已实现，待真实验证；检查点 6 起（Steam 等）须逐点另行授权。
 - 更换技术栈、大规模重构、删除已有功能或破坏性文件操作前必须征询用户；普通实现细节自主决定。
 
 ## 架构与编码
@@ -18,6 +18,7 @@
 - 列表、搜索、计数、统计、推荐、导出和图片接口必须统一应用服务端可见性策略；未知隐私状态先隔离。不得把私人条目先传到普通页面再用 CSS 隐藏。
 - Atlas 本地隐藏/私人状态与 Steam 远端观测分开；不得将未知当作否或宣称支持未验证接口。同步不得覆盖本地隐私设置。
 - 默认无遥测；API Key、SteamID、DLsite 会话/账号、私人标题、文件路径和原始同步响应不得进入日志、Git、截图或错误上报。密钥与会话存 Windows 凭据存储，不写数据库或前端；平台密码默认不保存；只有用户勾选“记住账号和密码”（2026-10-31 用户决定）才存入 Windows 凭据存储，绝不写数据库、日志或返回前端。
+- 用户决定（2026-10-31）：已登录时每天最多自动同步一次以检查作品更新，可在下载页关闭；只提示，不自动下载。
 - 产品主区为多平台“作品库”（Steam、DLsite；类型 游戏/图像/视频/音声/其他）。构建阶段（2026-10-31 用户决定，效率优先）同步来的 DLsite 作品直接进入普通作品库，已设的隐藏/私人标记仍保留；不伪造平台未提供的数据；不绕过授权或 DRM。
 - Demo 使用独立合成数据目录/数据库与显著标识；自动测试及截图只用合成数据，私人哨兵仅断言不存在。
 

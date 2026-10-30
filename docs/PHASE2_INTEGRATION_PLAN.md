@@ -175,3 +175,11 @@ ROADMAP 现有 Phase 2 行（含后端骨架与“能力调查”）与 Phase 6 
 - API 路径是 `/api/v1/downloads`，不是通用的 `/tasks`：解压的形态等检查点 5 再定。
 
 后续检查点须遵守：下载地址不持久化；完成不等于已安装；解压不能改动 `download_tasks` 的完成语义。
+
+## 14. 检查点 5 实际落地
+见[检查点 5 报告](PHASE2_CHECKPOINT5_REPORT.md)。与 §7 的差异：
+- 状态是 queued、checking、extracting、committing、done、not_needed、failed、cancelled、interrupted。没有 `needs_password`：首批不支持密码。
+- API 是 `/api/v1/extractions`，和下载分开。一键流程用 `download_tasks.flow_id` 关联。
+- 用户追加：`/downloads` 页面取代任务弹窗；每天一次的更新检查；详情页介绍图。
+
+后续检查点须遵守：已解压不等于已安装；不运行归档内容；写事务一律经过 `writing(engine)`。

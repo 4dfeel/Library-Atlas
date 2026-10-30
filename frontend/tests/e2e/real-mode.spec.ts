@@ -60,7 +60,7 @@ test.describe('empty real library', () => {
     await expect(page.getByTestId('game-unavailable')).toBeVisible();
 
     await page.getByRole('button', { name: '下载任务' }).click();
-    await expect(page.getByRole('dialog', { name: '下载' })).toContainText('还没有下载任务');
+    await expect(page.getByTestId('downloads-page')).toContainText('队列中没有任务');
   });
 });
 

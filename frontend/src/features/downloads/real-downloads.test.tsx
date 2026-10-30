@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setWorkspaceMode, type DownloadTask, type ExtractTask } from '@/lib/data';
-import { RealTasksDialog } from './real-downloads';
+import { DownloadsPage } from './downloads-page';
 
 const task = (values: Partial<DownloadTask>): DownloadTask => ({
   id: 't1',
@@ -21,6 +21,7 @@ const task = (values: Partial<DownloadTask>): DownloadTask => ({
   integrity: null,
   location: null,
   fileMissing: false,
+  bytesPerSecond: null,
   createdAt: '2026-10-31T00:00:00Z',
   finishedAt: null,
   ...values,
@@ -33,13 +34,14 @@ function show(tasks: DownloadTask[], extractions: ExtractTask[] = []) {
       Response.json({
         tasks: String(url).includes('extractions') ? extractions : tasks,
         activeCount: tasks.filter((entry) => entry.state === 'downloading').length,
+        updates: [],
       }),
     ),
   );
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={client}>
-      <RealTasksDialog open onOpenChange={vi.fn()} size={1500} />
+      <DownloadsPage size={1500} />
     </QueryClientProvider>,
   );
 }
@@ -86,8 +88,8 @@ describe('the download queue', () => {
         integrity: 'stream_end',
       }),
     ]);
-    const dialog = await screen.findByRole('dialog', { name: '下载与解压' });
-    expect(await within(dialog).findByText('已下载')).toBeInTheDocument();
+    const dialog = await screen.findByTestId('downloads-page');
+    expect(await within(dialog).findAllByText('已下载')).not.toHaveLength(0);
     expect(within(dialog).getByText('完整性保障有限')).toBeInTheDocument();
     expect(dialog).not.toHaveTextContent('已安装');
     expect(dialog).not.toHaveTextContent('可玩');
@@ -115,7 +117,7 @@ describe('the download queue', () => {
     show([task({ state: 'done', bytesDone: 10, fileName: 'a.zip' })], [failed]);
     expect(await screen.findByText('这个压缩包有密码，暂不支持。')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '重新解压' })).toBeInTheDocument();
-    expect(screen.getByText('已下载')).toBeInTheDocument();
+    expect(screen.getByText('已完成', { exact: false })).toBeInTheDocument();
   });
 
   it('says so when a finished file has been moved', async () => {

@@ -79,7 +79,7 @@ export interface DlsiteConnection {
 }
 
 export interface FolderInfo {
-  kind: 'library' | 'download_cache';
+  kind: 'library' | 'download_cache' | 'extract';
   path: string | null;
   isDefault: boolean;
   status: 'ok' | 'not_set' | 'missing';
@@ -158,13 +158,38 @@ export interface DownloadTask {
   integrity: string | null;
   location: string | null;
   fileMissing: boolean;
+  /** Measured on a running transfer; `null` until there is a sample. */
+  bytesPerSecond: number | null;
   createdAt: string;
   finishedAt: string | null;
+}
+
+export interface DownloadUpdate {
+  workId: string;
+  title: string;
 }
 
 export interface DownloadList {
   tasks: DownloadTask[];
   activeCount: number;
+  updates: DownloadUpdate[];
+}
+
+export interface UpdateSettings {
+  autoCheck: boolean;
+  lastCheckedAt: string | null;
+}
+
+export interface GalleryImage {
+  url: string;
+  width: number | null;
+  height: number | null;
+}
+
+export interface WorkGalleryData {
+  images: GalleryImage[];
+  intro: string | null;
+  unavailable: boolean;
 }
 
 export interface DownloadPlan {
@@ -338,6 +363,18 @@ export class RealLibrarySource implements LibrarySource {
   async folderAction(kind: FolderInfo['kind'], action: 'pick' | 'open'): Promise<FolderInfo[]> {
     return (await apiWrite<{ folders: FolderInfo[] }>('POST', `${folderPath}/${kind}/${action}`))
       .folders;
+  }
+
+  gallery(workId: string, signal?: AbortSignal): Promise<WorkGalleryData> {
+    return apiGet<WorkGalleryData>(`${workPath(workId)}/gallery`, undefined, signal);
+  }
+
+  updateSettings(signal?: AbortSignal): Promise<UpdateSettings> {
+    return apiGet<UpdateSettings>('/api/v1/settings/updates', undefined, signal);
+  }
+
+  setUpdateSettings(autoCheck: boolean): Promise<UpdateSettings> {
+    return apiWrite<UpdateSettings>('PUT', '/api/v1/settings/updates', { autoCheck });
   }
 
   downloads(signal?: AbortSignal): Promise<DownloadList> {

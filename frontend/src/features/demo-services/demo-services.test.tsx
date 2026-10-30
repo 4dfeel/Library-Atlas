@@ -26,8 +26,7 @@ describe('demo services when demo mode is off', () => {
 
   it('lists no demo tasks when demo mode is off', () => {
     renderWithQuery(<TasksDialog open onOpenChange={vi.fn()} size={1500} demoEnabled={false} />);
-    const dialog = screen.getByRole('dialog', { name: '下载与解压' });
-    expect(dialog).not.toHaveTextContent('演示');
+    expect(screen.queryByRole('dialog')).toBeNull();
     expect(screen.queryByRole('progressbar')).toBeNull();
   });
 });

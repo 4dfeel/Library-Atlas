@@ -3,9 +3,11 @@ request, option or environment variable can put stand-ins behind a real library.
 
 from sqlalchemy import Engine
 
+from app.adapters.dlsite.covers import CoverCache
 from app.adapters.dlsite.downloads import PlatformDownloadClient
 from app.adapters.dlsite.library import PlayLibraryClient
 from app.adapters.dlsite.login_host import BrowserLoginHost
+from app.adapters.dlsite.product import PublicProductClient
 from app.adapters.dlsite.session import PlaySessionChecker
 from app.adapters.system.archives import find_seven_zip
 from app.adapters.system.folder_dialog import DialogFolderPicker, ExplorerFolderOpener
@@ -16,6 +18,8 @@ from app.services.dlsite_sync import DlsiteSync
 from app.services.downloads import DownloadQueue
 from app.services.extractions import ExtractionService
 from app.services.folders import FolderService
+from app.services.gallery import WorkGallery
+from app.services.update_checks import UpdateChecker
 
 
 def build_dlsite_auth(settings: Settings, engine: Engine) -> DlsiteAuth | None:
@@ -54,6 +58,29 @@ def build_dlsite_sync(settings: Settings, engine: Engine, auth: DlsiteAuth) -> D
         control = FakeControl(settings.data_dir)
         return DlsiteSync(engine, auth, lambda _cookies: FakeLibraryClient(control))
     return DlsiteSync(engine, auth, PlayLibraryClient)
+
+
+def build_gallery(settings: Settings, engine: Engine, images: CoverCache) -> WorkGallery:
+    if settings.profile == "test":
+        from app.testing.fake_dlsite import (
+            FakeControl,
+            FakeProductClient,
+            synthetic_image_transport,
+        )
+
+        cache = CoverCache(
+            settings.data_dir / "cache" / "gallery", transport=synthetic_image_transport
+        )
+        return WorkGallery(engine, FakeProductClient(FakeControl(settings.data_dir)), cache)
+    return WorkGallery(engine, PublicProductClient(), images)
+
+
+def build_update_checker(settings: Settings, engine: Engine, sync: DlsiteSync) -> UpdateChecker:
+    checker = UpdateChecker(engine, sync)
+    # A test library has no platform to ask, and tests look for themselves through `tick`.
+    if settings.profile != "test":
+        checker.start()
+    return checker
 
 
 def build_extraction_service(engine: Engine, folders: FolderService) -> ExtractionService:

@@ -117,6 +117,10 @@ def source_url(source_work_id: str, site_id: Any = None) -> str:
     return f"https://www.dlsite.com/{site}/work/=/product_id/{source_work_id}.html"
 
 
+def _upgraded(value: Any) -> str | None:
+    return value.strip() if isinstance(value, str) and value.strip() else None
+
+
 def map_work(raw: Any) -> SourceMetadata | None:
     """None means the record is unusable: no identity or no title. The ID stays opaque."""
     if not isinstance(raw, Mapping):
@@ -149,6 +153,7 @@ def map_work(raw: Any) -> SourceMetadata | None:
         tags=_tags(raw.get("tags")),
         source_url=source_url(work_id.strip(), raw.get("site_id")),
         can_download=raw["downloadable"] if isinstance(raw.get("downloadable"), bool) else None,
+        upgraded_at=_upgraded(raw.get("upgrade_date")),
         download_size=_size(raw.get("content_size")),
     )
 

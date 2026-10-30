@@ -32,11 +32,15 @@ from app.services.dlsite_factory import (
     build_download_queue,
     build_extraction_service,
     build_folder_service,
+    build_gallery,
+    build_update_checker,
 )
 from app.services.dlsite_sync import DlsiteSync
 from app.services.downloads import DownloadQueue
 from app.services.extractions import ExtractionService
 from app.services.folders import FolderService
+from app.services.gallery import WorkGallery
+from app.services.update_checks import UpdateChecker
 
 logger = logging.getLogger("atlas")
 
@@ -64,6 +68,8 @@ class ServiceState:
     covers: CoverCache | None = None
     downloads: DownloadQueue | None = None
     extractions: ExtractionService | None = None
+    gallery: WorkGallery | None = None
+    updates: UpdateChecker | None = None
 
 
 def _error_body(
@@ -143,6 +149,27 @@ def _extractions(request: Request, _engine: EngineDep) -> ExtractionService:
 
 
 ExtractionsDep = Annotated[ExtractionService, Depends(_extractions)]
+
+
+def _gallery(request: Request, _engine: EngineDep) -> WorkGallery:
+    service = _state(request).gallery
+    assert service is not None  # Built whenever the engine is.
+    return service
+
+
+GalleryDep = Annotated[WorkGallery, Depends(_gallery)]
+
+
+def _updates(request: Request, _engine: EngineDep) -> UpdateChecker:
+    checker = _state(request).updates
+    if checker is None:
+        raise AtlasError(
+            "credential_store_unavailable", "系统凭据存储不可用，无法检查更新。", status=503
+        )
+    return checker
+
+
+UpdatesDep = Annotated[UpdateChecker, Depends(_updates)]
 
 
 def _folders(request: Request, _engine: EngineDep) -> FolderService:
@@ -315,6 +342,27 @@ def _build_api() -> APIRouter:
     def open_download_folder(queue: DownloadsDep, task_id: str) -> models.DownloadTaskOut:
         return queue.open_folder(task_id)
 
+    @api.get("/works/{work_id}/gallery")
+    def work_gallery(service: GalleryDep, work_id: str) -> models.GalleryOut:
+        return service.gallery(work_id)
+
+    @api.get("/works/{work_id}/gallery/{index}", include_in_schema=False)
+    def work_gallery_image(service: GalleryDep, work_id: str, index: int) -> Response:
+        path, content_type = service.image(work_id, index)
+        return FileResponse(
+            path, media_type=content_type, headers={"Cache-Control": "private, max-age=604800"}
+        )
+
+    @api.get("/settings/updates")
+    def update_settings(checker: UpdatesDep) -> models.UpdateSettings:
+        return checker.status()
+
+    @api.put("/settings/updates")
+    def set_update_settings(
+        checker: UpdatesDep, body: models.UpdateSettingsIn
+    ) -> models.UpdateSettings:
+        return checker.set_auto(body.auto_check)
+
     @api.get("/extractions")
     def list_extractions(service: ExtractionsDep) -> models.ExtractionsOut:
         return service.tasks()
@@ -409,6 +457,7 @@ def create_app(
                 state.extractions.recover()
                 state.dlsite = dlsite_factory(settings, opened.engine)
                 state.covers = CoverCache(settings.data_dir / "cache" / "covers")
+                state.gallery = build_gallery(settings, opened.engine, state.covers)
                 if state.dlsite is not None:
                     state.sync = dlsite_sync_factory(settings, opened.engine, state.dlsite)
                     state.sync.recover()
@@ -418,11 +467,14 @@ def create_app(
                     )
                     state.downloads.recover()
                     state.downloads.on_flow_finished = state.extractions.flow_finished
+                    state.updates = build_update_checker(settings, opened.engine, state.sync)
                     state.dlsite.restore()
             except DatabaseNotReady as error:
                 state.not_ready_reason = error.reason
                 logger.error("database not ready: %s", error.reason)
         yield
+        if state.updates is not None:
+            state.updates.shutdown()
         if state.extractions is not None:
             state.extractions.shutdown()
         if state.downloads is not None:

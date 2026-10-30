@@ -327,13 +327,48 @@ class DownloadTaskOut(ApiModel):
     integrity: str | None
     location: str | None
     file_missing: bool
+    # Measured over the last moments of a running transfer; None until there is a sample.
+    bytes_per_second: int | None = None
     created_at: str
     finished_at: str | None
+
+
+class DownloadUpdate(ApiModel):
+    """A downloaded work the platform has changed since. Not downloaded until the user asks."""
+
+    work_id: str
+    title: str
 
 
 class DownloadsOut(ApiModel):
     tasks: list[DownloadTaskOut]
     active_count: int
+    updates: list[DownloadUpdate] = []
+
+
+class UpdateSettings(ApiModel):
+    auto_check: bool
+    last_checked_at: str | None
+
+
+class UpdateSettingsIn(ApiModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, extra="forbid")
+
+    auto_check: bool
+
+
+class GalleryImage(ApiModel):
+    """An Atlas address. The platform's own address never reaches the page."""
+
+    url: str
+    width: int | None = None
+    height: int | None = None
+
+
+class GalleryOut(ApiModel):
+    images: list[GalleryImage]
+    intro: str | None = None
+    unavailable: bool = False
 
 
 class DownloadPlanOut(ApiModel):

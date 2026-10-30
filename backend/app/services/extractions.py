@@ -40,6 +40,7 @@ from app.adapters.system.archives import (
 )
 from app.api import models
 from app.core.errors import AtlasError
+from app.db.engine import writing
 from app.db.schema import download_tasks, extract_tasks, personal_records, works
 from app.domain.download_names import numbered, safe_file_name
 from app.repositories import accounts
@@ -245,7 +246,7 @@ class ExtractionService:
             fingerprint = account.account_fingerprint if account else None
             sources = self._sources(connection, work_id, fingerprint)
         root = self._folders.extract_root()
-        with self._lock, self._engine.begin() as connection:
+        with self._lock, writing(self._engine).begin() as connection:
             latest = connection.execute(
                 select(extract_tasks)
                 .where(extract_tasks.c.work_id == work_id)
@@ -292,7 +293,7 @@ class ExtractionService:
             logger.warning("unpacking after download did not start: %s", error.code)
 
     def retry(self, task_id: str) -> models.ExtractTaskOut:
-        with self._lock, self._engine.begin() as connection:
+        with self._lock, writing(self._engine).begin() as connection:
             row = self._task(connection, task_id)
             if row.error_code == "account_changed":
                 raise AtlasError("account_changed", MESSAGES["account_changed"], status=409)
@@ -334,7 +335,7 @@ class ExtractionService:
 
     def clear_finished(self) -> models.ExtractionsOut:
         """Forgets failed and cancelled records. Results and downloads are not touched."""
-        with self._lock, self._engine.begin() as connection:
+        with self._lock, writing(self._engine).begin() as connection:
             rows = self._ordinary_rows(
                 connection, extract_tasks.c.state.in_(("cancelled", "failed", "interrupted"))
             )
@@ -394,7 +395,7 @@ class ExtractionService:
                 changes["active_key"] = None
         if ended:
             changes["finished_at"] = _now()
-        with self._engine.begin() as connection:
+        with writing(self._engine).begin() as connection:
             result = connection.execute(
                 update(extract_tasks)
                 .where(extract_tasks.c.id == task_id, extract_tasks.c.attempt == attempt)

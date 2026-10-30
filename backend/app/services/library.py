@@ -8,6 +8,7 @@ from sqlalchemy import Connection, Engine, Row, select
 
 from app.api import models
 from app.core.errors import NothingToUpdate
+from app.db.engine import writing
 from app.db.schema import source_accounts
 from app.domain.dashboard import aggregate
 from app.repositories import works as repo
@@ -153,7 +154,7 @@ def update_personal(
     if not values:
         raise NothingToUpdate
     # A single transaction: the response is exactly what this write produced.
-    with engine.begin() as connection:
+    with writing(engine).begin() as connection:
         repo.update_personal(
             connection,
             work_id,
@@ -163,7 +164,7 @@ def update_personal(
 
 
 def toggle_favorite(engine: Engine, work_id: str) -> models.WorkDetailOut:
-    with engine.begin() as connection:
+    with writing(engine).begin() as connection:
         repo.toggle_favorite(connection, work_id)
         return _detail(connection, repo.get_ordinary_work(connection, work_id))
 

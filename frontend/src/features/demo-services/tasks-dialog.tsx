@@ -1,5 +1,4 @@
 import { CircleAlert, CircleCheck, Download, RotateCcw, X } from 'lucide-react';
-import { RealTasksDialog } from '@/features/downloads/real-downloads';
 import { AppLink } from '@/components/app-link';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
@@ -105,7 +104,8 @@ export function TasksDialog({
   demoEnabled: boolean;
 }) {
   const tasks = useDemoTasks();
-  if (!demoEnabled) return <RealTasksDialog open={open} onOpenChange={onOpenChange} size={size} />;
+  // A real library has the whole downloads page instead.
+  if (!demoEnabled) return null;
   return (
     <Dialog
       open={open}

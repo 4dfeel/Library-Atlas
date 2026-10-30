@@ -49,6 +49,7 @@ from app.adapters.dlsite.library import PlatformUnavailable, ResponseChanged, Se
 from app.adapters.dlsite.session import SessionCookie
 from app.api import models
 from app.core.errors import AtlasError
+from app.db.engine import writing
 from app.db.schema import download_tasks, personal_records, works
 from app.domain.download_names import numbered, safe_file_name
 from app.repositories import accounts
@@ -180,6 +181,7 @@ class DownloadQueue:
         self.on_flow_finished: Callable[[str], None] | None = None
         self._lock = threading.RLock()
         self._running: dict[str, _Control] = {}
+        self._speeds: dict[str, int] = {}
         self._threads: dict[str, threading.Thread] = {}
         self._closing = False
 
@@ -225,7 +227,7 @@ class DownloadQueue:
     def _ordinary_rows(self, connection: Connection, *conditions: Any) -> list[Row[Any]]:
         """Tasks of works ordinary views may show; a hidden work's task is as absent as it."""
         statement = (
-            select(download_tasks, works.c.title, works.c.source_work_id)
+            select(download_tasks, works.c.title, works.c.source_work_id, works.c.upgraded_at)
             .join(works, works.c.id == download_tasks.c.work_id)
             .join(personal_records, personal_records.c.work_id == works.c.id)
             .where(ORDINARY, *conditions)
@@ -264,6 +266,7 @@ class DownloadQueue:
             integrity=row.integrity,
             location=row.target_dir if done else None,
             file_missing=file_missing,
+            bytes_per_second=self._speeds.get(row.id) if row.state == "downloading" else None,
             created_at=row.created_at,
             finished_at=row.finished_at,
         )
@@ -277,14 +280,38 @@ class DownloadQueue:
         return models.DownloadsOut(
             tasks=out,
             active_count=sum(1 for task in out if task.state in _HOLDS_KEY),
+            updates=self._updates(rows, out),
         )
+
+    @staticmethod
+    def _updates(
+        rows: list[Row[Any]], out: list[models.DownloadTaskOut]
+    ) -> list[models.DownloadUpdate]:
+        """Works whose newest download is older than what the platform now has. The dates are
+        only compared for being different: what they mean exactly is the platform's business."""
+        missing = {task.id for task in out if task.file_missing}
+        busy = {row.work_id for row in rows if row.state in _HOLDS_KEY}
+        seen: set[str] = set()
+        updates = []
+        for row in rows:  # Newest first.
+            if row.state != "done" or row.work_id in seen:
+                continue
+            seen.add(row.work_id)
+            if (
+                row.work_id not in busy
+                and row.id not in missing
+                and row.upgraded_at
+                and row.upgraded_at != row.source_upgraded_at
+            ):
+                updates.append(models.DownloadUpdate(work_id=row.work_id, title=row.title))
+        return updates
 
     def _refresh_missing(self, tasks: list[models.DownloadTaskOut]) -> None:
         """A file the user moved or deleted means the work is no longer known to be here."""
         gone = {task.work_id for task in tasks if task.file_missing}
         kept = {task.work_id for task in tasks if task.state == "done" and not task.file_missing}
         for work_id in gone - kept:
-            with self._engine.begin() as connection:
+            with writing(self._engine).begin() as connection:
                 connection.execute(
                     update(works)
                     .where(works.c.id == work_id, works.c.local_state == "available")
@@ -384,7 +411,7 @@ class DownloadQueue:
         ]
         flow_id = uuid.uuid4().hex if body.extract else None
         if flow_id:
-            with self._engine.begin() as connection:
+            with writing(self._engine).begin() as connection:
                 connection.execute(
                     update(download_tasks)
                     .where(download_tasks.c.id.in_(ids))
@@ -419,7 +446,7 @@ class DownloadQueue:
     ) -> str:
         part = file.number or 0
         key = f"{work.id}:{part}"
-        with self._lock, self._engine.begin() as connection:
+        with self._lock, writing(self._engine).begin() as connection:
             latest = connection.execute(
                 select(download_tasks)
                 .where(download_tasks.c.work_id == work.id, download_tasks.c.part_number == part)
@@ -445,6 +472,7 @@ class DownloadQueue:
                         part_number=part,
                         part_count=file_count if part else None,
                         account_fingerprint=fingerprint,
+                        source_upgraded_at=work.upgraded_at,
                         state="queued",
                         active_key=key,
                         target_dir=str(target),
@@ -482,7 +510,7 @@ class DownloadQueue:
         )
 
     def retry(self, task_id: str) -> models.DownloadTaskOut:
-        with self._lock, self._engine.begin() as connection:
+        with self._lock, writing(self._engine).begin() as connection:
             row = self._task(connection, task_id)
             if row.error_code in _NOT_RETRYABLE:
                 raise AtlasError("account_changed", MESSAGES["account_changed"], status=409)
@@ -525,7 +553,7 @@ class DownloadQueue:
     def clear_finished(self) -> models.DownloadsOut:
         """Forgets cancelled and failed records and their leftovers. Finished files are kept."""
         with self._lock:
-            with self._engine.begin() as connection:
+            with writing(self._engine).begin() as connection:
                 rows = self._ordinary_rows(
                     connection, download_tasks.c.state.in_(("cancelled", "failed"))
                 )
@@ -586,7 +614,7 @@ class DownloadQueue:
                 changes["active_key"] = None
         if ended:
             changes["finished_at"] = _now()
-        with self._engine.begin() as connection:
+        with writing(self._engine).begin() as connection:
             result = connection.execute(
                 update(download_tasks)
                 .where(download_tasks.c.id == task_id, download_tasks.c.attempt == attempt)
@@ -625,6 +653,7 @@ class DownloadQueue:
             with self._lock:
                 self._running.pop(row.id, None)
                 self._threads.pop(row.id, None)
+                self._speeds.pop(row.id, None)
             self._pump()
 
     def _check(self, control: _Control, generation: int) -> None:
@@ -756,6 +785,7 @@ class DownloadQueue:
                     raise _Stop("failed", "disk_full", keep_part=False)
         done = offset
         last_report = time.monotonic()
+        last_done = offset
         started = offset > 0
         with open(path, "r+b" if offset else "wb") as output:
             if offset:
@@ -772,9 +802,11 @@ class DownloadQueue:
                     done += len(chunk)
                     if state.total is not None and done > state.total:
                         raise _Stop("failed", "size_mismatch", keep_part=False)
-                    if time.monotonic() - last_report >= PROGRESS_INTERVAL:
+                    now = time.monotonic()
+                    if now - last_report >= PROGRESS_INTERVAL:
+                        self._speeds[row.id] = int((done - last_done) / (now - last_report))
                         self._write(row.id, row.attempt, bytes_done=done)
-                        last_report = time.monotonic()
+                        last_report, last_done = now, done
             except httpx.HTTPError:
                 output.flush()
                 self._write(row.id, row.attempt, bytes_done=done)
@@ -854,7 +886,7 @@ class DownloadQueue:
         raise _Stop("failed", "write_failed")
 
     def _mark_done(self, task_id: str, attempt: int, work_id: str, **values: Any) -> None:
-        with self._engine.begin() as connection:
+        with writing(self._engine).begin() as connection:
             connection.execute(
                 update(download_tasks)
                 .where(download_tasks.c.id == task_id, download_tasks.c.attempt == attempt)

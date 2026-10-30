@@ -102,6 +102,10 @@ works = Table(
     Column("source_url", String, nullable=True),
     # As the platform reports it. NULL means not reported, never an empty download.
     Column("download_size", Integer, nullable=True),
+    # As the platform reports it; only ever compared with an earlier value of itself.
+    Column("upgraded_at", String, nullable=True),
+    Column("gallery_json", Text, nullable=True),
+    Column("gallery_checked_at", String, nullable=True),
     UniqueConstraint("source_id", "source_work_id", name="uq_works_source_identity"),
     CheckConstraint("kind IN ('game', 'image', 'video', 'audio', 'other')", name="ck_works_kind"),
     CheckConstraint("local_state IN ('unknown', 'available', 'absent')", name="ck_works_local"),
@@ -196,6 +200,8 @@ download_tasks = Table(
     Column("finished_at", String, nullable=True),
     # Set when the user asked to unpack: its files move on together once all are done.
     Column("flow_id", String, nullable=True),
+    # The work's change date when this was downloaded, to notice a newer version.
+    Column("source_upgraded_at", String, nullable=True),
     CheckConstraint(
         "state IN ('queued', 'resolving', 'downloading', 'verifying', 'paused', 'done', "
         "'failed', 'cancelled', 'reauth_required', 'interrupted')",

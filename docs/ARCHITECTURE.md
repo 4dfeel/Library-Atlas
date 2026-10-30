@@ -210,3 +210,19 @@ frontend/src/features/downloads/real-downloads.tsx
 - 文件先写 `<缓存>/<任务号>.part`，校验后移动到 `<作品文件夹>/<作品编号>/`，不覆盖。
 - 前端只轮询任务列表；进度变化不触碰作品库查询，只有完成时才刷新。
 - **未落地**：解压、安装、运行、Steam。
+
+## 14. Phase 2 检查点 5 实际落地（2026-10-31）
+```text
+backend/app/
+  adapters/system/archives.py  ZIP 与 7-Zip：列表、解压、路径语义、最终检查
+  adapters/dlsite/product.py   公开作品记录（不带会话）
+  services/extractions.py      解压任务：输入核对、暂存、提交、崩溃恢复
+  services/update_checks.py    每天一次的更新检查（复用同步）
+  services/gallery.py          介绍图：按需读取，保存一周，按序号取图
+  db/engine.py                 writing()：写事务一开始就取得写锁
+frontend/src/features/downloads/downloads-page.tsx  下载页与底部栏
+frontend/src/features/game-detail/work-gallery.tsx  介绍图
+```
+- 迁移 `0007`：`extract_tasks`、`download_tasks.flow_id`。`0008`：`works.upgraded_at`、`gallery_json`、`gallery_checked_at`、`download_tasks.source_upgraded_at`。
+- 7-Zip 是可选的外部程序，由用户安装，不随项目分发。
+- **未落地**：安装、运行、Steam。

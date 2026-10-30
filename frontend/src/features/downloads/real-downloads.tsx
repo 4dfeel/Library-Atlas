@@ -7,13 +7,9 @@ import {
   FolderOpen,
   FolderSearch,
   LoaderCircle,
-  Pause,
-  Play,
   RotateCcw,
-  X,
 } from 'lucide-react';
 import { useShell } from '@/app/shell-context';
-import { AppLink } from '@/components/app-link';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
 import {
@@ -24,55 +20,26 @@ import {
   useExtractionActions,
   useExtractions,
   useFolderActions,
-  type DemoSize,
   type DownloadPlan,
-  type DownloadTask,
   type ExtractTask,
   type FolderInfo,
   type GameDetail,
 } from '@/lib/data';
-import { gameHref } from '@/lib/router';
 import { formatBytes } from '@/lib/utils';
-
-const stateLabels: Record<DownloadTask['state'], string> = {
-  queued: '排队中',
-  resolving: '正在获取下载地址',
-  downloading: '下载中',
-  verifying: '校验中',
-  paused: '已暂停',
-  done: '已下载',
-  failed: '下载失败',
-  cancelled: '已取消',
-  reauth_required: '需要重新登录',
-  interrupted: '已中断',
-};
-
-const extractLabels: Record<ExtractTask['state'], string> = {
-  queued: '等待解压',
-  checking: '正在核对文件',
-  extracting: '解压中',
-  committing: '正在完成',
-  done: '已解压',
-  not_needed: '不需要解压',
-  failed: '解压失败',
-  cancelled: '已取消解压',
-  interrupted: '解压已中断',
-};
+import { amount, extractLabels, messageOf, stateLabels } from './labels';
 
 const UNPACKED_NOTE = '已解压不代表已安装或可以运行，Atlas 不会运行里面的任何内容。';
 
-function messageOf(error: unknown) {
-  return error instanceof Error ? error.message : '操作没有完成，请重试。';
-}
-
-function amount(done: number, total: number | null) {
-  return total === null
-    ? `已下载 ${formatBytes(done)} · 总大小未知`
-    : `${formatBytes(done)} / ${formatBytes(total)}`;
-}
-
 /** Real bytes against a real total; without a total the bar moves and claims no number. */
-function Progress({ done, total, label }: { done: number; total: number | null; label: string }) {
+export function Progress({
+  done,
+  total,
+  label,
+}: {
+  done: number;
+  total: number | null;
+  label: string;
+}) {
   const known = total !== null && total > 0;
   const percent = known ? Math.min(100, Math.round((done / total) * 100)) : null;
   return (
@@ -513,216 +480,5 @@ export function RealDownloadAction({ game }: { game: GameDetail }) {
       )}
       {dialog}
     </div>
-  );
-}
-
-function TaskRow({ task, size }: { task: DownloadTask; size: DemoSize }) {
-  const actions = useDownloadActions();
-  const [error, setError] = useState<string | null>(null);
-  const act = (action: 'cancel' | 'pause' | 'retry' | 'open-folder') => () => {
-    setError(null);
-    actions.act(task.id, action).catch((failure: unknown) => setError(messageOf(failure)));
-  };
-  const active = isDownloadActive(task);
-  const running = active && task.state !== 'paused';
-  return (
-    <li className={`task-row task-${task.state}`} data-download-task={task.id}>
-      <div className="task-row-heading">
-        <AppLink to={gameHref(task.workId, size)} className="task-title" title={task.title}>
-          {task.title}
-          {task.part !== null && ` · 第 ${task.part}/${task.partCount ?? '?'} 个文件`}
-        </AppLink>
-        <span className="task-phase" aria-live="polite">
-          {task.state === 'done' ? (
-            <CircleCheck size={14} />
-          ) : task.state === 'failed' ? (
-            <CircleAlert size={14} />
-          ) : null}
-          {stateLabels[task.state]}
-        </span>
-      </div>
-      {running && (
-        <Progress done={task.bytesDone} total={task.bytesTotal} label={stateLabels[task.state]} />
-      )}
-      <div className="task-meta">
-        <span>
-          {task.state === 'done'
-            ? task.bytesDone
-              ? formatBytes(task.bytesDone)
-              : ''
-            : amount(task.bytesDone, task.bytesTotal)}
-        </span>
-        {task.state === 'done' && task.fileName && (
-          <span className="download-path" title={task.location ?? undefined}>
-            {task.fileName}
-          </span>
-        )}
-        {task.state === 'done' && task.integrity === 'stream_end' && (
-          <span title="服务器没有说明文件大小，只能确认传输正常结束。">完整性保障有限</span>
-        )}
-        {task.fileMissing && <span className="save-error">文件已经不在原位置</span>}
-        {task.message && task.state !== 'cancelled' && (
-          <span className="save-error">{task.message}</span>
-        )}
-        {error && <span className="save-error">{error}</span>}
-        <span className="task-actions">
-          {running && task.state === 'downloading' && (
-            <Button variant="ghost" size="sm" onClick={act('pause')}>
-              <Pause size={14} />
-              暂停
-            </Button>
-          )}
-          {task.canRetry && (
-            <Button variant="secondary" size="sm" onClick={act('retry')}>
-              {task.canResume ? <Play size={14} /> : <RotateCcw size={14} />}
-              {task.canResume ? '继续' : '重新下载'}
-            </Button>
-          )}
-          {(active || task.canRetry) && task.state !== 'cancelled' && (
-            <Button variant="ghost" size="sm" onClick={act('cancel')}>
-              <X size={14} />
-              取消
-            </Button>
-          )}
-          {task.state === 'done' && !task.fileMissing && (
-            <Button variant="ghost" size="sm" onClick={act('open-folder')}>
-              <FolderOpen size={14} />
-              打开文件夹
-            </Button>
-          )}
-        </span>
-      </div>
-    </li>
-  );
-}
-
-function ExtractTaskRow({ task, size }: { task: ExtractTask; size: DemoSize }) {
-  const unpacking = useExtractionActions();
-  const [error, setError] = useState<string | null>(null);
-  const act = (action: 'cancel' | 'retry' | 'open-folder') => () => {
-    setError(null);
-    unpacking.act(task.id, action).catch((failure: unknown) => setError(messageOf(failure)));
-  };
-  const active = isExtractActive(task);
-  return (
-    <li className={`task-row task-${task.state}`} data-extract-task={task.id}>
-      <div className="task-row-heading">
-        <AppLink to={gameHref(task.workId, size)} className="task-title" title={task.title}>
-          {task.title}
-        </AppLink>
-        <span className="task-phase" aria-live="polite">
-          {task.state === 'done' ? (
-            <CircleCheck size={14} />
-          ) : task.state === 'failed' ? (
-            <CircleAlert size={14} />
-          ) : null}
-          {extractLabels[task.state]}
-        </span>
-      </div>
-      {active && (
-        <Progress
-          done={task.bytesDone}
-          total={task.state === 'extracting' ? task.bytesTotal : null}
-          label={extractLabels[task.state]}
-        />
-      )}
-      <div className="task-meta">
-        {task.filesTotal !== null && (
-          <span>
-            {task.filesTotal} 个文件
-            {task.bytesTotal !== null && ` · ${formatBytes(task.bytesTotal)}`}
-          </span>
-        )}
-        {task.resultMissing && <span className="save-error">解压结果已经不在原位置</span>}
-        {task.cleanupFailed && (
-          <span className="save-error">
-            有临时文件没能删除，可以手动删除解压文件夹里以 .atlas-extract- 开头的文件夹
-          </span>
-        )}
-        {task.message && task.state !== 'cancelled' && (
-          <span className="save-error">{task.message}</span>
-        )}
-        {error && <span className="save-error">{error}</span>}
-        <span className="task-actions">
-          {task.canRetry && (
-            <Button variant="secondary" size="sm" onClick={act('retry')}>
-              <RotateCcw size={14} />
-              重新解压
-            </Button>
-          )}
-          {active && (
-            <Button variant="ghost" size="sm" onClick={act('cancel')}>
-              <X size={14} />
-              取消
-            </Button>
-          )}
-          {task.state === 'done' && !task.resultMissing && (
-            <Button variant="ghost" size="sm" onClick={act('open-folder')}>
-              <FolderOpen size={14} />
-              打开解压文件夹
-            </Button>
-          )}
-        </span>
-      </div>
-    </li>
-  );
-}
-
-/** The queue. Kept by the service, so it survives closing this and reloading the page. */
-export function RealTasksDialog({
-  open,
-  onOpenChange,
-  size,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  size: DemoSize;
-}) {
-  const { tasks, failed: unreachable } = useDownloads();
-  const { tasks: extractions } = useExtractions();
-  const actions = useDownloadActions();
-  const unpacking = useExtractionActions();
-  const clearable =
-    tasks.some((task) => task.state === 'cancelled' || task.state === 'failed') ||
-    extractions.some((task) => task.state === 'cancelled' || task.state === 'failed');
-  return (
-    <Dialog
-      open={open}
-      onOpenChange={onOpenChange}
-      title="下载与解压"
-      description="都在本地服务中进行，关闭页面也不会中断。"
-    >
-      <div className="tasks-dialog">
-        {unreachable ? (
-          <p className="service-unavailable" role="alert">
-            <CircleAlert size={16} />
-            本地服务没有响应，暂时无法读取下载任务。
-          </p>
-        ) : tasks.length || extractions.length ? (
-          <ul className="task-list">
-            {extractions.map((task) => (
-              <ExtractTaskRow key={task.id} task={task} size={size} />
-            ))}
-            {tasks.map((task) => (
-              <TaskRow key={task.id} task={task} size={size} />
-            ))}
-          </ul>
-        ) : (
-          <p className="task-empty">
-            <Download size={16} />
-            还没有任务。打开一部 DLsite 作品，点“下载并解压”。
-          </p>
-        )}
-        {clearable && (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => void Promise.all([actions.clear(), unpacking.clear()])}
-          >
-            清除已取消和失败的任务
-          </Button>
-        )}
-      </div>
-    </Dialog>
   );
 }

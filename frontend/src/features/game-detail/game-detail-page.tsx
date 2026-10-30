@@ -18,6 +18,7 @@ import {
   kindLabels,
   platformLabels,
 } from '@/lib/utils';
+import { WorkGallery } from './work-gallery';
 import { GameHero } from './game-hero';
 import { PersonalRecord } from './personal-record';
 
@@ -97,6 +98,7 @@ function DetailBody({ game }: { game: GameDetail }) {
       : 0;
   return (
     <>
+      {!isDemo && game.platform === 'dlsite' && <WorkGallery workId={game.id} />}
       <section className="detail-about" aria-labelledby="about-title">
         <span className="eyebrow">ABOUT THIS WORK</span>
         <h2 id="about-title">作品简介</h2>
