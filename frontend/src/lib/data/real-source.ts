@@ -158,6 +158,10 @@ export interface DownloadTask {
   integrity: string | null;
   location: string | null;
   fileMissing: boolean;
+  /** Deleted on purpose once the work was unpacked. */
+  archiveRemoved: boolean;
+  /** Cleared from the list; still on record. */
+  dismissed: boolean;
   /** Measured on a running transfer; `null` until there is a sample. */
   bytesPerSecond: number | null;
   createdAt: string;
@@ -167,6 +171,7 @@ export interface DownloadTask {
 export interface DownloadUpdate {
   workId: string;
   title: string;
+  sizeBytes: number | null;
 }
 
 export interface DownloadList {
@@ -228,6 +233,7 @@ export interface ExtractTask {
   location: string | null;
   resultMissing: boolean;
   cleanupFailed: boolean;
+  dismissed: boolean;
   createdAt: string;
   finishedAt: string | null;
 }

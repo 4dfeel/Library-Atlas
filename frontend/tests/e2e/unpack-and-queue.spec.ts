@@ -159,10 +159,26 @@ test.describe('unpacking and the queue', () => {
     const location = await locationOf(work);
     expect(location!.endsWith(join('虚构社团', work.title))).toBe(true);
     expect(await readdir(join(location!, '音声'))).toEqual(['はじめに.txt']);
-    expect(await readdir(join(library, 'Archives', work.sourceId))).toEqual([
-      `${work.sourceId}.zip`,
-    ]);
+    // Once unpacked, the archive is gone: the user wants no second copy.
+    await expect
+      .poll(async () =>
+        readdir(join(library, 'Archives', work.sourceId)).catch(() => [] as string[]),
+      )
+      .toEqual([]);
     await expect(page.getByTestId('download-bar')).toContainText('项已完成');
+    // One line for the work in the finished list, and a way to clear the list.
+    await page.getByTestId('download-bar').click();
+    const finished = page.getByTestId('downloads-page');
+    await expect(
+      finished.locator('[data-extract-task]').filter({ hasText: work.title }),
+    ).toHaveCount(1);
+    await expect(
+      finished.locator('[data-download-task]').filter({ hasText: work.title }),
+    ).toHaveCount(0);
+    await shot(page, 'downloads-finished');
+    await finished.getByTestId('clear-finished').click();
+    await expect(finished.locator('[data-extract-task]')).toHaveCount(0);
+    expect(await readdir(location!)).toEqual(['音声']);
     await noHorizontalScroll(page);
   });
 
@@ -232,12 +248,10 @@ test.describe('unpacking and the queue', () => {
     await expect(row).toBeVisible();
     await expect(page.getByTestId('auto-check').getByRole('checkbox')).toBeChecked();
     await shot(page, 'update-available');
-    expect(await readdir(join(library, 'Archives', work.sourceId))).toHaveLength(1);
     await row.getByRole('button', { name: '下载更新' }).click();
     await expect(row).toHaveCount(0, { timeout: 20_000 });
-    await expect
-      .poll(async () => (await readdir(join(library, 'Archives', work.sourceId))).length)
-      .toBe(2);
+    // Fetched and unpacked in one go, as any other download and unpack.
+    await expect.poll(() => locationOf(work), { timeout: 20_000 }).not.toBeNull();
   });
 
   test('the store images: arrows, thumbnails, count, keyboard', async ({ page }) => {

@@ -35,6 +35,7 @@ from app.adapters.system.archives import (
     SevenZip,
     Stopped,
     _measure,
+    apply_renames,
     extract_zip,
     list_zip,
     sniff,
@@ -58,7 +59,7 @@ _WORKING = ("queued", "checking", "extracting", "committing")
 _LIST_LIMIT = 200
 _STAGING_PREFIX = ".atlas-extract-"
 MESSAGES = {
-    "no_download": "这部作品还没有下载完成的文件。",
+    "no_download": "这部作品没有可解压的压缩包，请重新下载。",
     "missing_parts": "分卷不齐全，请先下载所有分卷。",
     "input_changed": "已下载的文件变了或不在原位置，请重新下载后再解压。",
     "account_changed": "这个下载属于之前的账号，不能在现在的账号下解压。",
@@ -172,6 +173,7 @@ class ExtractionService:
             )
             if finished:
                 self._write(row.id, row.attempt, state="done", ended=True)
+                self._remove_archives(row)
                 continue
             self._remove_staging(row)
             self._write(row.id, row.attempt, state="interrupted", code="interrupted", ended=True)
@@ -217,6 +219,7 @@ class ExtractionService:
             location=str(final) if done and final else None,
             result_missing=bool(done and (final is None or not final.is_dir())),
             cleanup_failed=bool(row.cleanup_failed),
+            dismissed=bool(row.dismissed),
             created_at=row.created_at,
             finished_at=row.finished_at,
         )
@@ -245,7 +248,11 @@ class ExtractionService:
         """The latest finished download of each file. A split work must be complete."""
         rows = connection.execute(
             select(download_tasks)
-            .where(download_tasks.c.work_id == work_id, download_tasks.c.state == "done")
+            .where(
+                download_tasks.c.work_id == work_id,
+                download_tasks.c.state == "done",
+                download_tasks.c.archive_removed == 0,
+            )
             .order_by(download_tasks.c.created_at)
         ).all()
         latest = {row.part_number: row for row in rows}
@@ -355,13 +362,21 @@ class ExtractionService:
         return self._one(task_id)
 
     def clear_finished(self) -> models.ExtractionsOut:
-        """Forgets failed and cancelled records. Results and downloads are not touched."""
-        with self._lock, writing(self._engine).begin() as connection:
+        """Empties the finished list. Results on disk are not touched."""
+        with self._engine.connect() as connection:
             rows = self._ordinary_rows(
-                connection, extract_tasks.c.state.in_(("cancelled", "failed", "interrupted"))
+                connection,
+                extract_tasks.c.state.in_(
+                    ("cancelled", "failed", "interrupted", "done", "not_needed")
+                ),
             )
-            ids = [row.id for row in rows]
-            connection.execute(delete(extract_tasks).where(extract_tasks.c.id.in_(ids)))
+        finished = [row.id for row in rows if row.state in ("done", "not_needed")]
+        ended = [row.id for row in rows if row.id not in finished]
+        with self._lock, writing(self._engine).begin() as connection:
+            connection.execute(delete(extract_tasks).where(extract_tasks.c.id.in_(ended)))
+            connection.execute(
+                update(extract_tasks).where(extract_tasks.c.id.in_(finished)).values(dismissed=1)
+            )
         return self.tasks()
 
     def open_folder(self, task_id: str) -> models.ExtractTaskOut:
@@ -484,9 +499,10 @@ class ExtractionService:
             paths.append(path)
         return paths
 
-    def _read(self, first: Path) -> tuple[Listing, str] | None:
+    def _read(self, inputs: list[Path]) -> tuple[Listing, str] | None:
         """The listing and the engine to use, or None if this is not an archive. What the file
         is comes from its content; its name has no say."""
+        first = inputs[0]
         kind = sniff(first)
         tool = self._find_tool()
         if kind == "zip":
@@ -495,11 +511,11 @@ class ExtractionService:
             except ArchiveProblem as problem:
                 if problem.code != "unsupported_format" or tool is None:
                     raise
-            return tool.list(first, self._limits), "tool"
+            return tool.list(first, self._limits, code_page=932), "tool"
         if kind in ("rar", "7z"):
             if tool is None:
                 raise ArchiveProblem("tool_missing")
-            return tool.list(first, self._limits), "tool"
+            return tool.list(first, self._limits, volumes=inputs), "tool"
         if kind == "executable":
             # Either a self-extracting archive or an ordinary program. Only 7-Zip can tell, and
             # it reads the file as data: nothing here runs it.
@@ -507,7 +523,7 @@ class ExtractionService:
                 raise ArchiveProblem("tool_missing")
             if tool.kind(first) is None:
                 return None
-            return tool.list(first, self._limits), "tool"
+            return tool.list(first, self._limits, volumes=inputs), "tool"
         return None
 
     def _execute(self, row: Row[Any], control: _Control) -> None:
@@ -518,7 +534,7 @@ class ExtractionService:
         if not root.is_dir():
             raise _Stop("failed", "folder_missing")
         try:
-            read = self._read(inputs[0])
+            read = self._read(inputs)
             # Not an archive: the file itself is the work, and it goes to the same place.
             listing, engine = read if read is not None else (_as_files(inputs), "file")
             self._write(
@@ -546,6 +562,7 @@ class ExtractionService:
             full = getattr(error, "winerror", None) in (39, 112)
             raise _Stop("failed", "disk_full" if full else "write_failed") from None
         self._commit(row, control, listing)
+        self._remove_archives(row)
 
     def _unpack(
         self,
@@ -577,6 +594,7 @@ class ExtractionService:
             if tool is None:
                 raise ArchiveProblem("tool_missing")
             tool.extract(sources[0], staging, self._limits, progress, check)
+            apply_renames(staging, listing)
         self._write(row.id, row.attempt, bytes_done=listing.total_bytes)
 
     def _commit(self, row: Row[Any], control: _Control, listing: Listing) -> None:
@@ -628,6 +646,34 @@ class ExtractionService:
                 )
                 return
         raise _Stop("failed", "write_failed")
+
+    def _remove_archives(self, row: Row[Any]) -> None:
+        """The user wants no second copy once a work is unpacked. Only after the result is in
+        place, only the files this task used, and a failure here spoils nothing."""
+        ids = json.loads(row.source_task_ids)
+        with self._engine.connect() as connection:
+            sources = connection.execute(
+                select(download_tasks).where(download_tasks.c.id.in_(ids))
+            ).all()
+        for source in sources:
+            if not source.file_name or source.archive_removed:
+                continue
+            path = Path(source.target_dir) / source.file_name
+            try:
+                path.unlink(missing_ok=True)
+            except OSError:
+                logger.warning("could not remove a downloaded archive after unpacking")
+                continue
+            with writing(self._engine).begin() as connection:
+                connection.execute(
+                    update(download_tasks)
+                    .where(download_tasks.c.id == source.id)
+                    .values(archive_removed=1)
+                )
+            try:
+                path.parent.rmdir()  # Only succeeds if nothing else is there.
+            except OSError:
+                pass
 
     def _remove_staging(self, row: Row[Any]) -> None:
         """Only ever this task's own folder, by a name built from its ID."""

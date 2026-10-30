@@ -428,7 +428,17 @@ function AutoCheck() {
   );
 }
 
-function UpdateRow({ workId, title, size }: { workId: string; title: string; size: DemoSize }) {
+function UpdateRow({
+  workId,
+  title,
+  sizeBytes,
+  size,
+}: {
+  workId: string;
+  title: string;
+  sizeBytes: number | null;
+  size: DemoSize;
+}) {
   const actions = useDownloadActions();
   const [error, setError] = useState<string | null>(null);
   return (
@@ -438,21 +448,22 @@ function UpdateRow({ workId, title, size }: { workId: string; title: string; siz
       size={size}
       testId={{ 'data-update': workId }}
       status="有新版本"
-      detail="DLsite 上的这部作品更新过。下载后旧文件仍然保留。"
+      detail={sizeBytes ? formatBytes(sizeBytes) : '大小未知'}
       error={error}
       actions={
         <Button
           variant="secondary"
-          size="sm"
+          size="icon"
+          aria-label="下载更新"
+          title="下载更新"
           onClick={() => {
             setError(null);
             actions
-              .create(workId, null, true, false)
+              .create(workId, null, true, true)
               .catch((failure: unknown) => setError(messageOf(failure)));
           }}
         >
-          <Download size={14} />
-          下载更新
+          <Download size={18} />
         </Button>
       }
     />
@@ -473,21 +484,28 @@ export function DownloadsPage({ size }: { size: DemoSize }) {
     tasks.find((task) => task.state === 'downloading') ??
     tasks.find((task) => task.state === 'verifying' || task.state === 'resolving');
   const currentExtraction = extractions.find(isExtractActive);
-  const waiting = tasks.filter(
+  const listed = tasks.filter((task) => !task.dismissed);
+  const listedExtractions = extractions.filter((task) => !task.dismissed);
+  const waiting = listed.filter(
     (task) => task.id !== current?.id && task.state !== 'done' && task.state !== 'cancelled',
   );
-  const waitingExtractions = extractions.filter(
+  const waitingExtractions = listedExtractions.filter(
     (task) =>
       task.id !== currentExtraction?.id &&
       (task.state === 'failed' || task.state === 'interrupted' || task.state === 'queued'),
   );
-  const finished = tasks.filter((task) => task.state === 'done' || task.state === 'cancelled');
-  const finishedExtractions = extractions.filter(
+  const finishedExtractions = listedExtractions.filter(
     (task) => task.state === 'done' || task.state === 'not_needed' || task.state === 'cancelled',
   );
-  const clearable =
-    tasks.some((task) => task.state === 'cancelled' || task.state === 'failed') ||
-    extractions.some((task) => task.state === 'cancelled' || task.state === 'failed');
+  // One line per work: once it is unpacked, the download behind it is no longer news.
+  const unpackedWorks = new Set(
+    finishedExtractions.filter((task) => task.state === 'done').map((task) => task.workId),
+  );
+  const finished = listed.filter(
+    (task) =>
+      (task.state === 'done' && !unpackedWorks.has(task.workId)) || task.state === 'cancelled',
+  );
+  const finishedCount = finished.length + finishedExtractions.length;
 
   return (
     <main className="detail-page downloads-page" data-testid="downloads-page">
@@ -503,6 +521,7 @@ export function DownloadsPage({ size }: { size: DemoSize }) {
         <Section title="有更新" count={updates.length} aside={<AutoCheck />}>
           {updates.map((update) => (
             <UpdateRow
+              sizeBytes={update.sizeBytes}
               key={update.workId}
               workId={update.workId}
               title={update.title}
@@ -524,15 +543,17 @@ export function DownloadsPage({ size }: { size: DemoSize }) {
         </Section>
         <Section
           title="已完成"
-          count={finished.length + finishedExtractions.length}
+          count={finishedCount}
           aside={
-            clearable ? (
+            finishedCount > 0 ? (
               <Button
                 variant="ghost"
                 size="sm"
+                data-testid="clear-finished"
                 onClick={() => void Promise.all([actions.clear(), unpacking.clear()])}
               >
-                清除已取消和失败的任务
+                <X size={14} />
+                清除全部
               </Button>
             ) : undefined
           }
@@ -554,7 +575,7 @@ export function DownloadBar() {
   const { tasks } = useDownloads();
   const { tasks: extractions } = useExtractions();
   const running = tasks.find((task) => task.state === 'downloading');
-  const counted = tasks.filter((task) => task.state !== 'cancelled');
+  const counted = tasks.filter((task) => task.state !== 'cancelled' && !task.dismissed);
   const finished = counted.filter((task) => task.state === 'done').length;
   const unpacking = extractions.find(isExtractActive);
   const queued = tasks.some(isDownloadActive);

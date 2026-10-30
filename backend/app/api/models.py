@@ -327,6 +327,8 @@ class DownloadTaskOut(ApiModel):
     integrity: str | None
     location: str | None
     file_missing: bool
+    archive_removed: bool = False
+    dismissed: bool = False
     # Measured over the last moments of a running transfer; None until there is a sample.
     bytes_per_second: int | None = None
     created_at: str
@@ -338,6 +340,7 @@ class DownloadUpdate(ApiModel):
 
     work_id: str
     title: str
+    size_bytes: int | None = None
 
 
 class DownloadsOut(ApiModel):
@@ -416,6 +419,7 @@ class ExtractTaskOut(ApiModel):
     location: str | None
     result_missing: bool
     cleanup_failed: bool
+    dismissed: bool = False
     created_at: str
     finished_at: str | None
 

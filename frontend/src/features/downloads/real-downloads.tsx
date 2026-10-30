@@ -213,12 +213,16 @@ function PlanDialog({
 function ExtractRow({
   task,
   busy,
+  archiveKept,
   onStart,
+  onDownloadAgain,
   onTasks,
 }: {
   task: ExtractTask | undefined;
   busy: boolean;
+  archiveKept: boolean;
   onStart: (again: boolean) => void;
+  onDownloadAgain: () => void;
   onTasks: () => void;
 }) {
   const unpacking = useExtractionActions();
@@ -273,12 +277,18 @@ function ExtractRow({
         <CircleAlert size={14} />
         {task.resultMissing ? '解压结果已经不在原位置。' : task.message}
       </span>
-      {(task.canRetry || task.resultMissing) && (
-        <Button variant="secondary" size="sm" disabled={busy} onClick={() => onStart(true)}>
-          <RotateCcw size={14} />
-          重新解压
-        </Button>
-      )}
+      {(task.canRetry || task.resultMissing) &&
+        (archiveKept ? (
+          <Button variant="secondary" size="sm" disabled={busy} onClick={() => onStart(true)}>
+            <RotateCcw size={14} />
+            重新解压
+          </Button>
+        ) : (
+          <Button variant="secondary" size="sm" disabled={busy} onClick={onDownloadAgain}>
+            <Download size={14} />
+            重新下载并解压
+          </Button>
+        ))}
     </span>
   );
 }
@@ -286,10 +296,11 @@ function ExtractRow({
 /** The real entry on a work's page. Nothing is requested until the user presses it. */
 export function RealDownloadAction({ game }: { game: GameDetail }) {
   const { openTasks } = useShell();
-  const { tasks } = useDownloads();
+  const { tasks, updates } = useDownloads();
   const { tasks: extractions } = useExtractions();
   const actions = useDownloadActions();
   const unpacking = useExtractionActions();
+  const hasUpdate = updates.some((update) => update.workId === game.id);
   const [plan, setPlan] = useState<DownloadPlan | null>(null);
   const [wantsExtract, setWantsExtract] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -394,22 +405,46 @@ export function RealDownloadAction({ game }: { game: GameDetail }) {
             <CircleCheck size={14} />
             已下载 {finished.length > 1 ? `${finished.length} 个文件` : ''}
           </span>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => void actions.act(finished[0]!.id, 'open-folder').catch(() => undefined)}
-          >
-            <FolderOpen size={14} />
-            打开压缩包位置
-          </Button>
-          <Button variant="ghost" size="sm" disabled={busy} onClick={() => void begin(false, true)}>
-            <RotateCcw size={14} />
-            重新下载
-          </Button>
+          {finished.some((task) => !task.archiveRemoved) && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() =>
+                void actions.act(finished[0]!.id, 'open-folder').catch(() => undefined)
+              }
+            >
+              <FolderOpen size={14} />
+              打开压缩包位置
+            </Button>
+          )}
+          {hasUpdate ? (
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={busy}
+              data-testid="download-update"
+              onClick={() => void begin(true, true)}
+            >
+              <Download size={14} />
+              下载更新
+            </Button>
+          ) : (
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={busy}
+              onClick={() => void begin(Boolean(extraction), true)}
+            >
+              <RotateCcw size={14} />
+              重新下载
+            </Button>
+          )}
           <ExtractRow
             task={extraction}
             busy={busy}
+            archiveKept={finished.some((task) => !task.archiveRemoved)}
             onStart={(again) => void unpack(again)}
+            onDownloadAgain={() => void begin(true, true)}
             onTasks={openTasks}
           />
           {error && (

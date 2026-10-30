@@ -8,7 +8,7 @@ import pytest
 from app.__main__ import EXIT_CONFIG, EXIT_DATABASE, EXIT_PORT, main
 from app.core.config import TEST_MARKER, ConfigError, Settings, load_settings
 from app.core.credentials import CredentialTooLarge, WindowsCredentialStore
-from tests.conftest import client_for, make_settings, seed_library
+from tests.conftest import HEAD_REVISION, client_for, make_settings, seed_library
 
 
 def env_for(tmp_path: Path, **extra: str) -> dict[str, str]:
@@ -76,7 +76,7 @@ def test_test_profile_is_isolated_from_real_data(tmp_path: Path) -> None:
 def test_fresh_directory_becomes_ready_and_empty(empty_client) -> None:
     ready = empty_client.get("/api/v1/ready")
     assert ready.status_code == 200
-    assert ready.json() == {"status": "ready", "profile": "test", "schemaRevision": "0008"}
+    assert ready.json() == {"status": "ready", "profile": "test", "schemaRevision": HEAD_REVISION}
     page = empty_client.get("/api/v1/works").json()
     assert page["items"] == []
     assert page["totalVisible"] == 0

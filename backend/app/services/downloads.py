@@ -228,7 +228,13 @@ class DownloadQueue:
     def _ordinary_rows(self, connection: Connection, *conditions: Any) -> list[Row[Any]]:
         """Tasks of works ordinary views may show; a hidden work's task is as absent as it."""
         statement = (
-            select(download_tasks, works.c.title, works.c.source_work_id, works.c.upgraded_at)
+            select(
+                download_tasks,
+                works.c.title,
+                works.c.source_work_id,
+                works.c.upgraded_at,
+                works.c.download_size,
+            )
             .join(works, works.c.id == download_tasks.c.work_id)
             .join(personal_records, personal_records.c.work_id == works.c.id)
             .where(ORDINARY, *conditions)
@@ -240,7 +246,7 @@ class DownloadQueue:
     def _out(self, row: Row[Any]) -> models.DownloadTaskOut:
         done = row.state == "done"
         file_missing = False
-        if done:
+        if done and not row.archive_removed:
             try:
                 file_missing = (Path(row.target_dir) / row.file_name).stat().st_size != (
                     row.bytes_done
@@ -267,6 +273,8 @@ class DownloadQueue:
             integrity=row.integrity,
             location=row.target_dir if done else None,
             file_missing=file_missing,
+            archive_removed=bool(row.archive_removed),
+            dismissed=bool(row.dismissed),
             bytes_per_second=self._speeds.get(row.id) if row.state == "downloading" else None,
             created_at=row.created_at,
             finished_at=row.finished_at,
@@ -304,7 +312,11 @@ class DownloadQueue:
                 and row.upgraded_at
                 and row.upgraded_at != row.source_upgraded_at
             ):
-                updates.append(models.DownloadUpdate(work_id=row.work_id, title=row.title))
+                updates.append(
+                    models.DownloadUpdate(
+                        work_id=row.work_id, title=row.title, size_bytes=row.download_size
+                    )
+                )
         return updates
 
     def _refresh_missing(self, tasks: list[models.DownloadTaskOut]) -> None:
@@ -487,6 +499,8 @@ class DownloadQueue:
 
     @staticmethod
     def _still_there(row: Row[Any]) -> bool:
+        if row.archive_removed:
+            return True  # Removed on purpose once unpacked; the work itself is what counts.
         try:
             return bool((Path(row.target_dir) / row.file_name).stat().st_size == row.bytes_done)
         except OSError:
@@ -549,16 +563,28 @@ class DownloadQueue:
         return self._one(task_id)
 
     def clear_finished(self) -> models.DownloadsOut:
-        """Forgets cancelled and failed records and their leftovers. Finished files are kept."""
+        """Empties the finished list, as in Steam. Failed and cancelled records go with their
+        leftovers. Finished ones stay on file, out of the list: they are how a newer version is
+        noticed. No finished file or result is touched."""
+        with self._engine.connect() as connection:
+            rows = self._ordinary_rows(
+                connection, download_tasks.c.state.in_(("cancelled", "failed", "done"))
+            )
         with self._lock:
-            with writing(self._engine).begin() as connection:
-                rows = self._ordinary_rows(
-                    connection, download_tasks.c.state.in_(("cancelled", "failed"))
-                )
-                for row in rows:
+            for row in rows:
+                if row.state != "done":
                     self._remove_quietly(_part_path(row))
-                ids = [row.id for row in rows]
-                connection.execute(delete(download_tasks).where(download_tasks.c.id.in_(ids)))
+            with writing(self._engine).begin() as connection:
+                connection.execute(
+                    delete(download_tasks).where(
+                        download_tasks.c.id.in_([row.id for row in rows if row.state != "done"])
+                    )
+                )
+                connection.execute(
+                    update(download_tasks)
+                    .where(download_tasks.c.id.in_([row.id for row in rows if row.state == "done"]))
+                    .values(dismissed=1)
+                )
         return self.tasks()
 
     def open_folder(self, task_id: str) -> models.DownloadTaskOut:

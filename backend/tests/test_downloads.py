@@ -898,7 +898,8 @@ def test_clearing_forgets_failures_and_keeps_finished_files(api: TestClient, rig
     failed = ended(api, start(api, works_[1]["id"])[0]["id"])
     assert failed["state"] == "failed"
     left = api.post(f"{BASE}/clear").json()["tasks"]
-    assert [task["id"] for task in left] == [done["id"]]
+    # Off the list but still on file: it is how a newer version gets noticed.
+    assert [(task["id"], task["dismissed"]) for task in left] == [(done["id"], True)]
     assert len(final_files(rig)) == 1
 
 

@@ -12,13 +12,16 @@ from app.core.config import Settings
 from app.db.bootstrap import KEEP_BACKUPS, DatabaseNotReady, backup_database, open_database
 from app.db.schema import metadata, personal_records
 from app.repositories.works import PersonalChanges, update_personal
+from tests.conftest import HEAD_REVISION as HEAD
 from tests.conftest import client_for, seed_library
+
+NEXT = f"{int(HEAD) + 1:04d}"
 
 MIGRATION_0002 = """
 import sqlalchemy as sa
 from alembic import op
-revision = "0009"
-down_revision = "0008"
+revision = "{NEXT}"
+down_revision = "{HEAD}"
 branch_labels = None
 depends_on = None
 def upgrade():
@@ -27,8 +30,8 @@ def upgrade():
 FAILING_0002 = """
 import sqlalchemy as sa
 from alembic import op
-revision = "0009"
-down_revision = "0008"
+revision = "{NEXT}"
+down_revision = "{HEAD}"
 branch_labels = None
 depends_on = None
 def upgrade():
@@ -41,7 +44,8 @@ def upgrade():
 def extra_migration(tmp_path: Path, source: str) -> Path:
     folder = tmp_path / "versions-extra"
     folder.mkdir()
-    (folder / "0009_probe.py").write_text(source, encoding="utf-8")
+    text = source.replace("{NEXT}", NEXT).replace("{HEAD}", HEAD)
+    (folder / f"{NEXT}_probe.py").write_text(text, encoding="utf-8")
     return folder
 
 
@@ -75,7 +79,7 @@ def test_fresh_database_needs_no_backup(settings: Settings) -> None:
     opened = open_database(settings.database_path, settings.backup_dir, settings.profile)
     opened.engine.dispose()
     assert opened.backup is None
-    assert opened.revision == "0008"
+    assert opened.revision == HEAD
 
 
 def test_upgrade_backs_up_first_and_keeps_edits(settings: Settings, tmp_path: Path) -> None:
@@ -95,12 +99,12 @@ def test_upgrade_backs_up_first_and_keeps_edits(settings: Settings, tmp_path: Pa
     opened.engine.dispose()
     assert row == "迁移前的备注"
     assert "probe_column" in columns
-    assert opened.revision == "0009"
+    assert opened.revision == NEXT
     # The backup is a real, restorable copy of the state before the upgrade.
     assert opened.backup is not None
     assert read_personal(opened.backup) == ("迁移前的备注", 4)
     with closing(sqlite3.connect(opened.backup)) as connection:
-        assert connection.execute("SELECT version_num FROM alembic_version").fetchone() == ("0008",)
+        assert connection.execute("SELECT version_num FROM alembic_version").fetchone() == (HEAD,)
 
 
 def test_failed_upgrade_rolls_back_entirely(settings: Settings, tmp_path: Path) -> None:
@@ -116,7 +120,7 @@ def test_failed_upgrade_rolls_back_entirely(settings: Settings, tmp_path: Path) 
     assert error.value.reason == "migration_failed"
     assert read_personal(settings.database_path) == ("迁移前的备注", 4)
     with closing(sqlite3.connect(settings.database_path)) as connection:
-        assert connection.execute("SELECT version_num FROM alembic_version").fetchone() == ("0008",)
+        assert connection.execute("SELECT version_num FROM alembic_version").fetchone() == (HEAD,)
         columns = [c[1] for c in connection.execute("PRAGMA table_info(works)")]
     assert "probe_column" not in columns
 

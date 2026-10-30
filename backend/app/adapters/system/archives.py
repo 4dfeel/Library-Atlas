@@ -38,6 +38,8 @@ _RESERVED = {"CON", "PRN", "AUX", "NUL"} | {
 }
 _ILLEGAL = re.compile(r'[<>:"|?*\x00-\x1f]')
 _PROGRESS = re.compile(rb"(\d{1,3})%")
+_RAR4_MARKER = b"Rar!\x1a\x07\x00"
+_MAX_RAR_HEADERS = 200_000
 
 
 class ArchiveProblem(Exception):
@@ -74,6 +76,8 @@ class Entry:
 class Listing:
     kind: str
     entries: tuple[Entry, ...]
+    # Where 7-Zip will have written a file under a misread name, and its real path.
+    renames: tuple[tuple[str, str], ...] = ()
 
     @property
     def files(self) -> int:
@@ -142,29 +146,36 @@ def sniff(path: Path) -> str | None:
 # --- ZIP ---
 
 
-def _zip_names(archive: zipfile.ZipFile) -> None:
-    """Without the UTF-8 flag a name's encoding is unrecorded. Japanese tools wrote cp932, and
-    plain text decodes the same in it. Anything else is refused rather than guessed at."""
-    for info in archive.infolist():
-        if info.flag_bits & 0x800:
-            continue
+def _zip_encoding(archive: zipfile.ZipFile) -> str:
+    """Without the UTF-8 flag a name's encoding is unrecorded. Many tools write UTF-8 anyway, and
+    Japanese ones wrote cp932: the system's own code page, GBK on a Chinese Windows, would turn
+    those into nonsense. Text that is valid UTF-8 is almost never accidental, so that comes
+    first. Anything fitting neither is refused rather than guessed at."""
+    names = [
+        info.filename.encode("cp437") for info in archive.infolist() if not info.flag_bits & 0x800
+    ]
+    for encoding in ("utf-8", "cp932"):
         try:
-            info.filename.encode("cp437").decode("cp932")
-        except (UnicodeDecodeError, UnicodeEncodeError):
-            raise ArchiveProblem("name_encoding") from None
+            for raw in names:
+                raw.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+        return encoding
+    raise ArchiveProblem("name_encoding")
 
 
 def _open_zip(path: Path) -> zipfile.ZipFile:
     try:
-        probe = zipfile.ZipFile(path)
+        with zipfile.ZipFile(path) as probe:
+            encoding = _zip_encoding(probe)
+        # Flagged names stay UTF-8 whatever this says; it decides only the unflagged ones.
+        return zipfile.ZipFile(path, metadata_encoding=encoding)
     except zipfile.BadZipFile:
         raise ArchiveProblem("damaged") from None
     except NotImplementedError:
         raise ArchiveProblem("unsupported_format") from None
-    with probe:
-        _zip_names(probe)
-    # Now that the names are known to fit, read them in that encoding. Flagged names stay UTF-8.
-    return zipfile.ZipFile(path, metadata_encoding="cp932")
+    except UnicodeDecodeError:
+        raise ArchiveProblem("name_encoding") from None
 
 
 def list_zip(path: Path, limits: Limits) -> Listing:
@@ -279,11 +290,22 @@ class SevenZip:
 
     def __init__(self, executable: Path) -> None:
         self.executable = executable
+        self._code_page: int | None = None
 
-    def _list_output(self, path: Path) -> bytes:
+    def _list_output(self, path: Path, code_page: int | None = None) -> bytes:
         # -p- answers any password question with "no" instead of waiting for one.
         result = subprocess.run(  # noqa: S603 - verified program, argument list
-            [str(self.executable), "l", "-slt", "-p-", "-sccUTF-8", "-scsUTF-8", "--", str(path)],
+            [
+                str(self.executable),
+                "l",
+                "-slt",
+                "-p-",
+                "-sccUTF-8",
+                "-scsUTF-8",
+                *([f"-mcp={code_page}"] if code_page else []),
+                "--",
+                str(path),
+            ],
             capture_output=True,
             timeout=300,
             stdin=subprocess.DEVNULL,
@@ -308,8 +330,17 @@ class SevenZip:
             _ARCHIVE_TYPES.get(match.group(1).decode("ascii", "replace").lower()) if match else None
         )
 
-    def list(self, path: Path, limits: Limits) -> Listing:
-        output = self._list_output(path)
+    def list(
+        self,
+        path: Path,
+        limits: Limits,
+        *,
+        volumes: list[Path] | None = None,
+        code_page: int | None = None,
+    ) -> Listing:
+        output = self._list_output(path, code_page)
+        self._code_page = code_page
+        misread = _rar_misread_names(volumes or [path])
         match = re.search(rb"^Type = (\S+)", output, re.MULTILINE)
         kind = (
             _ARCHIVE_TYPES.get(match.group(1).decode("ascii", "replace").lower()) if match else None
@@ -317,6 +348,7 @@ class SevenZip:
         if kind is None:
             raise ArchiveProblem("unsupported_format")
         entries: list[Entry] = []
+        renames: list[tuple[str, str]] = []
         body = output.split(b"----------\n" if b"\r\n" not in output else b"----------\r\n", 1)
         for block in re.split(rb"\r?\n\r?\n", body[-1]):
             fields: dict[bytes, bytes] = {}
@@ -337,11 +369,16 @@ class SevenZip:
             ):
                 raise ArchiveProblem("special_entry")
             is_dir = fields.get(b"Folder") == b"+" or attributes.startswith(b"D")
-            parts = safe_parts(fields[b"Path"].decode("utf-8", "replace"))
+            raw_path = fields[b"Path"].decode("utf-8", "replace")
+            real_path = misread.get(raw_path.replace("/", "\\"))
+            if real_path is not None:
+                renames.append((_as_written(raw_path), real_path.replace("\\", "/")))
+                raw_path = real_path
+            parts = safe_parts(raw_path)
             size = fields.get(b"Size", b"")
             entries.append(Entry("/".join(parts), int(size) if size.isdigit() else None, is_dir))
         check_entries(entries, limits)
-        return Listing(kind, tuple(entries))
+        return Listing(kind, tuple(entries), tuple(renames))
 
     def extract(
         self, path: Path, output: Path, limits: Limits, progress: Progress, check: Check
@@ -360,6 +397,7 @@ class SevenZip:
                 "-bsp1",
                 "-bso0",
                 "-sccUTF-8",
+                *([f"-mcp={self._code_page}"] if self._code_page else []),
                 f"-o{output}",
                 "--",
                 str(path),
@@ -409,6 +447,85 @@ class SevenZip:
                 reader.join(timeout=5)
         if process.returncode != 0:
             raise ArchiveProblem(_failure_code(b"".join(errors)))
+
+
+def _rar4_names(path: Path) -> Iterator[bytes]:
+    """The raw name of each file in a RAR 4 volume whose name carries no Unicode form. Reads
+    headers only and stops at anything unexpected: this improves names, it decides nothing."""
+    with open(path, "rb") as stream:
+        start = stream.read(4 * 1024 * 1024).find(_RAR4_MARKER)
+        if start < 0:
+            return
+        stream.seek(start + len(_RAR4_MARKER))
+        for _ in range(_MAX_RAR_HEADERS):
+            base = stream.tell()
+            head = stream.read(7)
+            if len(head) < 7:
+                return
+            kind = head[2]
+            flags = int.from_bytes(head[3:5], "little")
+            size = int.from_bytes(head[5:7], "little")
+            if size < 7:
+                return
+            body = stream.read(size - 7)
+            extra = 0
+            if flags & 0x8000 and len(body) >= 4:
+                extra = int.from_bytes(body[:4], "little")
+            if kind == 0x74 and len(body) >= 25:
+                name_size = int.from_bytes(body[19:21], "little")
+                high = 8 if flags & 0x100 else 0
+                raw = body[25 + high : 25 + high + name_size]
+                if not flags & 0x200 and not raw.isascii():
+                    yield raw
+            if kind == 0x7B:
+                return
+            stream.seek(base + size + extra)
+
+
+def _rar_misread_names(volumes: list[Path]) -> dict[str, str]:
+    """Old RAR files keep names in the writer's code page, with no record of which, and 7-Zip
+    reads them in this machine's: GBK on a Chinese Windows, so Japanese names come out as
+    nonsense. It offers no switch for RAR. So each such name is read here as cp932, and matched
+    to what 7-Zip made of the same bytes. Works on any Windows language."""
+    misread: dict[str, str] = {}
+    for volume in volumes:
+        try:
+            for raw in _rar4_names(volume):
+                try:
+                    misread[raw.decode("oem", "replace").replace("/", "\\")] = raw.decode("cp932")
+                except (UnicodeDecodeError, LookupError):
+                    continue
+        except OSError:
+            continue
+    return misread
+
+
+def _as_written(name: str) -> str:
+    """The path 7-Zip writes for a listed name: it swaps what Windows would not accept."""
+    return re.sub(r'[<>:"|?*]', "_", name.replace("\\", "/"))
+
+
+def apply_renames(output: Path, listing: Listing) -> None:
+    """Puts files under their real names, inside the attempt's own folder, before checking."""
+    if not listing.renames:
+        return
+    for written, real in listing.renames:
+        source = output.joinpath(*written.split("/"))
+        if not source.is_file():
+            continue  # A folder, or already in place. The final check catches anything missing.
+        target = output.joinpath(*safe_parts(real))
+        target.parent.mkdir(parents=True, exist_ok=True)
+        os.rename(source, target)
+    expected = {unicodedata.normalize("NFC", entry.path).casefold() for entry in listing.entries}
+    # Folders left empty under the misread names, deepest first.
+    for folder, _dirs, _files in sorted(os.walk(output), key=lambda item: -len(item[0])):
+        current = Path(folder)
+        relative = current.relative_to(output).as_posix()
+        if current != output and unicodedata.normalize("NFC", relative).casefold() not in expected:
+            try:
+                current.rmdir()
+            except OSError:
+                pass
 
 
 def _attribute_is_link(attributes: bytes) -> bool:

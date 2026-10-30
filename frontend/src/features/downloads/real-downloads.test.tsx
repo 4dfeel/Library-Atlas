@@ -21,6 +21,8 @@ const task = (values: Partial<DownloadTask>): DownloadTask => ({
   integrity: null,
   location: null,
   fileMissing: false,
+  archiveRemoved: false,
+  dismissed: false,
   bytesPerSecond: null,
   createdAt: '2026-10-31T00:00:00Z',
   finishedAt: null,
@@ -111,6 +113,7 @@ describe('the download queue', () => {
       location: null,
       resultMissing: false,
       cleanupFailed: false,
+      dismissed: false,
       createdAt: '2026-10-31T00:00:00Z',
       finishedAt: null,
     };

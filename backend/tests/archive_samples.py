@@ -6,6 +6,7 @@ import struct
 import zipfile
 import zlib
 from pathlib import Path
+from typing import Any
 
 RAR_MARKER = b"Rar!\x1a\x07\x00"
 _MAIN = 0x73
@@ -37,8 +38,9 @@ def _rar_file(
     crc: int | None = None,
     host: int = _WINDOWS,
     attributes: int = 0x20,
+    name_encoding: str = "utf-8",
 ) -> bytes:
-    encoded = name.encode("latin-1") if name.isascii() else name.encode("utf-8")
+    encoded = name.encode(name_encoding)
     body = struct.pack(
         "<IIBIIBBHI",
         len(data),
@@ -54,7 +56,7 @@ def _rar_file(
     return _header(_FILE, flags | _LONG_BLOCK, body + encoded) + data
 
 
-def rar(path: Path, files: dict[str, bytes], **options: int) -> Path:
+def rar(path: Path, files: dict[str, bytes], **options: Any) -> Path:
     content = RAR_MARKER + _header(_MAIN, 0, b"\0" * 6)
     for name, data in files.items():
         content += _rar_file(name, data, **options)

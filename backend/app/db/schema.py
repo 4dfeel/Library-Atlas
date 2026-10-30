@@ -202,6 +202,10 @@ download_tasks = Table(
     Column("flow_id", String, nullable=True),
     # The work's change date when this was downloaded, to notice a newer version.
     Column("source_upgraded_at", String, nullable=True),
+    # The archive served its purpose and was deleted: not the same as a file gone missing.
+    Column("archive_removed", Integer, nullable=False, server_default=text("0")),
+    # Cleared from the list by the user. The record stays: it is how updates are noticed.
+    Column("dismissed", Integer, nullable=False, server_default=text("0")),
     CheckConstraint(
         "state IN ('queued', 'resolving', 'downloading', 'verifying', 'paused', 'done', "
         "'failed', 'cancelled', 'reauth_required', 'interrupted')",
@@ -231,6 +235,7 @@ extract_tasks = Table(
     Column("bytes_done", Integer, nullable=False, server_default=text("0")),
     Column("error_code", String, nullable=True),
     Column("cleanup_failed", Integer, nullable=False, server_default=text("0")),
+    Column("dismissed", Integer, nullable=False, server_default=text("0")),
     Column("created_at", String, nullable=False),
     Column("updated_at", String, nullable=False),
     Column("finished_at", String, nullable=True),

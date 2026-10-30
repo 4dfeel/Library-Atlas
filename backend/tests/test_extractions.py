@@ -91,6 +91,25 @@ def unpack(client: TestClient, work_id: str, **body: Any) -> dict[str, Any]:
     return settled(client, work_id)
 
 
+def download_only_again(client: TestClient, work_id: str) -> None:
+    for task in start(client, work_id, again=True):
+        assert ended(client, task["id"])["state"] == "done"
+
+
+def download_and_unpack_again(client: TestClient, work_id: str) -> dict[str, Any]:
+    """The archive went away after the first time, so unpacking again means fetching it again."""
+    before = extraction_of(client, work_id)
+    assert before is not None
+    start(client, work_id, again=True, extract=True)
+    deadline = time.monotonic() + 30
+    while time.monotonic() < deadline:
+        task = extraction_of(client, work_id)
+        if task and task["id"] != before["id"] and task["state"] not in ACTIVE:
+            return task
+        time.sleep(0.02)
+    raise AssertionError("timed out")
+
+
 def tree(folder: Path) -> list[str]:
     return sorted(
         path.relative_to(folder).as_posix() for path in folder.rglob("*") if path.is_file()
@@ -120,8 +139,8 @@ def test_one_click_downloads_then_unpacks(
     assert result.relative_to(unpack_root).parts[1:] == ("虚构社团", work["title"])
     assert tree(result) == ["说明.txt".replace("说", "説"), "音声/01 はじめに.wav"]
     assert (result / "音声" / "01 はじめに.wav").read_bytes() == b"a" * 1000
-    # The download stays, and nothing was left behind.
-    assert len(final_files(rig)) == 1
+    # The archive is gone once the work is in place: no second copy, as the user asked.
+    assert final_files(rig) == []
     assert len(list(unpack_root.iterdir())) == 1  # Nothing temporary was left beside it.
 
 
@@ -154,9 +173,12 @@ def test_one_click_on_a_finished_download_does_not_download_again(
     work = first_work(api)
     download_only(api, work["id"])
     files_before = final_files(rig)
+    assert len(files_before) == 1
+    server = api.app.state.service.downloads._on_shutdown.__self__  # type: ignore[attr-defined]
+    fetched = len(server.log.file_requests())
     start(api, work["id"], extract=True)
     assert settled(api, work["id"])["state"] == "done"
-    assert final_files(rig) == files_before
+    assert len(server.log.file_requests()) == fetched
 
 
 def test_split_rar_goes_through_with_every_part(
@@ -203,7 +225,7 @@ def test_a_file_that_is_not_an_archive_is_filed_the_same_way(
     result = Path(done["location"])
     assert result.relative_to(unpack_root).parts[1:] == ("虚构社团", work["title"])
     assert (result / f"{work['sourceId']}.zip").stat().st_size == 2000
-    assert len(final_files(rig)) == 1  # A copy: the download stays.
+    assert final_files(rig) == []  # Once in place, no second copy.
 
 
 def test_a_plain_program_is_filed_and_never_run(
@@ -267,9 +289,7 @@ def test_existing_folders_are_never_merged_or_replaced(
     first = Path(unpack(api, work["id"])["location"])
     save = first / "セーブ.dat"
     save.write_bytes(b"the user's save")
-    response = api.post(BASE, json={"workId": work["id"], "again": True})
-    assert response.status_code == 202
-    done = settled(api, work["id"])
+    done = download_and_unpack_again(api, work["id"])
     assert done["state"] == "done"
     assert save.read_bytes() == b"the user's save"
     second = Path(done["location"])
@@ -285,6 +305,7 @@ def test_a_link_along_the_way_cannot_lead_the_result_outside(
     work = first_work(api)
     download_only(api, work["id"])
     first = Path(unpack(api, work["id"])["location"])
+    download_only_again(api, work["id"])
     kind = first.relative_to(unpack_root).parts[0]
     shutil.rmtree(unpack_root / kind)
     outside = tmp_path / "outside"
@@ -324,9 +345,7 @@ def test_asking_again_makes_a_new_folder(
     api.post(BASE, json={"workId": work["id"]})
     assert settled(api, work["id"])["id"] == first["id"]
     assert Path(first["location"]).is_dir()
-    response = api.post(BASE, json={"workId": work["id"], "again": True})
-    assert response.status_code == 202
-    second = settled(api, work["id"])
+    second = download_and_unpack_again(api, work["id"])
     assert second["id"] != first["id"]
     assert second["location"] != first["location"]
     assert Path(first["location"]).is_dir()
@@ -452,7 +471,7 @@ def test_a_failed_unpacking_retries_without_downloading(
     again = settled(api, work["id"])
     assert again["state"] == "done"
     assert len(server.log.file_requests()) == fetched
-    assert len(final_files(rig)) == 1
+    assert final_files(rig) == []
 
 
 def test_cancel_stops_cleans_up_and_keeps_the_download(
@@ -620,6 +639,100 @@ def test_a_restart_starts_nothing_by_itself(
     with client_for(settings) as client:
         time.sleep(0.2)
         assert client.get(BASE).json()["tasks"][0]["state"] == "interrupted"
+
+
+# --- the archive afterwards ---
+
+
+def test_a_failed_unpacking_keeps_the_archive(api: TestClient, rig: Rig, archives: Path) -> None:
+    serve(rig, samples.zip_with(archives / "a.zip", {"../evil.txt": b"x"}))
+    work = first_work(api)
+    start(api, work["id"], extract=True)
+    assert settled(api, work["id"])["state"] == "failed"
+    assert len(final_files(rig)) == 1
+
+
+def test_download_only_keeps_the_archive(api: TestClient, rig: Rig, archives: Path) -> None:
+    serve(rig, samples.zip_with(archives / "a.zip", {"a.txt": b"x"}))
+    download_only(api, first_work(api)["id"])
+    assert len(final_files(rig)) == 1
+
+
+def test_only_its_own_files_go_with_the_archive(api: TestClient, rig: Rig, archives: Path) -> None:
+    serve(rig, samples.zip_with(archives / "a.zip", {"a.txt": b"x"}))
+    work = first_work(api)
+    download_only(api, work["id"])
+    neighbor = rig.library / work["sourceId"] / "the user's note.txt"
+    neighbor.write_bytes(b"keep")
+    assert unpack(api, work["id"])["state"] == "done"
+    assert neighbor.read_bytes() == b"keep"
+    assert final_files(rig) == [neighbor]
+
+
+def test_a_removed_archive_is_not_reported_as_a_lost_file(
+    api: TestClient, rig: Rig, archives: Path
+) -> None:
+    serve(rig, samples.zip_with(archives / "a.zip", {"a.txt": b"x"}))
+    work = first_work(api)
+    start(api, work["id"], extract=True)
+    settled(api, work["id"])
+    task = api.get("/api/v1/downloads").json()["tasks"][0]
+    assert task["archiveRemoved"] is True
+    assert task["fileMissing"] is False
+    assert api.get(f"/api/v1/works/{work['id']}").json()["installed"] is True
+    # Nothing to unpack from now, and it says so instead of failing halfway.
+    response = api.post(BASE, json={"workId": work["id"], "again": True})
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "no_download"
+
+
+def test_clearing_empties_the_list_and_touches_no_result(
+    api: TestClient, rig: Rig, archives: Path
+) -> None:
+    serve(rig, samples.zip_with(archives / "a.zip", {"a.txt": b"x"}))
+    work = first_work(api)
+    start(api, work["id"], extract=True)
+    done = settled(api, work["id"])
+    assert api.post(f"{BASE}/clear").status_code == 200
+    assert api.post("/api/v1/downloads/clear").status_code == 200
+    assert all(t["dismissed"] for t in api.get(BASE).json()["tasks"])
+    assert all(t["dismissed"] for t in api.get("/api/v1/downloads").json()["tasks"])
+    assert (Path(done["location"]) / "a.txt").read_bytes() == b"x"
+
+
+def test_an_update_is_still_noticed_after_clearing(
+    api: TestClient, rig: Rig, archives: Path
+) -> None:
+    serve(rig, samples.zip_with(archives / "a.zip", {"a.txt": b"x"}))
+    work = first_work(api)
+    start(api, work["id"], extract=True)
+    settled(api, work["id"])
+    api.post("/api/v1/downloads/clear")
+    rig.control["upgrade"] = "2026-10-30T00:00:00+09:00"
+    rig.save_control()
+    assert api.post("/api/v1/sources/dlsite/sync").status_code == 200
+    deadline = time.monotonic() + 15
+    while time.monotonic() < deadline:
+        if api.get("/api/v1/downloads").json()["updates"]:
+            break
+        time.sleep(0.05)
+    assert [item["workId"] for item in api.get("/api/v1/downloads").json()["updates"]] == [
+        work["id"]
+    ]
+
+
+def test_a_japanese_rar_reaches_the_folder_with_japanese_names(
+    api: TestClient, rig: Rig, archives: Path
+) -> None:
+    if find_seven_zip() is None:
+        pytest.skip("needs 7-Zip")
+    archive = samples.rar(archives / "a.rar", {"音声\\表紙.txt": b"hello"}, name_encoding="cp932")
+    serve(rig, archive)
+    work = first_work(api)
+    start(api, work["id"], extract=True)
+    done = settled(api, work["id"])
+    assert done["state"] == "done", done["code"]
+    assert (Path(done["location"]) / "音声" / "表紙.txt").read_bytes() == b"hello"
 
 
 # --- nothing leaks ---

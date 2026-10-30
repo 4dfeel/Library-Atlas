@@ -17,6 +17,7 @@ from app.adapters.system.archives import (
     Listing,
     SevenZip,
     Stopped,
+    apply_renames,
     check_entries,
     extract_zip,
     find_seven_zip,
@@ -204,6 +205,53 @@ def test_zip_reads_unmarked_japanese_names_as_cp932(box: tuple[Path, Path, Path]
     extract_zip(archive, output, LIMITS, ignore, carry_on)
     verify_output(output, listing)
     assert [path.name for path in output.iterdir()] == [listing.entries[0].path]
+
+
+def test_zip_reads_unmarked_utf8_names(box: tuple[Path, Path, Path]) -> None:
+    """Many tools write UTF-8 without setting the flag."""
+    output, sources, _sentinel = box
+    raw = "音声ab.txt".encode()
+    raw += b"_" * (len(b"placeholder.txt") - len(raw))
+    archive = samples.zip_raw_name(sources / "a.zip", raw, b"x")
+    listing = list_zip(archive, LIMITS)
+    assert listing.entries[0].path.startswith("音声ab.txt")
+    extract_zip(archive, output, LIMITS, ignore, carry_on)
+    verify_output(output, listing)
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["音声\\01 はじめに.txt", "表紙\\ソフト.txt", "予告/ダミー.bin"],
+    ids=["kana", "trail-byte-5c", "forward-slash"],
+)
+def test_old_rar_names_come_out_in_japanese_on_any_windows(
+    seven: SevenZip, box: tuple[Path, Path, Path], name: str
+) -> None:
+    """Stored as cp932 with no Unicode form, as old Japanese archives are. 表 and ソ end in the
+    byte for a backslash, the classic way these names get broken."""
+    output, sources, _sentinel = box
+    archive = samples.rar(sources / "a.rar", {name: b"hello"}, name_encoding="cp932")
+    listing = seven.list(archive, LIMITS, volumes=[archive])
+    expected = name.replace("\\", "/")
+    assert [entry.path for entry in listing.entries] == [expected]
+    seven.extract(archive, output, LIMITS, ignore, carry_on)
+    apply_renames(output, listing)
+    verify_output(output, listing)
+    assert output.joinpath(*expected.split("/")).read_bytes() == b"hello"
+    assert sorted(p.name for p in output.iterdir()) == [expected.split("/")[0]]
+
+
+def test_unknown_encoding_zip_through_the_tool_uses_japanese(
+    seven: SevenZip, box: tuple[Path, Path, Path]
+) -> None:
+    """A ZIP the standard library cannot read goes through 7-Zip, which must not fall back on
+    this machine's code page for its names."""
+    output, sources, _sentinel = box
+    archive = samples.zip_cp932(sources / "a.zip", "音声.wav", b"data")
+    listing = seven.list(archive, LIMITS, code_page=932)
+    assert listing.entries[0].path.startswith("音声")
+    seven.extract(archive, output, LIMITS, ignore, carry_on)
+    verify_output(output, listing)
 
 
 def test_zip_names_in_an_unknown_encoding_are_refused_not_guessed(

@@ -12,6 +12,9 @@ from app.main import create_app
 from app.testing import synthetic
 
 ORIGIN = "http://127.0.0.1:8765"
+# The newest migration, so these tests need no edit whenever one is added.
+_MIGRATIONS = Path(__file__).parents[1] / "app/db/migrations/versions"
+HEAD_REVISION = max(path.name[:4] for path in _MIGRATIONS.glob("[0-9]*.py"))
 
 
 def make_settings(data_dir: Path) -> Settings:
@@ -58,4 +61,11 @@ def writer(client: TestClient) -> dict[str, str]:
     return write_headers(client)
 
 
-__all__ = ["ORIGIN", "client_for", "seed_library", "make_settings", "write_headers"]
+__all__ = [
+    "HEAD_REVISION",
+    "ORIGIN",
+    "client_for",
+    "seed_library",
+    "make_settings",
+    "write_headers",
+]
