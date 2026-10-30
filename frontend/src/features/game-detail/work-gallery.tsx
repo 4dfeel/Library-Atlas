@@ -36,9 +36,15 @@ export function WorkGallery({ workId }: { workId: string }) {
   }, [wanted]);
 
   useEffect(() => {
-    const thumb = strip.current?.children[current];
-    if (thumb && 'scrollIntoView' in thumb)
-      thumb.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    // Only the strip scrolls. `scrollIntoView` would also scroll the page to reach a strip below
+    // the fold, pulling the picture and the arrow out from under the pointer.
+    const container = strip.current;
+    const thumb = container?.children[current];
+    if (!container || !thumb) return;
+    const box = container.getBoundingClientRect();
+    const place = thumb.getBoundingClientRect();
+    if (place.left < box.left) container.scrollLeft -= box.left - place.left;
+    else if (place.right > box.right) container.scrollLeft += place.right - box.right;
   }, [current]);
 
   if (loading)

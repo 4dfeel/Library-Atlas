@@ -280,6 +280,36 @@ test.describe('unpacking and the queue', () => {
     await expect(page.locator('.about-text')).toContainText('合成的作品简介');
   });
 
+  test('moving through the images never moves the page', async ({ page }) => {
+    const work = await freshWork();
+    await openWork(page, work);
+    const gallery = page.getByTestId('work-gallery');
+    await expect(gallery).toBeVisible();
+    const scroller = page.locator('.detail-page');
+    const top = () => scroller.evaluate((node) => node.scrollTop);
+    const before = await top();
+    // A strip too narrow for its thumbnails, so it has to follow the current one.
+    const strip = gallery.locator('.work-gallery-strip');
+    await strip.evaluate((node: HTMLElement) => {
+      node.style.width = '200px';
+    });
+    const next = gallery.getByRole('button', { name: '下一张' });
+    for (let step = 1; step <= 4; step++) {
+      await next.evaluate((node: HTMLElement) => node.click());
+      await expect(gallery.getByTestId('gallery-image')).toHaveAttribute(
+        'src',
+        new RegExp(`gallery/${step}$`),
+      );
+      expect(await top()).toBe(before);
+      const shown = await strip.evaluate((node) => {
+        const thumb = node.querySelector('[aria-current="true"]')!.getBoundingClientRect();
+        const box = node.getBoundingClientRect();
+        return thumb.left >= box.left - 1 && thumb.right <= box.right + 1;
+      });
+      expect(shown).toBe(true);
+    }
+  });
+
   test('a work with no images shows no empty frame', async ({ page }) => {
     await control({ gallery: 'none' });
     const work = await freshWork();
