@@ -208,6 +208,19 @@ test('loading, error, unavailable and private IDs', async ({ page }, info) => {
   await expect(page.locator('[data-game-card]').first()).toBeVisible();
 });
 
+test('a pending search never writes Library state onto another page URL', async ({
+  page,
+}, info) => {
+  test.skip(info.project.name !== '1080p', 'Timing logic; one tier is enough.');
+  await page.goto('/library');
+  await expect(page.locator('[data-game-card]').first()).toBeVisible();
+  // History moves on while the search debounce is still pending, before React unmounts.
+  await searchBox(page).fill('观测');
+  await page.evaluate(() => window.history.pushState({}, '', '/library/demo-00001'));
+  await page.waitForTimeout(400);
+  await expect(page).toHaveURL(/\/library\/demo-00001$/);
+});
+
 test('grid and list round trips restore Library state and history works', async ({
   page,
 }, info) => {

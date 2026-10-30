@@ -33,7 +33,7 @@ import {
 } from '@/lib/data';
 import { kindLabels } from '@/lib/utils';
 import { getGridLayout, useMeasuredWidth } from '@/lib/layout';
-import { gameHref, patchHistoryState, readHistoryState } from '@/lib/router';
+import { gameHref, matchRoute, patchHistoryState, readHistoryState } from '@/lib/router';
 import { ReadFailure, RealLibraryEmpty } from '@/features/workspace/service-state';
 import { GameCollection, type CollectionRestore, type ViewMode } from './game-collection';
 import { libraryUrl, parseLibraryUrl } from './library-url';
@@ -87,10 +87,16 @@ export function LibraryPage({
   const data = collection.summary;
 
   useEffect(() => {
-    const timeout = window.setTimeout(() => setFilters((current) => ({ ...current, search })), 140);
+    const timeout = window.setTimeout(
+      () => setFilters((current) => (current.search === search ? current : { ...current, search })),
+      140,
+    );
     return () => window.clearTimeout(timeout);
   }, [search]);
   useEffect(() => {
+    // History can already have moved on (Forward to a detail) before this page unmounts;
+    // never write Library state onto another page's URL.
+    if (matchRoute(window.location.pathname).name !== 'library') return;
     const next = libraryUrl(window.location.href, { filters, view });
     if (next !== window.location.pathname + window.location.search)
       window.history.replaceState(window.history.state, '', next);
