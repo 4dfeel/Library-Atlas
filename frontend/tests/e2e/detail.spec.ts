@@ -249,12 +249,28 @@ test('grid and list round trips restore Library state and history works', async 
     element.scrollTop = 4600;
   });
   await expect.poll(() => scroll.evaluate((element) => element.scrollTop)).toBeGreaterThan(4000);
-  const before = await scroll.evaluate((element) => element.scrollTop);
-  const row = page
-    .locator('[data-game-card]')
-    .filter({ has: page.locator('.game-link') })
-    .nth(3);
-  const rowId = await row.getAttribute('data-game-id');
+  // Wait for the scroll to settle, then take the row across the middle of the view: one near the
+  // edge of the virtual window can be recycled before the test gets to it.
+  let settled = -1;
+  await expect
+    .poll(async () => {
+      const now = await scroll.evaluate((element) => element.scrollTop);
+      const same = now === settled;
+      settled = now;
+      return same;
+    })
+    .toBe(true);
+  const before = settled;
+  const rowId = await scroll.evaluate((element) => {
+    const box = element.getBoundingClientRect();
+    const middle = box.top + box.height / 2;
+    const rows = [...element.querySelectorAll<HTMLElement>('[data-game-card]')];
+    const hit = rows.find((item) => {
+      const rect = item.getBoundingClientRect();
+      return rect.top <= middle && rect.bottom >= middle && item.querySelector('.game-link');
+    });
+    return hit?.dataset.gameId ?? null;
+  });
   // Pin by ID: the virtual list may re-render between locator resolutions.
   const pinned = page.locator(`[data-game-id="${rowId}"]`);
   const listedStatus = await pinned.locator('.list-status').innerText();

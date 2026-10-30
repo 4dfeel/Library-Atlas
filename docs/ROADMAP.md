@@ -43,6 +43,10 @@
 | 5 | 解压与一键下载并解压 | 实现完成，待人工真实解压验证。见 [报告](PHASE2_CHECKPOINT5_REPORT.md) |
 | 6 | DLsite 官方商店介绍与富媒体详情（Steam 延期） | 实现完成，待真实覆盖核对。见 [报告](PHASE2_CHECKPOINT6_REPORT.md) |
 | 7 | 本地作品手动关联与游戏启动 | 实现完成，真实启动待人工。见 [报告](PHASE2_CHECKPOINT7_REPORT.md) |
+| 8 | 跨盘发现与批量关联 | 实现完成，真实只读核对通过，批量关联待用户。见 [报告](PHASE2_CHECKPOINT8_REPORT.md) |
+| 9 | 存档保护优先的游戏更新 | 实现完成，真实更新待人工。见 [报告](PHASE2_CHECKPOINT9_REPORT.md) |
+| 10 | 音声播放器与收听记录 | 实现完成，真实作品待人工。见 [报告](PHASE2_CHECKPOINT10_REPORT.md) |
+| 11 | 漫画/CG 阅读器与阅读记录 | 实现完成，真实作品待人工。见 [报告](PHASE2_CHECKPOINT11_REPORT.md) |
 
 Steam 接入未实现；真实下载和解压待用户验证。
 
