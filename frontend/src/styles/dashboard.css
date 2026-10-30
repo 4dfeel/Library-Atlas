@@ -1606,3 +1606,178 @@
     transition: none;
   }
 }
+
+.official-intro {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: 14px;
+  margin-block: 8px 32px;
+}
+
+.official-intro header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+}
+
+.official-intro h2 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 500;
+}
+
+.official-intro-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.official-intro-body {
+  display: grid;
+  gap: 14px;
+  /* Reading width: long lines stay comfortable however large the screen. */
+  max-width: 76ch;
+}
+
+.official-intro-skeleton {
+  display: block;
+  max-width: 76ch;
+  height: 14px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--sidebar) 80%, var(--text-muted));
+  animation: gallery-pulse 1.6s ease-in-out infinite;
+}
+
+.official-intro-skeleton.is-short {
+  max-width: 40ch;
+}
+
+.intro-heading {
+  margin: 14px 0 0;
+  padding-bottom: 6px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.intro-paragraph {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1.8;
+  /* Line breaks from the page are part of how it is written. */
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
+.intro-paragraph a {
+  color: var(--accent);
+}
+
+.intro-list {
+  margin: 0;
+  padding-left: 22px;
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1.8;
+}
+
+.intro-table {
+  overflow-x: auto;
+}
+
+.intro-table table {
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.intro-table td {
+  padding: 6px 12px;
+  border: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+  color: var(--text-secondary);
+}
+
+/* The picture decides its own shape: nothing here crops, and a tall image stays tall. */
+.intro-image {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  cursor: zoom-in;
+}
+
+.intro-image img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+.intro-image-missing,
+.intro-video {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 14px 16px;
+  border: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+  border-radius: 6px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.intro-video a {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--accent);
+}
+
+.image-lightbox {
+  max-height: 78vh;
+  overflow: auto;
+}
+
+.image-lightbox img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin-inline: auto;
+}
+
+.dialog-content:has(.image-lightbox) {
+  width: min(92vw, 1400px);
+  max-width: min(92vw, 1400px);
+}
+
+.store-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-size: 14px;
+  text-decoration: none;
+}
+
+.store-button:hover,
+.store-button:focus-visible {
+  background: color-mix(in srgb, var(--sidebar) 70%, var(--text-primary) 8%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .official-intro-skeleton {
+    animation: none;
+  }
+}

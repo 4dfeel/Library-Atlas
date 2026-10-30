@@ -18,6 +18,7 @@ import {
   kindLabels,
   platformLabels,
 } from '@/lib/utils';
+import { OfficialIntro } from './official-intro';
 import { WorkGallery } from './work-gallery';
 import { GameHero } from './game-hero';
 import { PersonalRecord } from './personal-record';
@@ -235,6 +236,9 @@ function DetailBody({ game }: { game: GameDetail }) {
         </section>
         {game.files && game.files.length > 0 && <FileList files={game.files} />}
       </div>
+      {!isDemo && game.platform === 'dlsite' && (
+        <OfficialIntro workId={game.id} sourceUrl={game.sourceUrl} />
+      )}
     </>
   );
 }

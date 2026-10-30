@@ -41,7 +41,7 @@
 | 3 | DLsite 已购作品同步与分类 | 实现完成，首次真实同步通过，待用户确认分类。见 [报告](PHASE2_CHECKPOINT3_REPORT.md) |
 | 4 | 真实下载队列 | 实现完成，待人工真实下载验证。见 [报告](PHASE2_CHECKPOINT4_REPORT.md) |
 | 5 | 解压与一键下载并解压 | 实现完成，待人工真实解压验证。见 [报告](PHASE2_CHECKPOINT5_REPORT.md) |
-| 6 | Steam 真实接入 | 未开始 |
+| 6 | DLsite 官方商店介绍与富媒体详情（Steam 延期） | 实现完成，待真实覆盖核对。见 [报告](PHASE2_CHECKPOINT6_REPORT.md) |
 | 7 | 全链路验收 | 未开始 |
 
 Steam 接入未实现；真实下载和解压待用户验证。

@@ -106,6 +106,9 @@ works = Table(
     Column("upgraded_at", String, nullable=True),
     Column("gallery_json", Text, nullable=True),
     Column("gallery_checked_at", String, nullable=True),
+    # Checked blocks, never HTML. Separate from `description`, the short summary.
+    Column("intro_json", Text, nullable=True),
+    Column("intro_fetched_at", String, nullable=True),
     UniqueConstraint("source_id", "source_work_id", name="uq_works_source_identity"),
     CheckConstraint("kind IN ('game', 'image', 'video', 'audio', 'other')", name="ck_works_kind"),
     CheckConstraint("local_state IN ('unknown', 'available', 'absent')", name="ck_works_local"),

@@ -33,6 +33,7 @@ from app.services.dlsite_factory import (
     build_extraction_service,
     build_folder_service,
     build_gallery,
+    build_introductions,
     build_update_checker,
 )
 from app.services.dlsite_sync import DlsiteSync
@@ -40,6 +41,7 @@ from app.services.downloads import DownloadQueue
 from app.services.extractions import ExtractionService
 from app.services.folders import FolderService
 from app.services.gallery import WorkGallery
+from app.services.introductions import WorkIntroductions
 from app.services.update_checks import UpdateChecker
 
 logger = logging.getLogger("atlas")
@@ -69,6 +71,7 @@ class ServiceState:
     downloads: DownloadQueue | None = None
     extractions: ExtractionService | None = None
     gallery: WorkGallery | None = None
+    introductions: WorkIntroductions | None = None
     updates: UpdateChecker | None = None
 
 
@@ -158,6 +161,15 @@ def _gallery(request: Request, _engine: EngineDep) -> WorkGallery:
 
 
 GalleryDep = Annotated[WorkGallery, Depends(_gallery)]
+
+
+def _introductions(request: Request, _engine: EngineDep) -> WorkIntroductions:
+    service = _state(request).introductions
+    assert service is not None  # Built whenever the engine is.
+    return service
+
+
+IntroductionsDep = Annotated[WorkIntroductions, Depends(_introductions)]
 
 
 def _updates(request: Request, _engine: EngineDep) -> UpdateChecker:
@@ -353,6 +365,21 @@ def _build_api() -> APIRouter:
             path, media_type=content_type, headers={"Cache-Control": "private, max-age=604800"}
         )
 
+    @api.get("/works/{work_id}/introduction")
+    def work_introduction(service: IntroductionsDep, work_id: str) -> models.IntroOut:
+        return service.introduction(work_id)
+
+    @api.post("/works/{work_id}/introduction/refresh")
+    def refresh_introduction(service: IntroductionsDep, work_id: str) -> models.IntroOut:
+        return service.introduction(work_id, refresh=True)
+
+    @api.get("/works/{work_id}/intro-image/{index}", include_in_schema=False)
+    def work_intro_image(service: IntroductionsDep, work_id: str, index: int) -> Response:
+        path, content_type = service.image(work_id, index)
+        return FileResponse(
+            path, media_type=content_type, headers={"Cache-Control": "private, max-age=604800"}
+        )
+
     @api.get("/settings/updates")
     def update_settings(checker: UpdatesDep) -> models.UpdateSettings:
         return checker.status()
@@ -458,6 +485,7 @@ def create_app(
                 state.dlsite = dlsite_factory(settings, opened.engine)
                 state.covers = CoverCache(settings.data_dir / "cache" / "covers")
                 state.gallery = build_gallery(settings, opened.engine, state.covers)
+                state.introductions = build_introductions(settings, opened.engine, state.covers)
                 if state.dlsite is not None:
                     state.sync = dlsite_sync_factory(settings, opened.engine, state.dlsite)
                     state.sync.recover()

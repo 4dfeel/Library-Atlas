@@ -143,7 +143,7 @@ test.describe('unpacking and the queue', () => {
   test.beforeEach(async ({ page }) => {
     await enterRealMode(page);
     expect((await call('/settings/folders/library', 'PUT', { path: library })).status).toBe(200);
-    await control({ download: { payload: archive }, gallery: null, upgrade: null });
+    await control({ download: { payload: archive }, gallery: null, intro: null, upgrade: null });
   });
 
   test('one click: download, unpack, result, and the bar says so', async ({ page }) => {
@@ -357,6 +357,58 @@ test.describe('unpacking and the queue', () => {
       expected += 1;
       await expect(image).toHaveAttribute('src', new RegExp(`gallery/${expected}$`));
     }
+  });
+
+  test('the store button and the full introduction', async ({ page }) => {
+    await control({ intro: null });
+    const work = await freshWork();
+    await openWork(page, work);
+    const store = page.getByTestId('store-button');
+    await expect(store).toHaveAttribute('href', new RegExp(`${work.sourceId}\\.html$`));
+    await expect(store).toHaveAttribute('target', '_blank');
+    await expect(store).toHaveAttribute('rel', /noopener/);
+    const intro = page.getByTestId('official-intro');
+    await intro.scrollIntoViewIfNeeded();
+    await expect(intro).toContainText('合成的第一节');
+    await expect(intro).toContainText('合成的第二节');
+    await expect(intro).toContainText('特点二');
+    await expect(intro).toContainText('容量');
+    // A dangerous link is left as plain text, and no script arrived.
+    await expect(intro.getByRole('link', { name: '危险链接' })).toHaveCount(0);
+    await expect(intro.getByRole('link', { name: '官方链接' })).toHaveAttribute('target', '_blank');
+    await expect(intro.getByTestId('intro-video')).toContainText('前往官方页面');
+    // The tall image keeps its shape, and its width stays within the reading column.
+    const tall = intro.getByRole('button', { name: /合成长图/ }).locator('img');
+    await tall.scrollIntoViewIfNeeded();
+    await expect
+      .poll(() => tall.evaluate((node: HTMLImageElement) => node.naturalHeight))
+      .toBe(2400);
+    const shape = await tall.evaluate(
+      (node: HTMLImageElement) => node.clientHeight / node.clientWidth,
+    );
+    expect(shape).toBeCloseTo(6, 0);
+    await shot(page, 'introduction');
+    await noHorizontalScroll(page);
+    // Enlarging, and Escape back to where it was.
+    await intro.getByRole('button', { name: /合成说明图/ }).click();
+    await expect(page.getByTestId('intro-lightbox')).toBeVisible();
+    await shot(page, 'introduction-enlarged');
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('intro-lightbox')).toHaveCount(0);
+  });
+
+  test('without a readable page the rest of the work still stands', async ({ page }) => {
+    await control({ intro: 'changed' });
+    const work = await freshWork();
+    await openWork(page, work);
+    const intro = page.getByTestId('official-intro');
+    await expect(intro).toContainText('和预期不同');
+    await expect(page.getByTestId('download-action')).toBeVisible();
+    await expect(page.getByTestId('store-button')).toBeVisible();
+    await shot(page, 'introduction-unavailable');
+    await control({ intro: null });
+    await intro.getByRole('button', { name: '刷新' }).click();
+    await expect(intro).toContainText('合成的第一节');
   });
 
   test('a work with no images shows no empty frame', async ({ page }) => {

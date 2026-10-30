@@ -185,6 +185,31 @@ export interface UpdateSettings {
   lastCheckedAt: string | null;
 }
 
+export type IntroBlock =
+  | { type: 'heading'; text: string }
+  | { type: 'paragraph'; spans: { text: string; href?: string }[] }
+  | { type: 'list'; items: string[] }
+  | { type: 'table'; rows: string[][] }
+  | IntroImageBlock
+  | { type: 'video'; host: string };
+
+export interface IntroImageBlock {
+  type: 'image';
+  url: string;
+  alt?: string;
+  width?: number;
+  height?: number;
+}
+
+export interface WorkIntroduction {
+  status: 'ok' | 'empty' | 'unavailable';
+  blocks: IntroBlock[];
+  fetchedAt: string | null;
+  stale: boolean;
+  problem: string | null;
+  message: string | null;
+}
+
 export interface GalleryImage {
   url: string;
   width: number | null;
@@ -372,6 +397,14 @@ export class RealLibrarySource implements LibrarySource {
 
   gallery(workId: string, signal?: AbortSignal): Promise<WorkGalleryData> {
     return apiGet<WorkGalleryData>(`${workPath(workId)}/gallery`, undefined, signal);
+  }
+
+  introduction(workId: string, signal?: AbortSignal): Promise<WorkIntroduction> {
+    return apiGet<WorkIntroduction>(`${workPath(workId)}/introduction`, undefined, signal);
+  }
+
+  refreshIntroduction(workId: string): Promise<WorkIntroduction> {
+    return apiWrite<WorkIntroduction>('POST', `${workPath(workId)}/introduction/refresh`);
   }
 
   updateSettings(signal?: AbortSignal): Promise<UpdateSettings> {

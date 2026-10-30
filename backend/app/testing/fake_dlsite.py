@@ -20,6 +20,7 @@ from app.adapters.dlsite.library import PlatformUnavailable, ResponseChanged, Se
 from app.adapters.dlsite.login_host import LoginEvent, LoginProcess, LoginRequest
 from app.adapters.dlsite.product import Product, ProductImage
 from app.adapters.dlsite.session import SessionCheck, SessionCookie
+from app.adapters.dlsite.store_page import StorePageGone
 from app.core.credentials import CredentialStoreError
 
 CONTROL_FILE = "fake-platform.json"
@@ -172,6 +173,8 @@ def synthetic_image_transport() -> httpx.BaseTransport:
         color = hashlib.sha256(str(request.url).encode()).digest()[:3]
         # Store images come in both shapes: the first of each set stands upright.
         width, height = (360, 640) if "_0." in str(request.url) else (640, 360)
+        if "_long." in str(request.url):
+            width, height = 400, 2400  # A tall promotional image, whose text must stay readable.
         return httpx.Response(
             200, headers={"content-type": "image/png"}, content=_png(width, height, color)
         )
@@ -198,6 +201,40 @@ class FakeProductClient:
             ),
             "这是合成的作品简介，不对应任何真实作品。",
         )
+
+
+_FAKE_PAGE = """<html><body><nav>导航</nav><div class="work_parts_container">
+<div class="work_parts"><h3 class="work_parts_heading">合成的第一节</h3>
+<div class="work_parts_area"><a href="//img.dlsite.jp/{id}_wide.png">
+<img src="//img.dlsite.jp/{id}_wide.png" alt="合成说明图"/></a>
+<p>这是合成的官方介绍，不对应任何真实作品。<br/>第二行文字。
+<a href="https://www.dlsite.com/home/">官方链接</a>
+<a href="javascript:alert(1)">危险链接</a></p></div></div>
+<div class="work_parts"><h3 class="work_parts_heading">合成的第二节</h3>
+<ul><li>特点一</li><li>特点二</li></ul>
+<img src="//img.dlsite.jp/{id}_long.png" alt="合成长图"/>
+<table><tr><td>容量</td><td>合成数据</td></tr></table>
+<iframe src="https://chobit.cc/embed/synthetic"></iframe>
+<script>alert(1)</script></div></div></body></html>"""
+
+
+class FakeStorePage:
+    """A made-up store page. The control file's `intro`: none, offline, changed or gone."""
+
+    def __init__(self, control: FakeControl) -> None:
+        self._control = control
+
+    def fetch(self, site: str, source_work_id: str) -> str:
+        behavior = self._control.read().get("intro")
+        if behavior == "offline":
+            raise PlatformUnavailable
+        if behavior == "gone":
+            raise StorePageGone
+        if behavior == "changed":
+            return "<html><body>请完成验证</body></html>"
+        if behavior == "none":
+            return '<html><body><div class="work_parts_container"></div></body></html>'
+        return _FAKE_PAGE.replace("{id}", source_work_id)
 
 
 _FAKE_TYPES = ("RPG", "ADV", "MNG", "ICG", "SOU", "MUS", "MOV", "ET3", "ZZZ")

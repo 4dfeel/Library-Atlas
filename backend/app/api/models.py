@@ -360,6 +360,21 @@ class UpdateSettingsIn(ApiModel):
     auto_check: bool
 
 
+IntroStatus = Literal["ok", "empty", "unavailable"]
+
+
+class IntroOut(ApiModel):
+    """Checked blocks in page order. "empty" means the platform has none; "unavailable" means
+    Atlas could not tell, and never replaces what was read before."""
+
+    status: IntroStatus
+    blocks: list[dict[str, Any]]
+    fetched_at: str | None = None
+    stale: bool = False
+    problem: str | None = None
+    message: str | None = None
+
+
 class GalleryImage(ApiModel):
     """An Atlas address. The platform's own address never reaches the page."""
 

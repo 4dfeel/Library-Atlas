@@ -9,6 +9,7 @@ from app.adapters.dlsite.library import PlayLibraryClient
 from app.adapters.dlsite.login_host import BrowserLoginHost
 from app.adapters.dlsite.product import PublicProductClient
 from app.adapters.dlsite.session import PlaySessionChecker
+from app.adapters.dlsite.store_page import PublicStorePage
 from app.adapters.system.archives import find_seven_zip
 from app.adapters.system.folder_dialog import DialogFolderPicker, ExplorerFolderOpener
 from app.core.config import Settings
@@ -19,6 +20,7 @@ from app.services.downloads import DownloadQueue
 from app.services.extractions import ExtractionService
 from app.services.folders import FolderService
 from app.services.gallery import WorkGallery
+from app.services.introductions import WorkIntroductions
 from app.services.update_checks import UpdateChecker
 
 
@@ -73,6 +75,23 @@ def build_gallery(settings: Settings, engine: Engine, images: CoverCache) -> Wor
         )
         return WorkGallery(engine, FakeProductClient(FakeControl(settings.data_dir)), cache)
     return WorkGallery(engine, PublicProductClient(), images)
+
+
+def build_introductions(
+    settings: Settings, engine: Engine, images: CoverCache
+) -> WorkIntroductions:
+    if settings.profile == "test":
+        from app.testing.fake_dlsite import (
+            FakeControl,
+            FakeStorePage,
+            synthetic_image_transport,
+        )
+
+        cache = CoverCache(
+            settings.data_dir / "cache" / "gallery", transport=synthetic_image_transport
+        )
+        return WorkIntroductions(engine, FakeStorePage(FakeControl(settings.data_dir)), cache)
+    return WorkIntroductions(engine, PublicStorePage(), images)
 
 
 def build_update_checker(settings: Settings, engine: Engine, sync: DlsiteSync) -> UpdateChecker:

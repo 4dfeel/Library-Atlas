@@ -226,3 +226,10 @@ frontend/src/features/game-detail/work-gallery.tsx  介绍图
 - 迁移 `0007`：`extract_tasks`、`download_tasks.flow_id`。`0008`：`works.upgraded_at`、`gallery_json`、`gallery_checked_at`、`download_tasks.source_upgraded_at`。
 - 7-Zip 是可选的外部程序，由用户安装，不随项目分发。
 - **未落地**：安装、运行、Steam。
+
+## 15. Phase 2 检查点 6 实际落地（2026-10-31）
+- `adapters/dlsite/store_page.py`：读公开作品页，白名单解析为块，不存 HTML。
+- `services/introductions.py`：按需读取、保存一周、失败保留旧内容。
+- 迁移 `0010`：`works.intro_json`、`intro_fetched_at`。
+- 前端 `features/game-detail/official-intro.tsx` 只渲染校验过的块。
+- **未落地**：视频内嵌播放。

@@ -1,5 +1,5 @@
 import { useState, type MouseEvent, type ReactNode, type Ref } from 'react';
-import { ArrowLeft, Download, HardDrive, Play, Star, Trophy } from 'lucide-react';
+import { ExternalLink, ArrowLeft, Download, HardDrive, Play, Star, Trophy } from 'lucide-react';
 import { GameCover } from '@/components/game-card';
 import { Button } from '@/components/ui/button';
 import {
@@ -187,6 +187,18 @@ export function GameHero({
                 <Star size={16} fill={isFavorite ? 'currentColor' : 'none'} />
                 {isFavorite ? '已收藏' : '收藏'}
               </Button>
+              {game.sourceUrl && (
+                <a
+                  className="store-button"
+                  href={game.sourceUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  data-testid="store-button"
+                >
+                  <ExternalLink size={15} />
+                  官方商店
+                </a>
+              )}
               {/* For a real work the download row below is where its folder opens. */}
               {(isDemo || openActionLabels[game.kind] !== '打开文件夹') && (
                 <>

@@ -633,3 +633,31 @@ export function useWorkGallery(workId: string) {
   });
   return { gallery: query.data, loading: isReal && query.isPending };
 }
+
+/** Asked once a work's page is open, and never while browsing the library. */
+export function useWorkIntroduction(workId: string) {
+  const isReal = useWorkspaceMode() === 'real';
+  const queryClient = useQueryClient();
+  const key = [...realRoot, 'introduction', workId];
+  const query = useQuery({
+    queryKey: key,
+    queryFn: ({ signal }) => realSource.introduction(workId, signal),
+    enabled: isReal,
+    retry: false,
+    staleTime: 3_600_000,
+  });
+  const [refreshing, setRefreshing] = useState(false);
+  return {
+    intro: query.data,
+    loading: isReal && query.isPending,
+    refreshing,
+    refresh: () => {
+      setRefreshing(true);
+      void realSource
+        .refreshIntroduction(workId)
+        .then((next) => queryClient.setQueryData(key, next))
+        .catch(() => undefined)
+        .finally(() => setRefreshing(false));
+    },
+  };
+}

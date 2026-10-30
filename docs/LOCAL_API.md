@@ -193,3 +193,10 @@
 
 ## 后续检查点的任务状态（仅契约，未实现）
 本检查点没有任务表和任务接口。契约见 [接入方案 §7](PHASE2_INTEGRATION_PLAN.md)。
+
+### 官方介绍
+| 接口 | 说明 |
+| --- | --- |
+| `GET /works/{id}/introduction` | `{status,blocks,fetchedAt?,stale,problem?,message?}`。`status`：`ok` `empty` `unavailable`；`problem`：`gone` `unavailable` `changed`。`blocks` 是校验过的结构，不是 HTML |
+| `POST /works/{id}/introduction/refresh` | 手动重读，60 秒内不重复请求 |
+| `GET /works/{id}/intro-image/{index}` | 介绍里的图片，按序号，不接受地址 |
