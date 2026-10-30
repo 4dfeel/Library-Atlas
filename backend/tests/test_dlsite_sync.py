@@ -638,3 +638,43 @@ def test_network_failure_is_only_a_missing_cover(tmp_path: Any) -> None:
 
     with pytest.raises(CoverUnavailable):
         cache_with(tmp_path, handler).get(URL)
+
+
+def test_site_id_shapes_the_link_and_is_never_trusted_blindly() -> None:
+    good = map_work({"workno": "RJ1", "name": "x", "site_id": "maniax"})
+    assert good is not None
+    assert good.source_url == "https://www.dlsite.com/maniax/work/=/product_id/RJ1.html"
+    for bad in ("../evil", "a/b", "", None, 5, "x" * 40):
+        mapped = map_work({"workno": "RJ1", "name": "x", "site_id": bad})
+        assert mapped is not None
+        assert mapped.source_url == "https://www.dlsite.com/home/work/=/product_id/RJ1.html"
+
+
+def test_downloadable_is_only_taken_when_it_is_a_real_answer() -> None:
+    assert map_work({"workno": "R", "name": "x", "downloadable": True}).can_download is True  # type: ignore[union-attr]
+    assert map_work({"workno": "R", "name": "x", "downloadable": False}).can_download is False  # type: ignore[union-attr]
+    assert map_work({"workno": "R", "name": "x", "downloadable": "yes"}).can_download is None  # type: ignore[union-attr]
+    assert map_work({"workno": "R", "name": "x"}).can_download is None  # type: ignore[union-attr]
+
+
+def test_size_is_only_taken_when_it_is_a_real_number() -> None:
+    def size(value: Any) -> int | None:
+        mapped = map_work({"workno": "R", "name": "x", "content_size": value})
+        assert mapped is not None
+        return mapped.download_size
+
+    assert size(1234) == 1234
+    assert size("1234") == 1234
+    for bad in (0, -1, None, "", "1.2 GB", True, 1.5):
+        assert size(bad) is None
+
+
+def test_size_reaches_the_list_and_sorts(api: TestClient, rig: Rig) -> None:
+    rig.platform.library = [work(1, content_size=500), work(2, content_size=900), work(3)]
+    run(api)
+    items = api.get("/api/v1/works", params={"sort": "size-desc"}).json()["items"]
+    assert [i["file"]["sizeBytes"] if i["file"] else None for i in items] == [900, 500, None]
+    rig.platform.library = [work(1), work(2), work(3)]
+    run(api)  # A later response without the size keeps it.
+    items = api.get("/api/v1/works", params={"sort": "size-asc"}).json()["items"]
+    assert [i["file"]["sizeBytes"] if i["file"] else None for i in items] == [500, 900, None]

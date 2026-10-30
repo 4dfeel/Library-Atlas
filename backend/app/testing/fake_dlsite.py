@@ -188,7 +188,8 @@ class FakeLibraryClient:
                     "name": {"ja_JP": f"合成作品 {index} 号", "en_US": f"Synthetic Work {index}"},
                     "maker": {"id": "RG00001", "name": {"ja_JP": "虚构社团"}},
                     "work_type": _FAKE_TYPES[index % len(_FAKE_TYPES)],
-                    "regist_date": "2025-06-01T00:00:00+09:00",
+                    "regist_date": f"20{10 + index % 16}-06-01T00:00:00+09:00",
+                    "content_size": None if index % 5 == 0 else (index + 1) * 10_000_000,
                     "tags": [{"class": "genre", "name": "合成样本"}],
                     "work_files": {},
                 }

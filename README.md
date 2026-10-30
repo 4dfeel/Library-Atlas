@@ -8,7 +8,7 @@ scripts\setup-backend.cmd
 cd frontend && npm.cmd ci && npm.cmd run build && cd ..
 scripts\serve.cmd
 ```
-打开 [http://127.0.0.1:8765/](http://127.0.0.1:8765/)，点右上角模式标识可在“演示空间”和“我的资料库”之间切换。真实资料库初始为空：可以连接 DLsite；作品同步、下载解压和 Steam 尚未开放。详见 [运行说明](docs/LOCAL_DEVELOPMENT.md) 与 [本地 API](docs/LOCAL_API.md)。
+打开 [http://127.0.0.1:8765/](http://127.0.0.1:8765/)，点右上角模式标识可在“演示空间”和“我的资料库”之间切换。真实资料库初始为空：登录 DLsite 后可以同步已购作品；下载解压和 Steam 尚未开放。详见 [运行说明](docs/LOCAL_DEVELOPMENT.md) 与 [本地 API](docs/LOCAL_API.md)。
 
 ## 只看前端（Demo，无需服务）
 
@@ -76,4 +76,4 @@ npm.cmd run test:e2e
 - `frontend/public/demo/covers/`：24 张原创叙事矢量插画；`node scripts/generate-demo-covers.mjs` 从仓库根目录可确定性重建，同时生成 `public/demo/backdrops/` 24 幅 2:1 详情背景。其余程序化 SVG 只在可见卡片生成，缺图使用独立占位。
 - 字体通过锁定的 `@fontsource-variable/noto-sans-sc` 包打入构建，使用 unicode-range 按需加载本地 WOFF2，无 Google Fonts/CDN 请求。系统 Segoe UI 优先；中文可回退 Noto Sans SC。字体许可证随发布物提供于 `licenses/noto-sans-sc-OFL.txt`。
 
-需求和范围以 [当前执行规范](docs/specs/PHASE1.md)、[设计规范](docs/DESIGN.md) 和 [路线图](docs/ROADMAP.md) 为准。Phase 2 按检查点逐点授权：本地服务与真实模式基础已完成；DLsite 登录已实现、待真实验证；作品同步、下载解压尚未开始。
+需求和范围以 [当前执行规范](docs/specs/PHASE1.md)、[设计规范](docs/DESIGN.md) 和 [路线图](docs/ROADMAP.md) 为准。Phase 2 按检查点逐点授权：本地服务与真实模式基础已完成；DLsite 登录与作品同步已实现；下载解压、Steam 尚未开始。

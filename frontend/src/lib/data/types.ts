@@ -4,7 +4,26 @@ export type DemoSize = 1500 | 5000;
 export type DemoScenario = 'normal' | 'empty' | 'loading' | 'error';
 export type GameStatus = 'unplayed' | 'playing' | 'completed' | 'paused';
 export type Visibility = 'normal' | 'hidden' | 'private' | 'quarantined';
-export type LibrarySort = 'curated' | 'name-asc' | 'name-desc' | 'playtime-desc' | 'playtime-asc';
+export const librarySorts = [
+  'curated',
+  'name-asc',
+  'name-desc',
+  'playtime-desc',
+  'playtime-asc',
+  'added-desc',
+  'added-asc',
+  'maker-asc',
+  'maker-desc',
+  'genre-asc',
+  'genre-desc',
+  'rating-desc',
+  'rating-asc',
+  'release-desc',
+  'release-asc',
+  'size-desc',
+  'size-asc',
+] as const;
+export type LibrarySort = (typeof librarySorts)[number];
 /** Source platform of a library entry. Atlas data model is platform-neutral. */
 export type Platform = 'steam' | 'dlsite';
 /** What the work is; independent of genre. Steam entries are always games. */
@@ -49,7 +68,9 @@ export interface Game {
   /** What Atlas could do with this work once the source is connected. */
   capabilities: WorkCapabilities;
   /** Minimal file identity; versions or language packs are not merged by title. */
-  file: { version: string; sizeBytes: number | null } | null;
+  file: { version: string | null; sizeBytes: number | null } | null;
+  /** Personal rating, 1–5. `null` means not rated. */
+  rating?: number | null;
   /** The work's page on the source platform, when known. */
   sourceUrl?: string | null;
 }

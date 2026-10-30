@@ -35,7 +35,25 @@ _WORK_COLUMNS = (
     library_entries.c.added_at,
 )
 
-Sort = Literal["curated", "name-asc", "name-desc", "playtime-desc", "playtime-asc"]
+Sort = Literal[
+    "curated",
+    "name-asc",
+    "name-desc",
+    "playtime-desc",
+    "playtime-asc",
+    "added-desc",
+    "added-asc",
+    "maker-asc",
+    "maker-desc",
+    "genre-asc",
+    "genre-desc",
+    "rating-desc",
+    "rating-asc",
+    "release-desc",
+    "release-asc",
+    "size-desc",
+    "size-asc",
+]
 
 
 @dataclass(frozen=True)
@@ -78,6 +96,7 @@ class SourceMetadata:
     # Other spellings of the title: searchable, not displayed.
     alt_titles: tuple[str, ...] = field(default_factory=tuple)
     source_url: str | None = None
+    download_size: int | None = None
 
 
 @dataclass(frozen=True)
@@ -144,7 +163,21 @@ def _filter_clauses(filters: WorkFilters) -> list[ColumnElement[bool]]:
 
 
 def _ordering(sort: Sort) -> tuple[Any, ...]:
-    """Always ends in the ID, so pages never skip or repeat a row."""
+    """Always ends in the ID, so pages never skip or repeat a row. Anything not reported
+    goes last in either direction: unknown is not smallest and not largest."""
+    columns: dict[str, Any] = {
+        "added": library_entries.c.added_at,
+        "maker": works.c.maker,
+        "genre": works.c.genre,
+        "rating": personal_records.c.rating,
+        "release": works.c.release_date,
+        "size": works.c.download_size,
+    }
+    field, _, direction = sort.partition("-")
+    if field in columns:
+        column = columns[field]
+        ordered = column.desc() if direction == "desc" else column.asc()
+        return (column.is_(None).asc(), ordered, works.c.id.asc())
     match sort:
         case "name-asc":
             return (works.c.sort_title.asc(), works.c.id.asc())
@@ -376,6 +409,7 @@ def upsert_source_metadata(
         "sort_title": sort_title(metadata.title),
         "metadata_updated_at": now,
         "source_url": metadata.source_url,
+        "download_size": metadata.download_size,
     }
     changes = values
     if keep_missing:

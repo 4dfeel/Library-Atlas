@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { recordLayout, screenshot, writeEvidence } from './evidence';
+import { recordLayout, screenshot, writeEvidence, noHorizontalScroll } from './evidence';
 
 const cards = (page: Page) => page.locator('[data-game-card]');
 const scroll = (page: Page) => page.locator('[data-library-scroll]');
@@ -194,8 +194,14 @@ test('favorites and container resize preserve the visible collection anchor', as
       return Number(first?.getAttribute('data-game-id')?.replace('demo-', ''));
     });
   await expect.poll(visibleAnchor).toBeGreaterThan(25);
+  // Scrolling down hid the top bar; scrolling up a little brings its controls back.
+  await page.waitForTimeout(350);
+  await scroll(page).hover();
+  await page.mouse.wheel(0, -60);
+  const toggle = page.getByRole('button', { name: '收起侧栏', exact: true });
+  await expect(toggle).toBeVisible();
   const anchor = await visibleAnchor();
-  await page.getByRole('button', { name: '收起侧栏', exact: true }).click();
+  await toggle.click();
   await expect(scroll(page)).toHaveAttribute('data-columns', '6');
   expect(Math.abs((await visibleAnchor()) - anchor)).toBeLessThanOrEqual(6);
   await page.setViewportSize({ width: 2560, height: 1440 });
@@ -326,4 +332,112 @@ test('1500/5000 virtualization and measured browser performance', async ({
     });
   }
   await writeEvidence(info, 'library.json', measurements);
+});
+
+test('scrolling down gives the list the window, scrolling up brings the controls back', async ({
+  page,
+}, info) => {
+  test.skip(!['1080p', 'narrow'].includes(info.project.name), 'Behavior, not layout tiers.');
+  await page.goto('/library');
+  const list = scroll(page);
+  const header = page.getByTestId('library-header');
+  const search = page.getByLabel('搜索作品');
+  const topbar = page.locator('.topbar');
+  await expect(page.locator('[data-game-card]').first()).toBeVisible();
+  await expect(search).toBeVisible();
+  const before = await list.boundingBox();
+
+  await list.hover();
+  await page.mouse.wheel(0, 900);
+  await expect(header).toBeHidden();
+  await expect(topbar).toBeHidden();
+  await expect(search).toBeHidden();
+  const collapsed = await list.boundingBox();
+  // The list really gets the room, and the scroll position it was at is kept.
+  expect(collapsed!.height).toBeGreaterThan(before!.height + 200);
+  expect(await list.evaluate((node) => node.scrollTop)).toBeGreaterThan(500);
+  await noHorizontalScroll(page);
+  await screenshot(page, info, 'library-scrolled');
+
+  await page.waitForTimeout(350);
+  await page.mouse.wheel(0, -120);
+  await expect(header).toBeVisible();
+  await expect(topbar).toBeVisible();
+  expect(await list.evaluate((node) => node.scrollTop)).toBeGreaterThan(300);
+
+  // A small wobble does not flip it back and forth.
+  await page.waitForTimeout(350);
+  await page.mouse.wheel(0, 300);
+  await expect(header).toBeHidden();
+  await page.waitForTimeout(350);
+  await page.mouse.wheel(0, -10);
+  await page.waitForTimeout(100);
+  await expect(header).toBeHidden();
+
+  // Ctrl+K works from the hidden state and lands in the search field.
+  await page.keyboard.press('Control+k');
+  await expect(search).toBeFocused();
+  await expect(header).toBeVisible();
+
+  await page.waitForTimeout(350);
+  await list.hover();
+  await page.mouse.wheel(0, 600);
+  await expect(header).toBeHidden();
+  await page.getByTestId('scroll-to-top').click();
+  await expect.poll(() => list.evaluate((node) => node.scrollTop)).toBe(0);
+  await expect(header).toBeVisible();
+  await expect(page.getByTestId('scroll-to-top')).toHaveCount(0);
+});
+
+test('a short list keeps its controls in place', async ({ page }, info) => {
+  test.skip(info.project.name !== '1080p', 'Behavior, not layout tiers.');
+  await page.goto('/library?q=%E6%98%9F%E7%A9%B9');
+  await expect(page.locator('[data-game-card]').first()).toBeVisible();
+  const list = scroll(page);
+  await list.hover();
+  await page.mouse.wheel(0, 300);
+  await page.waitForTimeout(350);
+  await expect(page.getByTestId('library-header')).toBeVisible();
+});
+
+test('list columns show the facts and sort when clicked', async ({ page }, info) => {
+  await page.goto('/library?view=list');
+  await expect(page.getByRole('list', { name: '作品列表' })).toBeVisible();
+  await noHorizontalScroll(page);
+  if (['1080p', 'narrow', '4k'].includes(info.project.name))
+    await screenshot(page, info, 'library-list-columns');
+  if (info.project.name !== '1080p') return;
+
+  const heading = page.getByRole('group', { name: '按栏目排序' });
+  const firstMaker = () => page.locator('.list-maker').first().innerText();
+  const sortSelect = page.getByRole('combobox', { name: '排序' });
+  const maker = heading.getByRole('button', { name: /按制作方排序/ });
+
+  await maker.click();
+  await expect(sortSelect).toHaveValue('maker-asc');
+  await expect(page).toHaveURL(/sort=maker-asc/);
+  await expect(maker).toHaveAttribute('aria-pressed', 'true');
+  const ascending = await firstMaker();
+  await maker.click();
+  await expect(sortSelect).toHaveValue('maker-desc');
+  await expect.poll(firstMaker).not.toBe(ascending);
+
+  // Each date column starts with the newest, and a dated row outranks an unknown one.
+  const release = heading.getByRole('button', { name: /按发售日排序/ });
+  await release.click();
+  await expect(sortSelect).toHaveValue('release-desc');
+  const dates = await page.locator('.list-release').allTextContents();
+  expect(dates[0]).toMatch(/^\d{4}\/\d{2}\/\d{2}$/);
+  expect([...dates].sort().reverse()).toEqual(dates);
+
+  await heading.getByRole('button', { name: /按我的评价排序/ }).click();
+  await expect(sortSelect).toHaveValue('rating-desc');
+  await expect(page.locator('.list-rating').first()).toHaveAttribute('aria-label', '5 星');
+
+  // A refresh keeps the choice.
+  await page.reload();
+  await expect(page.getByRole('combobox', { name: '排序' })).toHaveValue('rating-desc');
+  await expect(
+    page.getByRole('group', { name: '按栏目排序' }).getByRole('button', { name: /按我的评价排序/ }),
+  ).toHaveAttribute('aria-pressed', 'true');
 });

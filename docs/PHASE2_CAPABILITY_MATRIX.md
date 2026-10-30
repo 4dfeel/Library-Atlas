@@ -110,3 +110,13 @@
 | 提交后的行为（成功跳转、错误提示、是否要求验证） | **待验证（M1）** | 向真实站点提交需用户本人操作 |
 | 登录后的会话 Cookie、大小、后端能否复用 | **待验证（M1）** | 同上 |
 | 跨重启、过期 | **待验证（M2）** | 同上 |
+
+## 检查点 3 运行层结果（2026-10-31，用户本人账号）
+| 问题 | 结果 |
+| --- | --- |
+| 已购列表与作品资料 | **运行层已验证**：`content/count`、`content/sales`、`content/works`（每批 100）可用，后端 httpx 复用保存的会话即可 |
+| 响应字段 | **运行层已验证**：age_category, app_type, author_name, content_count, content_length, content_size, dl_format, download_start_date, downloadable, encodable, file_type, genre_ids, inservice, is_playwork, maker, name, name_phonetic, os, purchase_type, regist_date, rental_activate_date, rental_expired_date, rental_id, rental_time, sales_date, series, site_id, tags, touch_content_count, touch_inservice, touch_site_id, translator, upgrade_date, viewer_type, work_files, work_type, workno。值的含义大多未核实 |
+| 覆盖差异 | **部分验证**：列表 526，资料 518，差 8 部，原因未确认 |
+| 简介 | **当前不支持**（此入口）：响应没有简介字段 |
+| 封面 | **运行层已验证**：`work_files.main` 匿名可取，无需会话 |
+| 原版文件下载 | **待验证**：只确认存在 downloadable、file_type、content_size、dl_format 字段，未请求任何文件 |

@@ -204,6 +204,29 @@ test.describe('sync', () => {
     await expect(panel(page)).toContainText('上次完整同步');
   });
 
+  test('the list view sorts on the server and keeps unknown sizes last', async ({ page }) => {
+    await control({ size: 30 });
+    await openPanel(page);
+    await syncNow(page);
+    await page.keyboard.press('Escape');
+    await page.goto(
+      `${service.origin}/library?view=list&platform=dlsite&q=${encodeURIComponent('合成作品')}`,
+    );
+    const heading = page.getByRole('group', { name: '按栏目排序' });
+    await expect(page.locator('.list-size').first()).toBeVisible();
+    await shot(page, 'library-list-columns');
+    await heading.getByRole('button', { name: /按大小排序/ }).click();
+    await expect(page).toHaveURL(/sort=size-desc/);
+    await expect(page.locator('.list-size').first()).toHaveText('286 MB');
+    await heading.getByRole('button', { name: /按大小排序/ }).click();
+    await expect(page).toHaveURL(/sort=size-asc/);
+    await expect(page.locator('.list-size').first()).not.toHaveText('—');
+    const scroller = page.getByTestId('library-scroll');
+    await scroller.evaluate((node) => node.scrollTo({ top: node.scrollHeight }));
+    await expect(page.locator('.list-size').last()).toHaveText('—');
+    await expect(page.locator('body')).not.toContainText('NaN');
+  });
+
   test('the demo space never reaches sync', async ({ page }) => {
     const calls: string[] = [];
     page.on('request', (request) => {

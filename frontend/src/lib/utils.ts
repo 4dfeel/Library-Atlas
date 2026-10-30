@@ -22,6 +22,16 @@ export function formatDate(iso: string | null): string | null {
   return Number.isNaN(date.getTime()) ? null : dateFormat.format(date);
 }
 
+const pad = (value: number) => String(value).padStart(2, '0');
+
+/** Fixed-width date for table columns: 2026/10/31. */
+export function formatCompactDate(iso: string | null): string | null {
+  if (!iso) return null;
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return null;
+  return `${date.getFullYear()}/${pad(date.getMonth() + 1)}/${pad(date.getDate())}`;
+}
+
 export const statusLabels = {
   unplayed: '未开始',
   playing: '进行中',

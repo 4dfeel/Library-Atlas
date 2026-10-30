@@ -1,6 +1,6 @@
 # Library Atlas 本地 API 契约
 
-状态：Phase 2 检查点 1、2 已实现。这是 Atlas 自有接口，不是 Steam 或 DLsite 的接口。实现见 `backend/app/api/`，端到端验证见 `frontend/tests/e2e/real-mode.spec.ts`。
+状态：Phase 2 检查点 1–3 已实现。这是 Atlas 自有接口，不是 Steam 或 DLsite 的接口。实现见 `backend/app/api/`，端到端验证见 `frontend/tests/e2e/real-mode.spec.ts`。
 
 ## 约定
 - 基址 `http://127.0.0.1:<port>/api/v1`，默认端口 8765，只绑定回环地址。开发期由 Vite 代理 `/api`，浏览器只看到一个来源。
@@ -52,7 +52,7 @@
 | `status` | `all` `unplayed` `playing` `completed` `paused` | `all` | 个人状态 |
 | `installed` | `all` `installed` `not-installed` | `all` | **本机状态未知的作品两边都不算** |
 | `favoritesOnly` | 布尔 | `false` | |
-| `sort` | `curated` `name-asc` `name-desc` `playtime-desc` `playtime-asc` | `curated` | 见下 |
+| `sort` | `curated` `name-asc` `name-desc` `playtime-desc` `playtime-asc`，以及 `added` `maker` `genre` `rating` `release` `size` 各带 `-asc`/`-desc` | `curated` | 见下；未知值始终排在最后 |
 | `offset` / `limit` | ≥0 / 1–100 | 0 / 100 | 窗口分页 |
 
 所有条件取交集。排序始终以作品 ID 收尾，翻页不跳不重：
@@ -70,7 +70,7 @@
 | `genres` | 随 `kind` 变化的可选类型 |
 
 ### 作品对象
-`id`、`platform`、`sourceId`（身份为 `platform + sourceId`，同编号跨平台是两部作品）、`kind`、`maker?`、`releaseDate?`、`title`、`subtitle?`、`genre?`、`status`、`installed?`（Steam 为已安装，DLsite 为已下载）、`playtimeMinutes?`、`favorite`、`visibility`（普通接口恒为 `normal`）、`cover {kind:"procedural"|"missing",index}`、`background`（本检查点恒为 null）、`addedAt`、`lastPlayedAt?`、`capabilities {download?,extract?,officialViewerOnly?}`、`file {version?,sizeBytes?}?`（第一个文件）。带 `?` 的字段可为 `null`。
+`id`、`platform`、`sourceId`（身份为 `platform + sourceId`，同编号跨平台是两部作品）、`kind`、`maker?`、`releaseDate?`、`title`、`subtitle?`、`genre?`、`status`、`installed?`（Steam 为已安装，DLsite 为已下载）、`playtimeMinutes?`、`favorite`、`visibility`（普通接口恒为 `normal`）、`cover {kind:"procedural"|"remote"|"missing",index,url?}`、`background`（本检查点恒为 null）、`addedAt`、`lastPlayedAt?`、`capabilities {download?,extract?,officialViewerOnly?}`、`file {version?,sizeBytes?}?`（第一个文件）、`sourceUrl?`（平台页面）。带 `?` 的字段可为 `null`。
 
 ### 详情 `GET /works/{id}`
 作品对象加：`description?`、`tags[]`、`categories[]`（本检查点恒为空）、`achievements {unlocked,total}?`、`rating?`、`note`、`version`、`files[]`。
@@ -135,6 +135,16 @@
 | `remember_failed` | 已登录，但没能保存账号密码 |
 
 错误响应：409 `login_in_progress`（已有登录在进行）、409 `account_mismatch`（账号与之前不同，带 `confirmSwitch: true` 重试）、503 `credential_store_unavailable`。
+
+### 作品同步
+| 接口 | 说明 |
+| --- | --- |
+| `GET /sources/dlsite/sync` | `{lastSyncedAt,job}`。`lastSyncedAt` 只由完整同步更新 |
+| `POST /sources/dlsite/sync` | 开始同步；已有任务时返回那个任务。未连接 409 `not_connected` |
+| `POST /sources/dlsite/sync/cancel` | 请求取消，在批次边界生效 |
+| `GET /works/{id}/cover` | 封面图片，普通可见性之后才返回；无封面或取不到时 404 |
+
+`job`：`id,state,total?,processed,added,updated,skipped,missing,code?,message?,startedAt,finishedAt?`。`total` 在拿到作品列表前为 `null`。`state`：`preparing` `reading` `saving` `succeeded` `partial` `failed` `cancelled` `reauth_required` `interrupted`。`code`：`session_expired` `session_changed` `platform_unavailable` `response_changed` `some_unreadable` `interrupted` `cancelled`。
 
 ### 文件夹设置
 | 接口 | 说明 |

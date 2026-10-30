@@ -2,6 +2,7 @@ export {
   defaultLibraryFilters,
   GameUnavailableError,
   GameUpdateError,
+  librarySorts,
   noteMaxLength,
   ratingScale,
   workKinds,

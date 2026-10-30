@@ -1,5 +1,6 @@
 import {
   defaultLibraryFilters,
+  librarySorts,
   workKinds,
   type LibraryFilters,
   type LibrarySort,
@@ -19,13 +20,7 @@ const statuses = new Set(['all', 'unplayed', 'playing', 'completed', 'paused']);
 const installed = new Set(['all', 'installed', 'not-installed']);
 const kinds = new Set(['all', 'non-game', ...workKinds]);
 const platforms = new Set(['all', 'steam', 'dlsite']);
-const sorts = new Set<LibrarySort>([
-  'curated',
-  'name-asc',
-  'name-desc',
-  'playtime-desc',
-  'playtime-asc',
-]);
+const sorts = new Set<LibrarySort>(librarySorts);
 
 export function parseLibraryUrl(search: string): LibraryUrlState {
   const params = new URLSearchParams(search);

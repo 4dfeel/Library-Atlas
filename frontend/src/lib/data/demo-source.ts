@@ -88,7 +88,11 @@ export class DemoLibrarySource implements LibrarySource {
   private readonly writeDelayMs: number;
 
   constructor(size: DemoSize, options: DemoSourceOptions = {}) {
-    this.games = generateDemoGames(size);
+    // The list view shows and sorts by rating, so it is on the record, not just the detail.
+    this.games = generateDemoGames(size).map((game, index) => ({
+      ...game,
+      rating: describeDemoGame(game, index).rating,
+    }));
     this.byId = new Map(this.games.map((game, index) => [game.id, { game, index }]));
     this.store = options.store ?? createDefaultEditStore();
     this.failWrites = options.failWrites ?? false;
@@ -107,6 +111,7 @@ export class DemoLibrarySource implements LibrarySource {
     if (!edits) return game;
     return {
       ...game,
+      rating: edits && 'rating' in edits ? (edits.rating ?? null) : game.rating,
       status: edits.status ?? game.status,
       favorite: edits.favorite ?? game.favorite,
       installed: game.installed || edits.downloaded === true,

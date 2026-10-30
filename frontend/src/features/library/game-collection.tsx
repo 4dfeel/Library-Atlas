@@ -1,13 +1,63 @@
 import { useVirtualizer, defaultRangeExtractor } from '@tanstack/react-virtual';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Download, Star } from 'lucide-react';
-import type { Game } from '@/lib/data';
-import { availabilityLabel, statusLabels, workMeta } from '@/lib/utils';
+import { ArrowDown, ArrowUp, Download, Star } from 'lucide-react';
+import type { Game, LibrarySort } from '@/lib/data';
+import {
+  availabilityLabel,
+  formatBytes,
+  formatCompactDate,
+  statusLabels,
+  workMeta,
+} from '@/lib/utils';
 import { GameCard, GameCover } from '@/components/game-card';
 import { getGridLayout, useMeasuredWidth } from '@/lib/layout';
 import { AppLink } from '@/components/app-link';
 
 export type ViewMode = 'grid' | 'list';
+
+/** Column heading that sorts. The first click uses the direction people expect there. */
+function SortHeading({
+  label,
+  field,
+  first,
+  sort,
+  onSort,
+  className,
+}: {
+  label: string;
+  field: string;
+  first: 'asc' | 'desc';
+  sort: LibrarySort;
+  onSort: (sort: LibrarySort) => void;
+  className?: string;
+}) {
+  const [current, direction] = sort.split('-');
+  const active = current === field;
+  const next = active ? (direction === 'asc' ? 'desc' : 'asc') : first;
+  const shown = direction === 'asc' ? '从小到大' : '从大到小';
+  return (
+    <button
+      className={`list-sort${active ? ' is-active' : ''}${className ? ` ${className}` : ''}`}
+      data-sort-field={field}
+      aria-label={`按${label}排序${active ? `，当前${shown}` : ''}`}
+      aria-pressed={active}
+      onClick={() => onSort(`${field}-${next}` as LibrarySort)}
+    >
+      {label}
+      {active && (direction === 'asc' ? <ArrowUp size={11} /> : <ArrowDown size={11} />)}
+    </button>
+  );
+}
+
+function Stars({ rating }: { rating: number | null | undefined }) {
+  if (!rating) return <span className="list-rating is-empty">—</span>;
+  return (
+    <span className="list-rating" role="img" aria-label={`${rating} 星`}>
+      {'★'.repeat(rating)}
+      <i>{'★'.repeat(5 - rating)}</i>
+    </span>
+  );
+}
 
 function rowItems(
   start: number,
@@ -31,6 +81,9 @@ export function GameCollection({
   count,
   gameAt,
   onVisibleRange,
+  onScrollChange,
+  sort,
+  onSort,
   view,
   onFavorite,
   filterKey,
@@ -43,6 +96,9 @@ export function GameCollection({
   gameAt: (index: number) => Game | undefined;
   /** Reports the item range on screen, so real mode can read just those pages. */
   onVisibleRange?: (start: number, end: number) => void;
+  onScrollChange?: (element: HTMLElement) => void;
+  sort: LibrarySort;
+  onSort: (sort: LibrarySort) => void;
   view: ViewMode;
   onFavorite: (id: string) => void;
   filterKey: string;
@@ -150,13 +206,60 @@ export function GameCollection({
       data-library-scroll
       data-columns={columns}
       tabIndex={-1}
+      onScroll={(event) => onScrollChange?.(event.currentTarget)}
     >
       {view === 'list' && (
-        <div className="list-heading" aria-hidden="true">
-          <span>作品名称</span>
-          <span>类型</span>
-          <span>进度状态</span>
-          <span>游玩 / 来源</span>
+        <div className="list-heading" role="group" aria-label="按栏目排序">
+          <SortHeading
+            label="购买日期"
+            field="added"
+            first="desc"
+            sort={sort}
+            onSort={onSort}
+            className="col-added"
+          />
+          <SortHeading label="作品名称" field="name" first="asc" sort={sort} onSort={onSort} />
+          <SortHeading
+            label="制作方"
+            field="maker"
+            first="asc"
+            sort={sort}
+            onSort={onSort}
+            className="col-maker"
+          />
+          <SortHeading
+            label="作品形式"
+            field="genre"
+            first="asc"
+            sort={sort}
+            onSort={onSort}
+            className="col-genre"
+          />
+          <span className="col-status">进度</span>
+          <SortHeading
+            label="我的评价"
+            field="rating"
+            first="desc"
+            sort={sort}
+            onSort={onSort}
+            className="col-rating"
+          />
+          <SortHeading
+            label="发售日"
+            field="release"
+            first="desc"
+            sort={sort}
+            onSort={onSort}
+            className="col-release"
+          />
+          <SortHeading
+            label="大小"
+            field="size"
+            first="desc"
+            sort={sort}
+            onSort={onSort}
+            className="col-size"
+          />
           <span>收藏</span>
         </div>
       )}
@@ -229,6 +332,9 @@ export function GameCollection({
                         data-game-card
                         data-game-id={game.id}
                       >
+                        <span className="list-date list-added">
+                          {formatCompactDate(game.addedAt) ?? '—'}
+                        </span>
                         <div className="list-game-title">
                           <GameCover game={game} compact />
                           <div>
@@ -244,18 +350,33 @@ export function GameCollection({
                                 {game.title}
                               </AppLink>
                             </h3>
-                            <span className="list-install">
-                              {game.installed && <Download size={12} />}
-                              {availabilityLabel(game)}
+                            <span className="list-subline">
+                              <span className="list-install">
+                                {game.installed && <Download size={12} />}
+                                {availabilityLabel(game)}
+                              </span>
+                              <span className="list-playtime">{workMeta(game)}</span>
                             </span>
                           </div>
                         </div>
+                        <span className="list-maker" title={game.maker}>
+                          {game.maker}
+                        </span>
                         <span className="list-genre">{game.genre}</span>
                         <span className={`list-status status-${game.status}`}>
                           <i />
                           {statusLabels[game.status]}
                         </span>
-                        <span className="list-playtime">{workMeta(game)}</span>
+                        <Stars rating={game.rating} />
+                        <span className="list-date list-release">
+                          {formatCompactDate(game.releaseDate) ?? '—'}
+                        </span>
+                        <span
+                          className="list-date list-size"
+                          title={game.file?.sizeBytes ? undefined : '平台没有提供大小'}
+                        >
+                          {game.file?.sizeBytes ? formatBytes(game.file.sizeBytes) : '—'}
+                        </span>
                         <button
                           data-focus-key="favorite"
                           className={`list-favorite${game.favorite ? ' is-favorite' : ''}`}

@@ -1,7 +1,9 @@
 import { motion, useReducedMotion } from 'motion/react';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import {
   ArrowDownWideNarrow,
+  ArrowUp,
   ChevronDown,
   Clapperboard,
   Gamepad2,
@@ -55,6 +57,60 @@ function scenarioFromUrl(): DemoScenario {
   return value === 'empty' || value === 'error' || value === 'loading' ? value : 'normal';
 }
 
+const DOWN_TO_COLLAPSE = 24;
+const UP_TO_REVEAL = 40;
+/** Long enough for the layout to settle: resizing the list can itself move its scroll. */
+const SETTLE_MS = 280;
+
+/**
+ * Scrolling down gives the list the whole window; scrolling up brings the controls back.
+ * Direction has to be held for a moment, so a small wobble does not make the page jump.
+ */
+function useCollapsingHeader() {
+  const [collapsed, setCollapsed] = useState(false);
+  const state = useRef({ top: 0, travel: 0, settleUntil: 0 });
+  const scroller = useRef<HTMLElement | null>(null);
+  const change = useCallback((next: boolean) => {
+    state.current.settleUntil = performance.now() + SETTLE_MS;
+    state.current.travel = 0;
+    setCollapsed(next);
+  }, []);
+  const onScrollChange = useCallback((element: HTMLElement) => {
+    scroller.current = element;
+    const current = state.current;
+    const top = element.scrollTop;
+    const delta = top - current.top;
+    current.top = top;
+    if (top <= 8) {
+      current.travel = 0;
+      setCollapsed(false);
+      return;
+    }
+    if (performance.now() < current.settleUntil) return;
+    // A list that nearly fits would collapse, stop fitting and spring back.
+    if (element.scrollHeight - element.clientHeight < 600) return;
+    current.travel =
+      Math.sign(delta) === Math.sign(current.travel) ? current.travel + delta : delta;
+    setCollapsed((was) => {
+      if (!was && current.travel >= DOWN_TO_COLLAPSE) {
+        current.settleUntil = performance.now() + SETTLE_MS;
+        current.travel = 0;
+        return true;
+      }
+      if (was && current.travel <= -UP_TO_REVEAL) {
+        current.settleUntil = performance.now() + SETTLE_MS;
+        current.travel = 0;
+        return false;
+      }
+      return was;
+    });
+  }, []);
+  const reveal = useCallback(() => {
+    flushSync(() => change(false));
+  }, [change]);
+  return { collapsed, onScrollChange, reveal, scroller };
+}
+
 export function LibraryPage({
   size,
   onAbout,
@@ -81,6 +137,8 @@ export function LibraryPage({
   const [retryScenario, setRetryScenario] = useState<DemoScenario>(scenarioFromUrl);
   const searchRef = useRef<HTMLInputElement>(null);
   const reduceMotion = useReducedMotion();
+  const header = useCollapsingHeader();
+  const { reveal } = header;
   const { isDemo, isTestLibrary } = useWorkspace();
   const collection = useLibraryCollection(filters, { size, scenario: retryScenario });
   const favorite = useToggleFavorite(size);
@@ -105,13 +163,14 @@ export function LibraryPage({
     const handleSearch = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
         event.preventDefault();
+        reveal(); // A hidden field cannot take focus.
         searchRef.current?.focus();
         searchRef.current?.select();
       }
     };
     window.addEventListener('keydown', handleSearch);
     return () => window.removeEventListener('keydown', handleSearch);
-  }, []);
+  }, [reveal]);
   useEffect(() => {
     document.title = '作品库 · Library Atlas';
     if (restore.focusSearch) {
@@ -150,219 +209,239 @@ export function LibraryPage({
     filters.favoritesOnly;
 
   return (
-    <main className="library-page">
-      <motion.section
-        className="library-intro"
-        initial={reduceMotion ? false : { opacity: 0, y: 6 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.2 }}
-        aria-labelledby="library-title"
-      >
-        <div className="intro-copy">
-          <span className="eyebrow">THE COLLECTION</span>
-          <div className="title-line">
-            <h1 id="library-title">我的作品库</h1>
-            <span className="title-count">{(data?.totalVisible ?? 0).toLocaleString('zh-CN')}</span>
-          </div>
-          <p>每一段冒险，都有它的位置。</p>
-          <div className="intro-footnote">
-            <span className="intro-line" />
-            <span>发现熟悉收藏中的，下一份心动。</span>
-          </div>
-        </div>
-        <div className="intro-art" aria-hidden="true">
-          <img src="/demo/covers/cover-01.svg" alt="" />
-          <div className="intro-art-shade" />
-          <div className="intro-art-caption">
-            <span>CURATED WORLDS</span>
-            <p>有些世界，值得再次出发。</p>
-            <span className="art-line" />
-          </div>
-          <span className="art-serial">ATLAS / 001</span>
-        </div>
-      </motion.section>
-
-      <section className="library-controls" aria-label="作品库工具栏">
-        <div className="collection-tabs" role="group" aria-label="作品类型">
-          {tabKinds.map((kind) => {
-            const Icon = kindIcons[kind];
-            const count =
-              kind === 'all'
-                ? data?.totalVisible
-                : kind === 'non-game'
-                  ? data && data.totalVisible - data.kindCounts.game
-                  : data?.kindCounts[kind];
-            return (
-              <button
-                key={kind}
-                aria-pressed={filters.kind === kind}
-                className={filters.kind === kind ? 'selected' : ''}
-                onClick={() => setFilters((current) => ({ ...current, kind, genre: 'all' }))}
-              >
-                <Icon size={16} />
-                {kind === 'all' ? '全部' : kind === 'non-game' ? '非游戏' : kindLabels[kind]}
-                <span>{(count ?? 0).toLocaleString('zh-CN')}</span>
-              </button>
-            );
-          })}
-          <span className="tabs-spacer" />
-          {(isDemo || isTestLibrary) && (
-            <span className="demo-data-note">
-              {isDemo ? '合成数据 · 非真实游玩记录' : '测试数据 · 合成样本，不是同步结果'}
-            </span>
-          )}
-        </div>
-        <div className="filter-toolbar">
-          <div className="search-field">
-            <Search size={17} />
-            <Input
-              ref={searchRef}
-              aria-label="搜索作品"
-              placeholder="搜索你的下一段冒险…"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-            />
-            {search ? (
-              <button aria-label="清除搜索" onClick={() => setSearch('')}>
-                <X size={15} />
-              </button>
-            ) : (
-              <kbd>Ctrl K</kbd>
-            )}
-          </div>
-          <div className="filter-select">
-            <label htmlFor="genre">
-              <SlidersHorizontal size={15} />
-            </label>
-            <select
-              id="genre"
-              aria-label="类型"
-              value={filters.genre}
-              onChange={(event) => update('genre', event.target.value)}
-            >
-              <option value="all">所有类型</option>
-              {data?.genres.map((genre) => (
-                <option key={genre} value={genre}>
-                  {genre}
-                </option>
-              ))}
-              {/* Keep a restored URL value selectable while results are loading. */}
-              {filters.genre !== 'all' && !data?.genres.includes(filters.genre) && (
-                <option value={filters.genre}>{filters.genre}</option>
-              )}
-            </select>
-            <ChevronDown size={13} />
-          </div>
-          <div className="filter-select">
-            <select
-              aria-label="游玩状态"
-              value={filters.status}
-              onChange={(event) => update('status', event.target.value as LibraryFilters['status'])}
-            >
-              <option value="all">所有状态</option>
-              <option value="unplayed">未开始</option>
-              <option value="playing">在玩</option>
-              <option value="completed">已完成</option>
-              <option value="paused">搁置</option>
-            </select>
-            <ChevronDown size={13} />
-          </div>
-          <div className="filter-select install-filter">
-            <select
-              aria-label="本机状态"
-              value={filters.installed}
-              onChange={(event) =>
-                update('installed', event.target.value as LibraryFilters['installed'])
-              }
-            >
-              <option value="all">全部本机状态</option>
-              <option value="installed">已安装 / 已下载</option>
-              <option value="not-installed">未在本机</option>
-            </select>
-            <ChevronDown size={13} />
-          </div>
-          <div className="filter-select">
-            <select
-              aria-label="平台"
-              value={filters.platform}
-              onChange={(event) =>
-                update('platform', event.target.value as LibraryFilters['platform'])
-              }
-            >
-              <option value="all">全部平台</option>
-              <option value="steam">Steam</option>
-              <option value="dlsite">DLsite</option>
-            </select>
-            <ChevronDown size={13} />
-          </div>
-          <button
-            className={`favorite-filter${filters.favoritesOnly ? ' selected' : ''}`}
-            aria-pressed={filters.favoritesOnly}
-            onClick={() => update('favoritesOnly', !filters.favoritesOnly)}
+    <main className="library-page" data-collapsed={header.collapsed}>
+      <div className="library-header" data-testid="library-header">
+        <div className="library-header-inner">
+          <motion.section
+            className="library-intro"
+            initial={reduceMotion ? false : { opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.2 }}
+            aria-labelledby="library-title"
           >
-            <Star size={15} fill={filters.favoritesOnly ? 'currentColor' : 'none'} />
-            仅收藏<span>{(data?.favoriteCount ?? 0).toLocaleString('zh-CN')}</span>
-          </button>
-          <span className="toolbar-spacer" />
-          <div className="filter-select sort-select">
-            <ArrowDownWideNarrow size={16} />
-            <select
-              aria-label="排序"
-              value={filters.sort}
-              onChange={(event) => update('sort', event.target.value as LibraryFilters['sort'])}
-            >
-              <option value="curated">收藏顺序</option>
-              <option value="name-asc">名称 A → Z</option>
-              <option value="name-desc">名称 Z → A</option>
-              <option value="playtime-desc">游玩时长 ↓</option>
-              <option value="playtime-asc">游玩时长 ↑</option>
-            </select>
-            <ChevronDown size={13} />
-          </div>
-          <div className="view-toggle" aria-label="视图切换">
-            <button
-              aria-label="网格视图"
-              aria-pressed={view === 'grid'}
-              className={view === 'grid' ? 'selected' : ''}
-              onClick={() => setView('grid')}
-            >
-              <Layers3 size={17} />
-            </button>
-            <button
-              aria-label="列表视图"
-              aria-pressed={view === 'list'}
-              className={view === 'list' ? 'selected' : ''}
-              onClick={() => setView('list')}
-            >
-              <List size={18} />
-            </button>
-          </div>
-        </div>
-        <div
-          className="results-summary"
-          data-testid="library-results"
-          data-count={data?.filteredCount ?? 0}
-        >
-          <p aria-live="polite">
-            <span>{(data?.filteredCount ?? 0).toLocaleString('zh-CN')}</span> 部作品
-            {hasFilters && (
-              <button onClick={reset}>
-                清除筛选
-                <X size={12} />
+            <div className="intro-copy">
+              <span className="eyebrow">THE COLLECTION</span>
+              <div className="title-line">
+                <h1 id="library-title">我的作品库</h1>
+                <span className="title-count">
+                  {(data?.totalVisible ?? 0).toLocaleString('zh-CN')}
+                </span>
+              </div>
+              <p>每一段冒险，都有它的位置。</p>
+              <div className="intro-footnote">
+                <span className="intro-line" />
+                <span>发现熟悉收藏中的，下一份心动。</span>
+              </div>
+            </div>
+            <div className="intro-art" aria-hidden="true">
+              <img src="/demo/covers/cover-01.svg" alt="" />
+              <div className="intro-art-shade" />
+              <div className="intro-art-caption">
+                <span>CURATED WORLDS</span>
+                <p>有些世界，值得再次出发。</p>
+                <span className="art-line" />
+              </div>
+              <span className="art-serial">ATLAS / 001</span>
+            </div>
+          </motion.section>
+
+          <section className="library-controls" aria-label="作品库工具栏">
+            <div className="collection-tabs" role="group" aria-label="作品类型">
+              {tabKinds.map((kind) => {
+                const Icon = kindIcons[kind];
+                const count =
+                  kind === 'all'
+                    ? data?.totalVisible
+                    : kind === 'non-game'
+                      ? data && data.totalVisible - data.kindCounts.game
+                      : data?.kindCounts[kind];
+                return (
+                  <button
+                    key={kind}
+                    aria-pressed={filters.kind === kind}
+                    className={filters.kind === kind ? 'selected' : ''}
+                    onClick={() => setFilters((current) => ({ ...current, kind, genre: 'all' }))}
+                  >
+                    <Icon size={16} />
+                    {kind === 'all' ? '全部' : kind === 'non-game' ? '非游戏' : kindLabels[kind]}
+                    <span>{(count ?? 0).toLocaleString('zh-CN')}</span>
+                  </button>
+                );
+              })}
+              <span className="tabs-spacer" />
+              {(isDemo || isTestLibrary) && (
+                <span className="demo-data-note">
+                  {isDemo ? '合成数据 · 非真实游玩记录' : '测试数据 · 合成样本，不是同步结果'}
+                </span>
+              )}
+            </div>
+            <div className="filter-toolbar">
+              <div className="search-field">
+                <Search size={17} />
+                <Input
+                  ref={searchRef}
+                  aria-label="搜索作品"
+                  placeholder="搜索你的下一段冒险…"
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                />
+                {search ? (
+                  <button aria-label="清除搜索" onClick={() => setSearch('')}>
+                    <X size={15} />
+                  </button>
+                ) : (
+                  <kbd>Ctrl K</kbd>
+                )}
+              </div>
+              <div className="filter-select">
+                <label htmlFor="genre">
+                  <SlidersHorizontal size={15} />
+                </label>
+                <select
+                  id="genre"
+                  aria-label="类型"
+                  value={filters.genre}
+                  onChange={(event) => update('genre', event.target.value)}
+                >
+                  <option value="all">所有类型</option>
+                  {data?.genres.map((genre) => (
+                    <option key={genre} value={genre}>
+                      {genre}
+                    </option>
+                  ))}
+                  {/* Keep a restored URL value selectable while results are loading. */}
+                  {filters.genre !== 'all' && !data?.genres.includes(filters.genre) && (
+                    <option value={filters.genre}>{filters.genre}</option>
+                  )}
+                </select>
+                <ChevronDown size={13} />
+              </div>
+              <div className="filter-select">
+                <select
+                  aria-label="游玩状态"
+                  value={filters.status}
+                  onChange={(event) =>
+                    update('status', event.target.value as LibraryFilters['status'])
+                  }
+                >
+                  <option value="all">所有状态</option>
+                  <option value="unplayed">未开始</option>
+                  <option value="playing">在玩</option>
+                  <option value="completed">已完成</option>
+                  <option value="paused">搁置</option>
+                </select>
+                <ChevronDown size={13} />
+              </div>
+              <div className="filter-select install-filter">
+                <select
+                  aria-label="本机状态"
+                  value={filters.installed}
+                  onChange={(event) =>
+                    update('installed', event.target.value as LibraryFilters['installed'])
+                  }
+                >
+                  <option value="all">全部本机状态</option>
+                  <option value="installed">已安装 / 已下载</option>
+                  <option value="not-installed">未在本机</option>
+                </select>
+                <ChevronDown size={13} />
+              </div>
+              <div className="filter-select">
+                <select
+                  aria-label="平台"
+                  value={filters.platform}
+                  onChange={(event) =>
+                    update('platform', event.target.value as LibraryFilters['platform'])
+                  }
+                >
+                  <option value="all">全部平台</option>
+                  <option value="steam">Steam</option>
+                  <option value="dlsite">DLsite</option>
+                </select>
+                <ChevronDown size={13} />
+              </div>
+              <button
+                className={`favorite-filter${filters.favoritesOnly ? ' selected' : ''}`}
+                aria-pressed={filters.favoritesOnly}
+                onClick={() => update('favoritesOnly', !filters.favoritesOnly)}
+              >
+                <Star size={15} fill={filters.favoritesOnly ? 'currentColor' : 'none'} />
+                仅收藏<span>{(data?.favoriteCount ?? 0).toLocaleString('zh-CN')}</span>
               </button>
-            )}
-            {collection.isFetching && !collection.isPending && (
-              <span className="updating-label">正在更新…</span>
-            )}
-            {collection.isStale && (
-              <button data-testid="library-stale" onClick={collection.refetch}>
-                部分内容未能更新，点此重试
-              </button>
-            )}
-          </p>
-          <span>点击作品查看详情</span>
+              <span className="toolbar-spacer" />
+              <div className="filter-select sort-select">
+                <ArrowDownWideNarrow size={16} />
+                <select
+                  aria-label="排序"
+                  value={filters.sort}
+                  onChange={(event) => update('sort', event.target.value as LibraryFilters['sort'])}
+                >
+                  <option value="curated">收藏顺序</option>
+                  <option value="name-asc">名称 A → Z</option>
+                  <option value="name-desc">名称 Z → A</option>
+                  <option value="playtime-desc">游玩时长 ↓</option>
+                  <option value="playtime-asc">游玩时长 ↑</option>
+                  <option value="added-desc">购买日期 新 → 旧</option>
+                  <option value="added-asc">购买日期 旧 → 新</option>
+                  <option value="release-desc">发售日 新 → 旧</option>
+                  <option value="release-asc">发售日 旧 → 新</option>
+                  <option value="maker-asc">制作方 A → Z</option>
+                  <option value="maker-desc">制作方 Z → A</option>
+                  <option value="genre-asc">类型 A → Z</option>
+                  <option value="genre-desc">类型 Z → A</option>
+                  <option value="rating-desc">我的评价 高 → 低</option>
+                  <option value="rating-asc">我的评价 低 → 高</option>
+                  <option value="size-desc">大小 大 → 小</option>
+                  <option value="size-asc">大小 小 → 大</option>
+                </select>
+                <ChevronDown size={13} />
+              </div>
+              <div className="view-toggle" aria-label="视图切换">
+                <button
+                  aria-label="网格视图"
+                  aria-pressed={view === 'grid'}
+                  className={view === 'grid' ? 'selected' : ''}
+                  onClick={() => setView('grid')}
+                >
+                  <Layers3 size={17} />
+                </button>
+                <button
+                  aria-label="列表视图"
+                  aria-pressed={view === 'list'}
+                  className={view === 'list' ? 'selected' : ''}
+                  onClick={() => setView('list')}
+                >
+                  <List size={18} />
+                </button>
+              </div>
+            </div>
+            <div
+              className="results-summary"
+              data-testid="library-results"
+              data-count={data?.filteredCount ?? 0}
+            >
+              <p aria-live="polite">
+                <span>{(data?.filteredCount ?? 0).toLocaleString('zh-CN')}</span> 部作品
+                {hasFilters && (
+                  <button onClick={reset}>
+                    清除筛选
+                    <X size={12} />
+                  </button>
+                )}
+                {collection.isFetching && !collection.isPending && (
+                  <span className="updating-label">正在更新…</span>
+                )}
+                {collection.isStale && (
+                  <button data-testid="library-stale" onClick={collection.refetch}>
+                    部分内容未能更新，点此重试
+                  </button>
+                )}
+              </p>
+              <span>点击作品查看详情</span>
+            </div>
+          </section>
         </div>
-      </section>
+      </div>
 
       {collection.isPending ? (
         <LoadingState
@@ -389,6 +468,9 @@ export function LibraryPage({
           count={collection.count}
           gameAt={collection.gameAt}
           onVisibleRange={collection.onVisibleRange}
+          onScrollChange={header.onScrollChange}
+          sort={filters.sort}
+          onSort={(sort) => update('sort', sort)}
           view={view}
           onFavorite={toggleFavorite}
           filterKey={JSON.stringify(filters) + size}
@@ -415,6 +497,21 @@ export function LibraryPage({
         />
       )}
 
+      {header.collapsed && (
+        <button
+          className="scroll-to-top"
+          data-testid="scroll-to-top"
+          onClick={() =>
+            header.scroller.current?.scrollTo({
+              top: 0,
+              behavior: reduceMotion ? 'auto' : 'smooth',
+            })
+          }
+        >
+          <ArrowUp size={14} />
+          回到顶部
+        </button>
+      )}
       <footer className="library-footer">
         <span>
           <Monitor size={12} />

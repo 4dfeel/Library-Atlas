@@ -16,7 +16,25 @@ from pydantic.alias_generators import to_camel
 Platform = Literal["steam", "dlsite"]
 WorkKind = Literal["game", "image", "video", "audio", "other"]
 Status = Literal["unplayed", "playing", "completed", "paused"]
-Sort = Literal["curated", "name-asc", "name-desc", "playtime-desc", "playtime-asc"]
+Sort = Literal[
+    "curated",
+    "name-asc",
+    "name-desc",
+    "playtime-desc",
+    "playtime-asc",
+    "added-desc",
+    "added-asc",
+    "maker-asc",
+    "maker-desc",
+    "genre-asc",
+    "genre-desc",
+    "rating-desc",
+    "rating-asc",
+    "release-desc",
+    "release-asc",
+    "size-desc",
+    "size-asc",
+]
 NOTE_MAX_LENGTH = 1000
 
 
@@ -117,6 +135,7 @@ class WorkOut(ApiModel):
     capabilities: Capabilities
     file: FileRef | None
     source_url: str | None = None
+    rating: int | None = None
 
 
 class Achievements(ApiModel):
@@ -129,7 +148,6 @@ class WorkDetailOut(WorkOut):
     tags: list[str]
     categories: list[str]
     achievements: Achievements | None
-    rating: int | None
     note: str
     version: int
     files: list[WorkFileOut]

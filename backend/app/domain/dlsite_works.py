@@ -1,10 +1,12 @@
 """DLsite library records → Atlas metadata. Pure, so every mapping rule is tested directly.
 
-Field names come from third-party code (dlsite-async) and are not a published contract.
+Field names first came from third-party code (dlsite-async); a real sync on 2026-10-31
+confirmed the ones used here. They are still not a published contract.
 Anything unexpected becomes "unknown" rather than a guess; a record without its identity
 or a title is rejected so that a changed response cannot fill the database with blanks.
 """
 
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
@@ -43,6 +45,7 @@ WORK_TYPES: Mapping[str, tuple[str, str]] = {
 }
 _TITLE_LOCALES = ("zh_CN", "zh_TW", "ja_JP", "en_US", "ko_KR")
 _IMAGE_SUFFIXES = (".dlsite.jp", ".dlsite.com")
+_SITE_ID = re.compile(r"[a-z0-9_-]{1,32}")
 
 
 @dataclass(frozen=True)
@@ -96,12 +99,22 @@ def _tags(value: Any) -> tuple[str, ...]:
     return tuple(dict.fromkeys(names))
 
 
+def _size(value: Any) -> int | None:
+    """Bytes, when it is a real positive number. Anything else is not reported."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, str) and value.strip().isdigit():
+        value = int(value)
+    return value if isinstance(value, int) and value > 0 else None
+
+
 def _text(value: Any) -> str | None:
     return value.strip() if isinstance(value, str) and value.strip() else None
 
 
-def source_url(source_work_id: str) -> str:
-    return f"https://www.dlsite.com/home/work/=/product_id/{source_work_id}.html"
+def source_url(source_work_id: str, site_id: Any = None) -> str:
+    site = site_id if isinstance(site_id, str) and _SITE_ID.fullmatch(site_id) else "home"
+    return f"https://www.dlsite.com/{site}/work/=/product_id/{source_work_id}.html"
 
 
 def map_work(raw: Any) -> SourceMetadata | None:
@@ -134,7 +147,9 @@ def map_work(raw: Any) -> SourceMetadata | None:
         release_date=_text(raw.get("regist_date")),
         cover_ref=cover,
         tags=_tags(raw.get("tags")),
-        source_url=source_url(work_id.strip()),
+        source_url=source_url(work_id.strip(), raw.get("site_id")),
+        can_download=raw["downloadable"] if isinstance(raw.get("downloadable"), bool) else None,
+        download_size=_size(raw.get("content_size")),
     )
 
 

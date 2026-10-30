@@ -52,9 +52,28 @@ def test_page_contract_and_counts(client: TestClient) -> None:
     assert item["visibility"] == "normal"
 
 
-@pytest.mark.parametrize(
-    "sort", ["curated", "name-asc", "name-desc", "playtime-desc", "playtime-asc"]
-)
+ALL_SORTS = [
+    "curated",
+    "name-asc",
+    "name-desc",
+    "playtime-desc",
+    "playtime-asc",
+    "added-desc",
+    "added-asc",
+    "maker-asc",
+    "maker-desc",
+    "genre-asc",
+    "genre-desc",
+    "rating-desc",
+    "rating-asc",
+    "release-desc",
+    "release-asc",
+    "size-desc",
+    "size-asc",
+]
+
+
+@pytest.mark.parametrize("sort", ALL_SORTS)
 def test_pagination_never_skips_or_repeats(client: TestClient, sort: str) -> None:
     ids = [item["id"] for item in all_items(client, sort=sort)]
     assert len(ids) == 120
@@ -560,3 +579,36 @@ def test_static_and_api_share_the_security_headers(client: TestClient) -> None:
     assert response.headers["x-content-type-options"] == "nosniff"
     assert "frame-ancestors 'none'" in response.headers["content-security-policy"]
     assert response.headers["x-request-id"]
+
+
+@pytest.mark.parametrize(
+    ("sort", "field", "descending"),
+    [
+        ("maker-asc", "maker", False),
+        ("maker-desc", "maker", True),
+        ("genre-asc", "genre", False),
+        ("genre-desc", "genre", True),
+        ("release-desc", "releaseDate", True),
+        ("release-asc", "releaseDate", False),
+        ("added-desc", "addedAt", True),
+        ("added-asc", "addedAt", False),
+    ],
+)
+def test_column_sorts_order_and_keep_unknowns_last(
+    client: TestClient, sort: str, field: str, descending: bool
+) -> None:
+    values = [item[field] for item in all_items(client, sort=sort)]
+    known = [value for value in values if value is not None]
+    assert values == known + [None] * (len(values) - len(known))
+    assert known == sorted(known, reverse=descending)
+
+
+def test_rating_sort_follows_personal_records(client: TestClient, writer: dict) -> None:
+    for work_id, rating in (("syn-multipart", 2), ("syn-unknown", 5)):
+        client.patch(f"/api/v1/works/{work_id}/personal", json={"rating": rating}, headers=writer)
+    high = all_items(client, sort="rating-desc")
+    assert [i["id"] for i in high[:2]] == ["syn-unknown", "syn-multipart"]
+    assert high[0]["rating"] == 5
+    low = all_items(client, sort="rating-asc")
+    assert [i["id"] for i in low[:2]] == ["syn-multipart", "syn-unknown"]
+    assert low[-1]["rating"] is None

@@ -12,6 +12,17 @@ export function isOrdinaryGame(game: Game): boolean {
   return game.visibility === 'normal';
 }
 
+const sortFields: Record<string, (game: Game) => string | number | null> = {
+  name: (game) => game.title,
+  playtime: (game) => game.playtimeMinutes,
+  added: (game) => game.addedAt,
+  maker: (game) => game.maker,
+  genre: (game) => game.genre,
+  rating: (game) => game.rating ?? null,
+  release: (game) => game.releaseDate,
+  size: (game) => game.file?.sizeBytes ?? null,
+};
+
 /** Scope is applied before every search, facet and count, not just at rendering. */
 export function selectLibrary(games: readonly Game[], filters: LibraryFilters): LibraryResult {
   const visible = games.filter(isOrdinaryGame);
@@ -40,20 +51,20 @@ export function selectLibrary(games: readonly Game[], filters: LibraryFilters): 
   });
 
   if (filters.sort !== 'curated') {
+    const [field, direction] = filters.sort.split('-') as [string, 'asc' | 'desc'];
+    const read = sortFields[field]!;
+    const sign = direction === 'desc' ? -1 : 1;
     items.sort((left, right) => {
-      if (filters.sort === 'name-asc')
-        return collator.compare(left.title, right.title) || left.id.localeCompare(right.id);
-      if (filters.sort === 'name-desc')
-        return collator.compare(right.title, left.title) || left.id.localeCompare(right.id);
-      // Unknown playtime stays at the end in either direction.
-      if (left.playtimeMinutes === null)
-        return right.playtimeMinutes === null ? left.id.localeCompare(right.id) : 1;
-      if (right.playtimeMinutes === null) return -1;
-      const direction = filters.sort === 'playtime-asc' ? 1 : -1;
-      return (
-        direction * (left.playtimeMinutes - right.playtimeMinutes) ||
-        left.id.localeCompare(right.id)
-      );
+      const a = read(left);
+      const b = read(right);
+      // Unknown values stay at the end in either direction.
+      if (a === null) return b === null ? left.id.localeCompare(right.id) : 1;
+      if (b === null) return -1;
+      const order =
+        typeof a === 'number' && typeof b === 'number'
+          ? a - b
+          : collator.compare(String(a), String(b));
+      return sign * order || left.id.localeCompare(right.id);
     });
   }
 

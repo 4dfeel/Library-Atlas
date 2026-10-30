@@ -27,9 +27,10 @@ def _cover(row: Row[Any]) -> models.Cover:
     return models.Cover(kind="missing", index=0)
 
 
-def _file_ref(files: list[Row[Any]]) -> models.FileRef | None:
+def _file_ref(files: list[Row[Any]], row: Row[Any]) -> models.FileRef | None:
     if not files:
-        return None
+        size = row.download_size
+        return models.FileRef(version=None, size_bytes=size) if size is not None else None
     return models.FileRef(version=files[0].version, size_bytes=files[0].size_bytes)
 
 
@@ -56,8 +57,9 @@ def _work_fields(row: Row[Any], files: list[Row[Any]]) -> dict[str, Any]:
             extract=_bool(row.can_extract),
             official_viewer_only=_bool(row.official_viewer_only),
         ),
-        "file": _file_ref(files),
+        "file": _file_ref(files, row),
         "source_url": row.source_url,
+        "rating": row.rating,
     }
 
 
@@ -78,7 +80,6 @@ def _detail(connection: Connection, row: Row[Any]) -> models.WorkDetailOut:
         tags=json.loads(row.tags_json),
         categories=[],
         achievements=achievements,
-        rating=row.rating,
         note=row.note,
         version=row.version,
         files=[

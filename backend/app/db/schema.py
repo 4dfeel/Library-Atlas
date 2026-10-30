@@ -100,6 +100,8 @@ works = Table(
     Column("sort_title", Text, nullable=False),
     Column("metadata_updated_at", String, nullable=False),
     Column("source_url", String, nullable=True),
+    # As the platform reports it. NULL means not reported, never an empty download.
+    Column("download_size", Integer, nullable=True),
     UniqueConstraint("source_id", "source_work_id", name="uq_works_source_identity"),
     CheckConstraint("kind IN ('game', 'image', 'video', 'audio', 'other')", name="ck_works_kind"),
     CheckConstraint("local_state IN ('unknown', 'available', 'absent')", name="ck_works_local"),

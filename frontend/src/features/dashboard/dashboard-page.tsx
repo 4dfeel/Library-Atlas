@@ -741,7 +741,9 @@ export function DashboardPage({ size }: { size: DemoSize }) {
                 <LayoutGrid size={15} />
                 作品构成
               </h2>
-              <p className="dash-module-note">当前范围内各内容类型的数量，按来源区分。</p>
+              <p className="dash-module-note">
+                {scopeLabels[scope]}范围内各内容类型的数量，按来源区分。
+              </p>
               <Suspense fallback={chartFallback}>
                 <KindChart kinds={data.kinds} />
               </Suspense>

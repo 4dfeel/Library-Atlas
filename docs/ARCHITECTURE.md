@@ -182,3 +182,17 @@ backend/app/
 - **未验证**：向真实站点提交后的全部行为，见[检查点 2 报告](PHASE2_CHECKPOINT2_REPORT.md)。
 - **设置**：`app_settings` 表（迁移 `0003`）保存下载文件夹；`services/folders.py` 校验，`adapters/system/folder_dialog.py` 在独立进程打开系统选择窗口。`source_accounts.account_alias` 保存打码账号。前端路由 `/settings`，顶部 `AccountMenu`。
 - **未落地**：作品同步、下载、解压、Steam。
+
+## 12. Phase 2 检查点 3 实际落地（2026-10-31）
+```text
+backend/app/
+  adapters/dlsite/library.py   Play 已购读取（固定地址）
+  adapters/dlsite/covers.py    封面获取与缓存（主机白名单、限大小、不跟跳转、不带会话）
+  domain/dlsite_works.py       响应 → 元数据，类型映射（纯函数）
+  services/dlsite_sync.py      同步任务：单任务、分批短事务、会话代次校验
+frontend/src/features/workspace/dlsite-sync.tsx
+```
+- 迁移 `0004`：`sync_jobs`、`source_accounts.last_synced_at`、`works.source_url`。
+- 封面路由 `GET /api/v1/works/{id}/cover` 先走普通可见性，缓存在数据目录 `cache/covers`，文件名是地址的哈希。
+- 作品库滚动时收起介绍、工具栏和顶栏（前端状态 + `:has()`）。
+- **未落地**：下载、解压、Steam、缓存清理。
