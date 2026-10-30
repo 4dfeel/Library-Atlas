@@ -56,7 +56,8 @@ body {
 }
 button,
 input,
-select {
+select,
+textarea {
   font: inherit;
 }
 button,
@@ -421,8 +422,18 @@ button svg {
   font-size: 11px;
   color: var(--text-secondary);
 }
-.topbar-left > svg {
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.breadcrumb > svg {
+  flex-shrink: 0;
   color: var(--border);
+}
+.breadcrumb-link:hover {
+  color: var(--text-primary);
 }
 .breadcrumb-root {
   color: var(--text-muted);
@@ -815,6 +826,7 @@ kbd {
   min-width: 0;
 }
 .game-card {
+  position: relative;
   min-width: 0;
   width: 100%;
   border-radius: 12px;
@@ -832,7 +844,6 @@ kbd {
 }
 .card-art {
   position: relative;
-  isolation: isolate;
 }
 .game-cover {
   aspect-ratio: 2 / 3;
@@ -872,6 +883,7 @@ kbd {
   backdrop-filter: blur(4px);
 }
 .favorite-button {
+  z-index: 2;
   display: grid;
   place-items: center;
   width: 32px;
@@ -898,6 +910,22 @@ kbd {
 }
 .game-card-body {
   padding: 12px 10px 8px;
+}
+/* The title link covers the whole card; favorite stays a separate control above it. */
+.game-link::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: inherit;
+}
+.game-link:focus-visible {
+  outline: none;
+}
+.game-card:has(.game-link:focus-visible),
+.game-list-row:has(.game-link:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 .game-title {
   height: 44px;
@@ -1036,6 +1064,7 @@ kbd {
   margin-top: 0;
 }
 .game-list-row {
+  position: relative;
   height: 82px;
   border-bottom: 1px solid color-mix(in srgb, var(--border) 45%, transparent);
   border-radius: 8px;
@@ -1100,6 +1129,8 @@ kbd {
   background: var(--status-color);
 }
 .list-favorite {
+  position: relative;
+  z-index: 2;
   display: grid;
   place-items: center;
   height: 32px;
@@ -1353,6 +1384,29 @@ kbd {
   width: 100%;
   margin-top: 4px;
 }
+.demo-reset {
+  margin: 4px 0 20px;
+  padding: 14px 16px;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+}
+.demo-settings .demo-reset p {
+  margin: 0;
+  flex: 1 1 260px;
+  line-height: 1.7;
+}
+.demo-reset p[role='alert'] {
+  color: var(--warning);
+}
+.demo-reset > div {
+  display: flex;
+  gap: 8px;
+}
 .toast {
   position: fixed;
   z-index: 90;
@@ -1372,6 +1426,9 @@ kbd {
 }
 .toast > svg {
   color: var(--success);
+}
+.toast-error > svg {
+  color: var(--danger);
 }
 @keyframes fade-in {
   from {
@@ -1494,7 +1551,7 @@ kbd {
     gap: 6px;
   }
   .breadcrumb-root,
-  .topbar-left > svg {
+  .breadcrumb > svg:first-of-type {
     display: none;
   }
   .topbar-right {

@@ -45,10 +45,61 @@ export interface LibraryRequest {
   signal?: AbortSignal;
 }
 
+/** Synthetic achievement counts. `null` means not provided, never 0%. */
+export interface GameAchievements {
+  unlocked: number;
+  total: number;
+}
+
+/** Personal rating is a whole number of stars; `null` means not rated. */
+export const ratingScale = { min: 1, max: 5 } as const;
+export const noteMaxLength = 1000;
+
+export interface GameDetail extends Game {
+  /** `null` means no description was provided for this record. */
+  description: string | null;
+  tags: string[];
+  categories: string[];
+  achievements: GameAchievements | null;
+  rating: number | null;
+  note: string;
+}
+
+/** Only these personal fields are writable; visibility and observations are not. */
+export interface GameUpdate {
+  status?: GameStatus;
+  rating?: number | null;
+  note?: string;
+  favorite?: boolean;
+}
+
+export interface GameRequest {
+  id: string;
+  scenario?: DemoScenario;
+  signal?: AbortSignal;
+}
+
+/** Private, hidden, unconfirmed and absent IDs share this single error. */
+export class GameUnavailableError extends Error {
+  constructor() {
+    super('游戏暂不可用。');
+    this.name = 'GameUnavailableError';
+  }
+}
+
+export class GameUpdateError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'GameUpdateError';
+  }
+}
+
 /** Replace this boundary with the API source when backend work is authorized. */
 export interface LibrarySource {
   readonly mode: 'demo' | 'real';
   list(request: LibraryRequest): Promise<LibraryResult>;
+  getGame(request: GameRequest): Promise<GameDetail>;
+  updateGame(id: string, update: GameUpdate): Promise<GameDetail>;
   toggleFavorite(id: string): Promise<void>;
 }
 

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { getCoverSource } from './covers';
+import { createMemoryEditStore } from './demo-edits';
 import { DemoLibrarySource } from './demo-source';
 import { generateDemoGames } from './generator';
 import { selectLibrary } from './selectors';
@@ -108,9 +109,9 @@ describe('ordinary selection privacy boundary', () => {
 });
 
 describe('demo source behavior', () => {
-  it('toggles a public favorite for this session and keeps separate source instances isolated', async () => {
-    const source = new DemoLibrarySource(1500);
-    const independent = new DemoLibrarySource(1500);
+  it('toggles a public favorite in its edit store and keeps separate stores isolated', async () => {
+    const source = new DemoLibrarySource(1500, { store: createMemoryEditStore() });
+    const independent = new DemoLibrarySource(1500, { store: createMemoryEditStore() });
     const before = await source.list({ filters });
     const first = before.items[0]!;
     await source.toggleFavorite(first.id);
@@ -123,14 +124,14 @@ describe('demo source behavior', () => {
   });
 
   it('rejects writes to private and absent IDs without exposing titles', async () => {
-    const source = new DemoLibrarySource(1500);
+    const source = new DemoLibrarySource(1500, { store: createMemoryEditStore() });
     const privateGame = generateDemoGames(1500).find((game) => game.visibility === 'private')!;
     await expect(source.toggleFavorite(privateGame.id)).rejects.toThrow('游戏暂不可用。');
     await expect(source.toggleFavorite('unknown')).rejects.toThrow('游戏暂不可用。');
   });
 
   it('supports explicit empty and error previews', async () => {
-    const source = new DemoLibrarySource(1500);
+    const source = new DemoLibrarySource(1500, { store: createMemoryEditStore() });
     expect(await source.list({ filters, scenario: 'empty' })).toMatchObject({
       items: [],
       totalVisible: 0,
@@ -143,7 +144,7 @@ describe('demo source behavior', () => {
 
   it('aborts in-flight loading previews instead of retaining stale work', async () => {
     const controller = new AbortController();
-    const request = new DemoLibrarySource(1500).list({
+    const request = new DemoLibrarySource(1500, { store: createMemoryEditStore() }).list({
       filters,
       scenario: 'loading',
       signal: controller.signal,

@@ -43,6 +43,12 @@ function coverTitleLines(title: string): string[] {
   return lines;
 }
 
+/** Wide local backdrop for detail pages; null when absent or not ordinary. */
+export function getBackdropSource(game: Game): string | null {
+  if (game.visibility !== 'normal' || !game.background) return null;
+  return game.background.startsWith('/demo/backdrops/') ? game.background : null;
+}
+
 /** Called by mounted cards only; no eager creation or request for 5000 covers. */
 export function getCoverSource(game: Game): string | null {
   if (game.visibility !== 'normal' || game.cover.kind === 'missing') return null;

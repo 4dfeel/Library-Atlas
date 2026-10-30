@@ -5,19 +5,33 @@ import type { Game } from '@/lib/data';
 import { formatPlaytime, statusLabels } from '@/lib/utils';
 import { GameCard, GameCover } from '@/components/game-card';
 import { getGridLayout, useMeasuredWidth } from '@/lib/layout';
+import { AppLink } from '@/components/app-link';
 
 export type ViewMode = 'grid' | 'list';
+
+export interface CollectionRestore {
+  /** First visible item index when the user left this Library entry. */
+  anchor?: number;
+  focusId?: string;
+}
 
 export function GameCollection({
   games,
   view,
   onFavorite,
   filterKey,
+  detailHref,
+  onOpenGame,
+  restore,
 }: {
   games: Game[];
   view: ViewMode;
   onFavorite: (id: string) => void;
   filterKey: string;
+  detailHref: (id: string) => string;
+  /** Called before navigating to a detail, with the first visible item index. */
+  onOpenGame: (id: string, anchor: number) => void;
+  restore?: CollectionRestore;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const width = useMeasuredWidth(scrollRef);
@@ -69,9 +83,39 @@ export function GameCollection({
     }
     previousLayout.current = { columns, rowHeight, view };
   }, [columns, rowHeight, view, virtualizer]);
+  const previousFilterKey = useRef(filterKey);
   useLayoutEffect(() => {
+    if (previousFilterKey.current === filterKey) return;
+    previousFilterKey.current = filterKey;
     scrollRef.current?.scrollTo({ top: 0 });
   }, [filterKey]);
+  // Returning from a detail restores the first visible row once the real column
+  // count is known, then focuses the game that was opened if it is still listed.
+  const pendingRestore = useRef(restore);
+  useLayoutEffect(() => {
+    const target = pendingRestore.current;
+    const scroll = scrollRef.current;
+    if (!target || !scroll || width <= 0) return;
+    pendingRestore.current = undefined;
+    if (target.anchor !== undefined && target.anchor > 0)
+      scroll.scrollTop = Math.floor(target.anchor / columns) * rowHeight;
+    const focusId = target.focusId;
+    if (!focusId) return;
+    let attempts = 0;
+    const focusOpened = () => {
+      const link = scroll.querySelector<HTMLElement>(
+        `[data-game-id="${CSS.escape(focusId)}"] [data-focus-key="title"]`,
+      );
+      if (link) link.focus({ preventScroll: true });
+      else if (++attempts < 5) requestAnimationFrame(focusOpened);
+    };
+    requestAnimationFrame(focusOpened);
+  }, [width, columns, rowHeight]);
+  const openGame = (id: string) => {
+    const scroll = scrollRef.current;
+    const anchor = scroll ? Math.floor(scroll.scrollTop / rowHeight) * columns : 0;
+    onOpenGame(id, anchor);
+  };
 
   return (
     <div
@@ -134,7 +178,12 @@ export function GameCollection({
                 }}
               >
                 {view === 'grid' ? (
-                  <GameCard game={game} onFavorite={onFavorite} />
+                  <GameCard
+                    game={game}
+                    onFavorite={onFavorite}
+                    href={detailHref(game.id)}
+                    onOpen={() => openGame(game.id)}
+                  />
                 ) : (
                   <article
                     className="game-list-row"
@@ -145,12 +194,17 @@ export function GameCollection({
                     <div className="list-game-title">
                       <GameCover game={game} compact />
                       <div>
-                        <h3
-                          tabIndex={0}
-                          data-focus-key="title"
-                          title={`${game.title} · 详情页稍后开放`}
-                        >
-                          {game.title}
+                        <h3>
+                          <AppLink
+                            to={detailHref(game.id)}
+                            state={{ fromLibrary: true }}
+                            onNavigate={() => openGame(game.id)}
+                            className="game-link"
+                            data-focus-key="title"
+                            title={game.title}
+                          >
+                            {game.title}
+                          </AppLink>
                         </h3>
                         <span className="list-install">
                           {game.installed ? (

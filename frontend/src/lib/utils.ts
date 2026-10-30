@@ -12,6 +12,15 @@ export function formatPlaytime(minutes: number | null) {
   return `${(minutes / 60).toLocaleString('zh-CN', { maximumFractionDigits: 1 })} 小时`;
 }
 
+const dateFormat = new Intl.DateTimeFormat('zh-CN', { dateStyle: 'long' });
+
+/** Local calendar date; `null` stays absent rather than becoming a fake date. */
+export function formatDate(iso: string | null): string | null {
+  if (!iso) return null;
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? null : dateFormat.format(date);
+}
+
 export const statusLabels = {
   unplayed: '未开始',
   playing: '在玩',

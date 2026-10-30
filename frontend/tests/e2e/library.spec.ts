@@ -173,7 +173,7 @@ test('favorites and container resize preserve the visible collection anchor', as
   const before = await favorite.getAttribute('aria-pressed');
   await favorite.click();
   await expect(favorite).toHaveAttribute('aria-pressed', before === 'true' ? 'false' : 'true');
-  const focusedGame = page.locator('[data-game-id="demo-00007"] .game-title');
+  const focusedGame = page.locator('[data-game-id="demo-00007"] .game-link');
   await focusedGame.focus();
   await page.setViewportSize({ width: 1440, height: 900 });
   await expect(scroll(page)).toHaveAttribute('data-columns', '5');

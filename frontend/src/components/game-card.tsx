@@ -2,9 +2,19 @@ import { useState } from 'react';
 import { Download, ImageOff, Star } from 'lucide-react';
 import { getCoverSource, type Game } from '@/lib/data';
 import { formatPlaytime, statusLabels } from '@/lib/utils';
+import { AppLink } from '@/components/app-link';
 import { Tooltip } from './ui/tooltip';
 
-export function GameCover({ game, compact = false }: { game: Game; compact?: boolean }) {
+export function GameCover({
+  game,
+  compact = false,
+  priority = false,
+}: {
+  game: Game;
+  compact?: boolean;
+  /** Above-the-fold detail cover: load eagerly instead of lazily. */
+  priority?: boolean;
+}) {
   const [failed, setFailed] = useState(false);
   const source = getCoverSource(game);
   return (
@@ -18,7 +28,8 @@ export function GameCover({ game, compact = false }: { game: Game; compact?: boo
         <img
           src={source}
           alt={`${game.title} 演示封面`}
-          loading="lazy"
+          loading={priority ? 'eager' : 'lazy'}
+          fetchPriority={priority ? 'high' : undefined}
           decoding="async"
           width="480"
           height="720"
@@ -45,7 +56,17 @@ export function GameCover({ game, compact = false }: { game: Game; compact?: boo
   );
 }
 
-export function GameCard({ game, onFavorite }: { game: Game; onFavorite: (id: string) => void }) {
+export function GameCard({
+  game,
+  onFavorite,
+  href,
+  onOpen,
+}: {
+  game: Game;
+  onFavorite: (id: string) => void;
+  href: string;
+  onOpen?: () => void;
+}) {
   return (
     <article className="game-card" data-testid="game-card" data-game-card data-game-id={game.id}>
       <div className="card-art">
@@ -58,7 +79,9 @@ export function GameCard({ game, onFavorite }: { game: Game; onFavorite: (id: st
           </span>
         )}
         <Tooltip
-          content={game.favorite ? '取消收藏 · 仅本次演示会话' : '收藏游戏 · 仅本次演示会话'}
+          content={
+            game.favorite ? '取消收藏 · 演示修改保存在本机' : '收藏游戏 · 演示修改保存在本机'
+          }
         >
           <button
             data-focus-key="favorite"
@@ -72,24 +95,26 @@ export function GameCard({ game, onFavorite }: { game: Game; onFavorite: (id: st
         </Tooltip>
       </div>
       <div className="game-card-body">
-        <Tooltip
-          content={
-            <>
-              <strong>{game.title}</strong>
-              <span className="tooltip-description">详情页将在后续检查点开放</span>
-            </>
-          }
-        >
-          <h3
-            tabIndex={0}
-            className="game-title"
-            data-focus-key="title"
-            data-testid="game-title"
-            aria-label={game.title}
+        <h3 className="game-title" data-testid="game-title">
+          <Tooltip
+            content={
+              <>
+                <strong>{game.title}</strong>
+                <span className="tooltip-description">打开游戏详情</span>
+              </>
+            }
           >
-            {game.title}
-          </h3>
-        </Tooltip>
+            <AppLink
+              to={href}
+              state={{ fromLibrary: true }}
+              onNavigate={onOpen}
+              className="game-link"
+              data-focus-key="title"
+            >
+              {game.title}
+            </AppLink>
+          </Tooltip>
+        </h3>
         <div className="game-card-meta">
           <span>{formatPlaytime(game.playtimeMinutes)}</span>
           <span className={`status-label status-${game.status}`}>

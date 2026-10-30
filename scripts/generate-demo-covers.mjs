@@ -136,7 +136,20 @@ ${r(0, 0, 480, 720, 'url(#sky)')}${scene.art()}
 ${r(0, 0, 480, 720, 'url(#vignette)')}${Array.from({ length: 65 }, (_, i) => c((i * 137 + index * 19) % 480, (i * 83 + index * 31) % 720, .45, '#e9e4c7', 'opacity=".16"')).join('')}
 </svg>\n`;
 
+// Wide 2:1 detail backdrops place the same original scene once in the centre at
+// 1.4x (its horizon band fills the frame), flanked by blurred mirrored wings that
+// the centre fades into. Portrait art is never stretched; pages crop the panorama.
+const backdrop = (scene, index) => `<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="720" viewBox="0 0 1440 720" role="img" aria-label="Original demo backdrop: ${scene.name}">
+<defs><linearGradient id="sky" x1="0" y1="0" x2=".25" y2="1"><stop stop-color="${scene.colors[0]}"/><stop offset=".67" stop-color="${scene.colors[1]}"/><stop offset="1" stop-color="${scene.colors[2]}"/></linearGradient><linearGradient id="vignette" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#071322" stop-opacity=".06"/><stop offset=".72" stop-color="#071322" stop-opacity="0"/><stop offset="1" stop-color="#071322" stop-opacity=".32"/></linearGradient><linearGradient id="wings" x1="0" x2="1"><stop stop-color="#0b0e14" stop-opacity=".55"/><stop offset=".27" stop-color="#0b0e14" stop-opacity="0"/><stop offset=".73" stop-color="#0b0e14" stop-opacity="0"/><stop offset="1" stop-color="#0b0e14" stop-opacity=".55"/></linearGradient><linearGradient id="edge-fade" x1="0" x2="1"><stop stop-color="#fff" stop-opacity="0"/><stop offset=".16" stop-color="#fff"/><stop offset=".84" stop-color="#fff"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient><mask id="centre" maskUnits="userSpaceOnUse" x="0" y="0" width="1440" height="720"><rect x="384" y="0" width="672" height="720" fill="url(#edge-fade)"/></mask><clipPath id="frame"><rect width="480" height="720"/></clipPath><filter id="soft" x="-5%" y="-5%" width="110%" height="110%"><feGaussianBlur stdDeviation="9"/></filter><g id="scene" clip-path="url(#frame)">${r(0, 0, 480, 720, 'url(#sky)')}${scene.art()}${r(0, 0, 480, 720, 'url(#vignette)')}</g></defs>
+${r(0, 0, 1440, 720, scene.colors[1])}<g filter="url(#soft)" opacity=".85"><use href="#scene" transform="translate(384 -144) scale(-1.4 1.4)"/><use href="#scene" transform="translate(1728 -144) scale(-1.4 1.4)"/><use href="#scene" transform="translate(384 -144) scale(1.4)"/></g><g mask="url(#centre)"><use href="#scene" transform="translate(384 -144) scale(1.4)"/></g>${r(0, 0, 1440, 720, 'url(#wings)')}
+${Array.from({ length: 120 }, (_, i) => c((i * 137 + index * 19) % 1440, (i * 83 + index * 31) % 720, .45, '#e9e4c7', 'opacity=".14"')).join('')}
+</svg>\n`;
+
+const backdropOut = fileURLToPath(new URL('../frontend/public/demo/backdrops/', import.meta.url));
+await mkdir(backdropOut, { recursive: true });
 for (const [index, scene] of scenes.entries()) {
-  await writeFile(path.join(out, `cover-${String(index + 1).padStart(2, '0')}.svg`), svg(scene, index), 'utf8');
+  const name = String(index + 1).padStart(2, '0');
+  await writeFile(path.join(out, `cover-${name}.svg`), svg(scene, index), 'utf8');
+  await writeFile(path.join(backdropOut, `backdrop-${name}.svg`), backdrop(scene, index), 'utf8');
 }
-console.log(`Generated ${scenes.length} original illustrations in frontend/public/demo/covers`);
+console.log(`Generated ${scenes.length} original illustrations and wide backdrops in frontend/public/demo`);

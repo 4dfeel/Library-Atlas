@@ -1,5 +1,5 @@
 import * as TooltipPrimitive from '@radix-ui/react-tooltip';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { Game } from '@/lib/data';
 import { GameCard, GameCover } from './game-card';
@@ -24,27 +24,56 @@ describe('GameCard', () => {
   it('keeps the complete title accessible and exposes a visible status with its playtime', () => {
     render(
       <TooltipPrimitive.Provider>
-        <GameCard game={game} onFavorite={vi.fn()} />
+        <GameCard game={game} onFavorite={vi.fn()} href="/library/demo-unit" />
       </TooltipPrimitive.Provider>,
     );
-    expect(screen.getByRole('heading', { name: game.title })).toHaveAttribute('tabindex', '0');
+    const heading = screen.getByRole('heading', { name: game.title });
+    expect(within(heading).getByRole('link', { name: game.title })).toHaveAttribute(
+      'href',
+      '/library/demo-unit',
+    );
     expect(screen.getByText('在玩')).toBeVisible();
     expect(screen.getByText('2 小时')).toBeVisible();
     expect(screen.getByText('已安装')).toBeVisible();
   });
 
-  it('updates favorites via the data boundary callback rather than pretending detail is implemented', () => {
+  it('keeps favorite a separate control that does not open the detail', () => {
     const onFavorite = vi.fn();
+    const onOpen = vi.fn();
+    const pushState = vi.spyOn(window.history, 'pushState');
     render(
       <TooltipPrimitive.Provider>
-        <GameCard game={game} onFavorite={onFavorite} />
+        <GameCard game={game} onFavorite={onFavorite} href="/library/demo-unit" onOpen={onOpen} />
       </TooltipPrimitive.Provider>,
     );
     const button = screen.getByRole('button', { name: `收藏 ${game.title}` });
     fireEvent.click(button);
     expect(onFavorite).toHaveBeenCalledExactlyOnceWith('demo-unit');
     expect(button).toHaveAttribute('aria-pressed', 'false');
-    expect(screen.queryByRole('link')).not.toBeInTheDocument();
+    expect(button.closest('a')).toBeNull();
+    expect(onOpen).not.toHaveBeenCalled();
+    expect(pushState).not.toHaveBeenCalled();
+  });
+
+  it('opens the detail in-app on a plain click and leaves modified clicks to the browser', () => {
+    const onOpen = vi.fn();
+    const pushState = vi.spyOn(window.history, 'pushState');
+    render(
+      <TooltipPrimitive.Provider>
+        <GameCard game={game} onFavorite={vi.fn()} href="/library/demo-unit" onOpen={onOpen} />
+      </TooltipPrimitive.Provider>,
+    );
+    const link = screen.getByRole('link', { name: game.title });
+    fireEvent.click(link, { ctrlKey: true });
+    expect(pushState).not.toHaveBeenCalled();
+    fireEvent.click(link);
+    expect(onOpen).toHaveBeenCalledOnce();
+    expect(pushState).toHaveBeenCalledWith(
+      { atlas: { fromLibrary: true } },
+      '',
+      '/library/demo-unit',
+    );
+    window.history.replaceState(null, '', '/');
   });
 
   it('uses the same local placeholder for absent and failed images', () => {

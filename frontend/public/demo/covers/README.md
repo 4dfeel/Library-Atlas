@@ -10,6 +10,10 @@ These are normal cover assets, distinct from the UI's missing-cover placeholder.
 The quiet palettes and simplified vector forms are deliberate illustrated-poster
 art direction. They are not represented as painted or photographic game key art.
 
+The same script also writes 24 wide 2:1 backdrops to `../backdrops/` for the
+detail page: each scene appears once in the centre at 1.4x, flanked by blurred
+mirrored wings it fades into. Portrait art is never stretched to fill a wide frame.
+
 Rebuild from the repository root with:
 
 ```powershell

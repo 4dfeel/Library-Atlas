@@ -116,7 +116,7 @@ export function generateDemoGames(size: DemoSize): readonly Game[] {
       background:
         index % 5 === 4
           ? null
-          : `/demo/covers/cover-${String((index % 24) + 1).padStart(2, '0')}.svg`,
+          : `/demo/backdrops/backdrop-${String((index % 24) + 1).padStart(2, '0')}.svg`,
       addedAt: new Date(Date.UTC(2026, 9, 30) - index * 86_400_000).toISOString(),
       lastPlayedAt:
         status === 'unplayed'

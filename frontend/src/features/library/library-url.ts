@@ -1,0 +1,55 @@
+import { defaultLibraryFilters, type LibraryFilters, type LibrarySort } from '@/lib/data';
+import type { ViewMode } from './game-collection';
+
+/**
+ * Library query state lives in the URL so back/forward, refresh and copied links
+ * restore search, filters, sort and view. Unknown values fall back to defaults.
+ */
+export interface LibraryUrlState {
+  filters: LibraryFilters;
+  view: ViewMode;
+}
+
+const statuses = new Set(['all', 'unplayed', 'playing', 'completed', 'paused']);
+const installed = new Set(['all', 'installed', 'not-installed']);
+const sorts = new Set<LibrarySort>([
+  'curated',
+  'name-asc',
+  'name-desc',
+  'playtime-desc',
+  'playtime-asc',
+]);
+
+export function parseLibraryUrl(search: string): LibraryUrlState {
+  const params = new URLSearchParams(search);
+  const status = params.get('status') ?? 'all';
+  const install = params.get('installed') ?? 'all';
+  const sort = (params.get('sort') ?? 'curated') as LibrarySort;
+  return {
+    filters: {
+      search: (params.get('q') ?? '').slice(0, 200),
+      genre: params.get('genre') || defaultLibraryFilters.genre,
+      status: statuses.has(status) ? (status as LibraryFilters['status']) : 'all',
+      installed: installed.has(install) ? (install as LibraryFilters['installed']) : 'all',
+      favoritesOnly: params.get('fav') === '1',
+      sort: sorts.has(sort) ? sort : 'curated',
+    },
+    view: params.get('view') === 'list' ? 'list' : 'grid',
+  };
+}
+
+/** Keeps unrelated parameters (size, state previews) and writes only non-defaults. */
+export function libraryUrl(current: string, { filters, view }: LibraryUrlState): string {
+  const url = new URL(current);
+  const params = url.searchParams;
+  const set = (key: string, value: string, fallback: string) =>
+    value === fallback ? params.delete(key) : params.set(key, value);
+  set('q', filters.search.trim(), '');
+  set('genre', filters.genre, 'all');
+  set('status', filters.status, 'all');
+  set('installed', filters.installed, 'all');
+  set('fav', filters.favoritesOnly ? '1' : '0', '0');
+  set('sort', filters.sort, 'curated');
+  set('view', view, 'grid');
+  return `${url.pathname}${params.size ? `?${params}` : ''}`;
+}
