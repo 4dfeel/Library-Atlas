@@ -222,3 +222,14 @@
 | `POST /library-scan/import` | `{includeLikely}`，批量关联，返回 `batchId` |
 | `POST /library-scan/undo/{batchId}` | 只撤销这一批关联 |
 | `POST /library-scan/items/{id}/link` `ignore` | 逐条决定 |
+
+### 游戏更新与存档
+| 接口 | 说明 |
+| --- | --- |
+| `GET`、`PUT /works/{id}/save-config` | `{rules:[{kind:"inside"\|"outside",path}],confirmedNone}` |
+| `GET /works/{id}/update` | `{task?,config,backups}` |
+| `POST /works/{id}/update` | `{copyId,confirmClosed}`，不接受路径 |
+| `POST /game-updates/{id}/cancel` `retry` `confirm` `rollback` | `confirm` 删除旧目录，`rollback` 恢复旧版本 |
+| `POST /save-backups/{id}/restore` | `{copyId}`，恢复前先备份当前存档 |
+
+`state`：`queued` `backing_up` `downloading` `unpacking` `replacing` `awaiting_confirmation` `cleaning` `done` `failed` `cancelled` `interrupted` `rolled_back`。

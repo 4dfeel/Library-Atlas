@@ -241,6 +241,27 @@ export interface ScanItem {
   candidates: { workId: string; title: string }[];
 }
 
+export interface SaveRule {
+  kind: 'inside' | 'outside';
+  path: string;
+}
+
+export interface GameUpdateStatus {
+  task: {
+    id: string;
+    copyId: string;
+    state: string;
+    code: string | null;
+    message: string | null;
+    extraCount: number | null;
+    extraSample: string[];
+    cleanupFailed: boolean;
+    canRetry: boolean;
+  } | null;
+  config: { rules: SaveRule[]; confirmedNone: boolean };
+  backups: { id: string; createdAt: string; files: number; available: boolean }[];
+}
+
 export type IntroBlock =
   | { type: 'heading'; text: string }
   | { type: 'paragraph'; spans: { text: string; href?: string }[] }
@@ -533,6 +554,31 @@ export class RealLibrarySource implements LibrarySource {
 
   scanIgnore(itemId: string) {
     return apiWrite('POST', `/api/v1/library-scan/items/${encodeURIComponent(itemId)}/ignore`);
+  }
+
+  gameUpdate(workId: string, signal?: AbortSignal) {
+    return apiGet<GameUpdateStatus>(`${workPath(workId)}/update`, undefined, signal);
+  }
+
+  saveConfig(workId: string, rules: SaveRule[], confirmedNone: boolean) {
+    return apiWrite('PUT', `${workPath(workId)}/save-config`, { rules, confirmedNone });
+  }
+
+  startGameUpdate(workId: string, copyId: string) {
+    return apiWrite<GameUpdateStatus>('POST', `${workPath(workId)}/update`, {
+      copyId,
+      confirmClosed: true,
+    });
+  }
+
+  gameUpdateAction(taskId: string, action: 'confirm' | 'rollback' | 'retry' | 'cancel') {
+    return apiWrite('POST', `/api/v1/game-updates/${encodeURIComponent(taskId)}/${action}`);
+  }
+
+  restoreSaves(backupId: string, copyId: string) {
+    return apiWrite('POST', `/api/v1/save-backups/${encodeURIComponent(backupId)}/restore`, {
+      copyId,
+    });
   }
 
   introduction(workId: string, signal?: AbortSignal): Promise<WorkIntroduction> {

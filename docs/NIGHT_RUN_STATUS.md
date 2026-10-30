@@ -8,7 +8,7 @@
 | C6 官方介绍 | 已实现待验：8 部真实作品读取成功；无视频内嵌 | `phase-2/checkpoint-6` | [C6](PHASE2_CHECKPOINT6_REPORT.md) |
 | C7 手动关联与启动 | 已实现待验：真实游戏启动待人工 | `phase-2/checkpoint-7` | [C7](PHASE2_CHECKPOINT7_REPORT.md) |
 | C8 跨盘发现导入 | 已实现，真实只读核对通过；批量关联待用户 | `phase-2/checkpoint-8` | [C8](PHASE2_CHECKPOINT8_REPORT.md) |
-| C9 存档保护更新 | 未开始 | | |
+| C9 存档保护更新 | 已实现，合成验证通过；真实更新待人工 | `phase-2/checkpoint-9` | [C9](PHASE2_CHECKPOINT9_REPORT.md) |
 | C10 音声 | 未开始 | | |
 | C11 漫画/CG | 未开始 | | |
 

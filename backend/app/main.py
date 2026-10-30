@@ -42,6 +42,7 @@ from app.services.downloads import DownloadQueue
 from app.services.extractions import ExtractionService
 from app.services.folders import FolderService
 from app.services.gallery import WorkGallery
+from app.services.game_updates import GameUpdater
 from app.services.introductions import WorkIntroductions
 from app.services.library_scan import LibraryScanner
 from app.services.local_copies import LocalCopies
@@ -77,6 +78,7 @@ class ServiceState:
     introductions: WorkIntroductions | None = None
     local_copies: LocalCopies | None = None
     scanner: LibraryScanner | None = None
+    updates_game: GameUpdater | None = None
     updates: UpdateChecker | None = None
 
 
@@ -193,6 +195,15 @@ def _scanner(request: Request, _engine: EngineDep) -> LibraryScanner:
 
 
 ScannerDep = Annotated[LibraryScanner, Depends(_scanner)]
+
+
+def _game_updates(request: Request, _engine: EngineDep) -> GameUpdater:
+    service = _state(request).updates_game
+    assert service is not None  # Built whenever the engine is.
+    return service
+
+
+GameUpdatesDep = Annotated[GameUpdater, Depends(_game_updates)]
 
 
 def _updates(request: Request, _engine: EngineDep) -> UpdateChecker:
@@ -482,6 +493,48 @@ def _build_api() -> APIRouter:
     def scan_ignore(service: ScannerDep, item_id: str) -> models.ScanItemsOut:
         return service.ignore_item(item_id)
 
+    @api.get("/works/{work_id}/save-config")
+    def get_save_config(service: GameUpdatesDep, work_id: str) -> models.SaveConfigOut:
+        return service.save_config(work_id)
+
+    @api.put("/works/{work_id}/save-config")
+    def put_save_config(
+        service: GameUpdatesDep, work_id: str, body: models.SaveConfigIn
+    ) -> models.SaveConfigOut:
+        return service.set_save_config(work_id, body)
+
+    @api.get("/works/{work_id}/update")
+    def game_update_status(service: GameUpdatesDep, work_id: str) -> models.GameUpdateStatus:
+        return service.status(work_id)
+
+    @api.post("/works/{work_id}/update")
+    def game_update_start(
+        service: GameUpdatesDep, work_id: str, body: models.GameUpdateStart
+    ) -> models.GameUpdateStatus:
+        return service.start(work_id, body)
+
+    @api.post("/game-updates/{task_id}/cancel")
+    def game_update_cancel(service: GameUpdatesDep, task_id: str) -> models.GameUpdateStatus:
+        return service.cancel(task_id)
+
+    @api.post("/game-updates/{task_id}/retry")
+    def game_update_retry(service: GameUpdatesDep, task_id: str) -> models.GameUpdateStatus:
+        return service.retry(task_id)
+
+    @api.post("/game-updates/{task_id}/confirm")
+    def game_update_confirm(service: GameUpdatesDep, task_id: str) -> models.GameUpdateStatus:
+        return service.confirm(task_id)
+
+    @api.post("/game-updates/{task_id}/rollback")
+    def game_update_rollback(service: GameUpdatesDep, task_id: str) -> models.GameUpdateStatus:
+        return service.rollback(task_id)
+
+    @api.post("/save-backups/{backup_id}/restore")
+    def save_backup_restore(
+        service: GameUpdatesDep, backup_id: str, body: models.SaveRestoreIn
+    ) -> models.SaveRestoreOut:
+        return service.restore(backup_id, body.copy_id)
+
     @api.get("/settings/updates")
     def update_settings(checker: UpdatesDep) -> models.UpdateSettings:
         return checker.status()
@@ -608,10 +661,17 @@ def create_app(
                     state.downloads.on_flow_finished = state.extractions.flow_finished
                     state.updates = build_update_checker(settings, opened.engine, state.sync)
                     state.dlsite.restore()
+                assert state.extractions is not None  # Built just above.
+                state.updates_game = GameUpdater(
+                    opened.engine, settings, state.downloads, state.extractions
+                )
+                state.updates_game.recover()
             except DatabaseNotReady as error:
                 state.not_ready_reason = error.reason
                 logger.error("database not ready: %s", error.reason)
         yield
+        if state.updates_game is not None:
+            state.updates_game.shutdown()
         if state.scanner is not None:
             state.scanner.shutdown()
         if state.updates is not None:

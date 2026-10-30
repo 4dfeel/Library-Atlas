@@ -22,6 +22,7 @@ import {
   type SyncJob,
   type DownloadAction,
   type LocalCopy,
+  type SaveRule,
   type ScanItemState,
   type LocalCopyInput,
   type DownloadList,
@@ -751,4 +752,53 @@ export function useLibraryScanItems(state: ScanItemState, offset: number, limit:
     retry: false,
   });
   return { items: query.data?.items ?? [], total: query.data?.total ?? 0 };
+}
+
+const updateWorking = new Set([
+  'queued',
+  'backing_up',
+  'downloading',
+  'unpacking',
+  'replacing',
+  'cleaning',
+]);
+
+export function useGameUpdate(workId: string) {
+  const queryClient = useQueryClient();
+  const key = [...realRoot, 'game-update', workId];
+  const [error, setError] = useState<string | null>(null);
+  const query = useQuery({
+    queryKey: key,
+    queryFn: ({ signal }) => realSource.gameUpdate(workId, signal),
+    enabled: useWorkspaceMode() === 'real',
+    retry: false,
+    refetchInterval: (current) =>
+      updateWorking.has(current.state.data?.task?.state ?? '') ? 1_000 : false,
+  });
+  const run = <T>(work: Promise<T>) =>
+    work
+      .then(async (result) => {
+        setError(null);
+        await queryClient.invalidateQueries({ queryKey: key });
+        await queryClient.invalidateQueries({ queryKey: [...realRoot, 'local-copies', workId] });
+        return result;
+      })
+      .catch((failure: unknown) => {
+        setError(failure instanceof Error ? failure.message : '操作没有完成，请重试。');
+        throw failure;
+      });
+  const act = (id: string, action: 'confirm' | 'rollback' | 'retry' | 'cancel') =>
+    void run(realSource.gameUpdateAction(id, action)).catch(() => undefined);
+  return {
+    status: query.data,
+    error,
+    saveConfig: (rules: SaveRule[], none: boolean) =>
+      run(realSource.saveConfig(workId, rules, none)),
+    start: (copyId: string) => run(realSource.startGameUpdate(workId, copyId)),
+    confirm: (id: string) => act(id, 'confirm'),
+    rollback: (id: string) => act(id, 'rollback'),
+    retry: (id: string) => act(id, 'retry'),
+    restore: (backupId: string, copyId: string) =>
+      void run(realSource.restoreSaves(backupId, copyId)).catch(() => undefined),
+  };
 }

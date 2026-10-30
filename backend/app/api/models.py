@@ -525,6 +525,86 @@ class ScanLink(ApiModel):
     work_id: str
 
 
+class SaveRule(ApiModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, extra="forbid")
+
+    kind: Literal["inside", "outside"]
+    path: Annotated[str, StringConstraints(min_length=1, max_length=1024)]
+
+
+class SaveConfigIn(ApiModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, extra="forbid")
+
+    rules: Annotated[list[SaveRule], Field(max_length=50)] = []
+    confirmed_none: bool = False
+
+
+class SaveConfigOut(ApiModel):
+    rules: list[SaveRule]
+    confirmed_none: bool
+
+
+class SaveBackupOut(ApiModel):
+    id: str
+    created_at: str
+    files: int
+    available: bool
+
+
+UpdateState = Literal[
+    "queued",
+    "backing_up",
+    "downloading",
+    "unpacking",
+    "replacing",
+    "awaiting_confirmation",
+    "cleaning",
+    "done",
+    "failed",
+    "cancelled",
+    "interrupted",
+    "rolled_back",
+]
+
+
+class GameUpdateOut(ApiModel):
+    id: str
+    copy_id: str
+    state: UpdateState
+    code: str | None
+    message: str | None
+    extra_count: int | None
+    extra_sample: list[str]
+    cleanup_failed: bool
+    can_retry: bool
+    created_at: str
+    finished_at: str | None
+
+
+class GameUpdateStatus(ApiModel):
+    task: GameUpdateOut | None
+    config: SaveConfigOut
+    backups: list[SaveBackupOut]
+
+
+class GameUpdateStart(ApiModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, extra="forbid")
+
+    copy_id: str
+    confirm_closed: bool = False
+
+
+class SaveRestoreIn(ApiModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, extra="forbid")
+
+    copy_id: str
+
+
+class SaveRestoreOut(ApiModel):
+    restored: int
+    safety_backup_id: str
+
+
 IntroStatus = Literal["ok", "empty", "unavailable"]
 
 

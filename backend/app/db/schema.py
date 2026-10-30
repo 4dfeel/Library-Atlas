@@ -327,6 +327,57 @@ scan_items = Table(
     Index("ix_scan_items_state", "state", "maker_key", "title_key"),
 )
 
+save_configs = Table(
+    "save_configs",
+    metadata,
+    Column("work_id", String, ForeignKey("works.id"), primary_key=True),
+    Column("rules", Text, nullable=False),
+    # Said out loud by the user. No rule on file is not the same as no saves.
+    Column("confirmed_none", Integer, nullable=False, server_default=text("0")),
+    Column("updated_at", String, nullable=False),
+)
+
+save_backups = Table(
+    "save_backups",
+    metadata,
+    Column("id", String, primary_key=True),
+    Column("work_id", String, ForeignKey("works.id"), nullable=False),
+    Column("path", String, nullable=False),
+    Column("rules", Text, nullable=False),
+    Column("manifest", Text, nullable=False),
+    Column("created_at", String, nullable=False),
+    Index("ix_save_backups_work", "work_id", "created_at"),
+)
+
+game_updates = Table(
+    "game_updates",
+    metadata,
+    Column("id", String, primary_key=True),
+    Column("work_id", String, ForeignKey("works.id"), nullable=False),
+    Column("copy_id", String, nullable=False),
+    Column("state", String, nullable=False),
+    Column("active_key", String, nullable=True, unique=True),  # One update per copy.
+    Column("root_path", String, nullable=False),
+    Column("staging_path", String, nullable=True),
+    Column("old_path", String, nullable=True),
+    Column("backup_id", String, nullable=True),
+    Column("source_task_ids", Text, nullable=True),
+    Column("error_code", String, nullable=True),
+    Column("extra_count", Integer, nullable=True),
+    Column("extra_sample", Text, nullable=True),
+    Column("cleanup_failed", Integer, nullable=False, server_default=text("0")),
+    Column("created_at", String, nullable=False),
+    Column("updated_at", String, nullable=False),
+    Column("finished_at", String, nullable=True),
+    CheckConstraint(
+        "state IN ('queued', 'backing_up', 'downloading', 'unpacking', 'replacing', "
+        "'awaiting_confirmation', 'cleaning', 'done', 'failed', 'cancelled', 'interrupted', "
+        "'rolled_back')",
+        name="ck_game_updates_state",
+    ),
+    Index("ix_game_updates_work", "work_id", "created_at"),
+)
+
 library_entries = Table(
     "library_entries",
     metadata,

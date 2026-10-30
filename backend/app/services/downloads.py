@@ -431,6 +431,49 @@ class DownloadQueue:
         self._flow_check(flow_id)
         return self.tasks(body.work_id) if ids else self.tasks()
 
+    def fetch_again(self, work_id: str) -> list[str]:
+        """Every file of a work, fresh, for an update to use once they are all done."""
+        with self._engine.connect() as connection:
+            work = self._downloadable_work(connection, work_id)
+            account = accounts.get_account(connection)
+        _library, cache = self._folders.download_targets()
+        plan = self._resolve_plan(work.source_work_id)
+        if plan.kind == "serial" or not plan.files:
+            raise AtlasError("download_serial", "这部作品需要序列号，暂不支持。", status=409)
+        fingerprint = account.account_fingerprint if account else None
+        target = cache / safe_file_name(work.source_work_id, "work")
+        ids = [
+            self._create_one(work, file, len(plan.files), fingerprint, target, cache, again=True)
+            for file in plan.files
+        ]
+        self._pump()
+        return ids
+
+    def states_of(self, ids: list[str]) -> list[str]:
+        with self._engine.connect() as connection:
+            rows = connection.execute(
+                select(download_tasks.c.id, download_tasks.c.state).where(
+                    download_tasks.c.id.in_(ids)
+                )
+            ).all()
+        found = {row.id: row.state for row in rows}
+        return [found.get(task_id, "failed") for task_id in ids]
+
+    def files_of(self, ids: list[str]) -> list[Path]:
+        """The finished files, part order, for tasks this service itself wrote."""
+        with self._engine.connect() as connection:
+            rows = connection.execute(
+                select(download_tasks)
+                .where(download_tasks.c.id.in_(ids))
+                .order_by(download_tasks.c.part_number)
+            ).all()
+        return [Path(row.target_dir) / row.file_name for row in rows if row.file_name]
+
+    def files_ready(self, ids: list[str]) -> bool:
+        return all(state == "done" for state in self.states_of(ids)) and all(
+            path.is_file() for path in self.files_of(ids)
+        )
+
     def _flow_check(self, flow_id: str | None) -> None:
         if not flow_id or self.on_flow_finished is None:
             return

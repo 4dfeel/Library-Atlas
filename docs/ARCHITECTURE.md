@@ -241,3 +241,7 @@ frontend/src/features/game-detail/work-gallery.tsx  介绍图
 ## 17. Phase 2 检查点 8 实际落地（2026-10-31）
 - `services/library_scan.py`：只读文件夹名，后台任务，有预算。`adapters/system/volumes.py`：列出盘。测试配置下拿不到真实盘符。
 - 迁移 `0012`：`scan_roots`、`scan_jobs`、`scan_items`。
+
+## 18. Phase 2 检查点 9 实际落地（2026-10-31）
+- `services/game_updates.py`：备份并验证 → 下载 → 暂存解压 → 改名替换 → 迁入存档 → 等待确认 → 清理。每步先记录，崩溃时看磁盘恢复。
+- 迁移 `0013`：`save_configs`、`save_backups`、`game_updates`。备份在数据目录 `save-backups`。

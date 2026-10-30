@@ -658,10 +658,36 @@ class ExtractionService:
                 return
         raise _Stop("failed", "write_failed")
 
+    def unpack_into(self, inputs: list[Path], folder: Path, check: Callable[[], None]) -> Listing:
+        """For an update: the same checks into a folder it owns, with no task of its own."""
+        read = self._read(inputs)
+        if read is None:
+            raise ArchiveProblem("entry_changed")  # A lone file is not a whole game.
+        listing, engine = read
+
+        def ignore(_done: int) -> None:
+            return None
+
+        if engine == "zip":
+            extract_zip(inputs[0], folder, self._limits, ignore, check)
+        else:
+            tool = self._find_tool()
+            if tool is None:
+                raise ArchiveProblem("tool_missing")
+            tool.extract(inputs[0], folder, self._limits, ignore, check)
+            apply_renames(folder, listing)
+        verify_output(folder, listing)
+        return listing
+
+    def remove_task_files(self, ids: list[str]) -> None:
+        self._remove_sources(ids)
+
     def _remove_archives(self, row: Row[Any]) -> None:
         """The user wants no second copy once a work is unpacked. Only after the result is in
         place, only the files this task used, and a failure here spoils nothing."""
-        ids = json.loads(row.source_task_ids)
+        self._remove_sources(json.loads(row.source_task_ids))
+
+    def _remove_sources(self, ids: list[str]) -> None:
         with self._engine.connect() as connection:
             sources = connection.execute(
                 select(download_tasks).where(download_tasks.c.id.in_(ids))

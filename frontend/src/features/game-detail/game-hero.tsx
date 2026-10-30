@@ -13,6 +13,7 @@ import {
 } from '@/lib/data';
 import { AppLink } from '@/components/app-link';
 import { DownloadAction } from './download-action';
+import { GameUpdatePanel } from './game-update';
 import { LocalCopyPanel } from './local-copy';
 import {
   availabilityLabel,
@@ -217,6 +218,7 @@ export function GameHero({
             </div>
             <DownloadAction game={game} size={size} />
             {!isDemo && <LocalCopyPanel game={game} />}
+            {!isDemo && <GameUpdatePanel game={game} />}
             <dl className="hero-facts">
               {tracksPlay ? (
                 <>
