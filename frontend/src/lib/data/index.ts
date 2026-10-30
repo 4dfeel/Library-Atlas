@@ -30,6 +30,7 @@ export type {
   DlsiteConnection,
   FolderInfo,
   LibrarySummary,
+  AudioTrack,
   CopyPreview,
   SaveRule,
   ScanItem,
@@ -56,7 +57,11 @@ export {
   useLibraryScan,
   useLibraryScanItems,
   useGameUpdate,
+  useAudioBookmarks,
+  useAudioTracks,
+  useBookmarkActions,
   useLocalCopies,
+  usePlaylists,
   useLocalCopyActions,
   useUpdateSettings,
   useWorkIntroduction,
@@ -94,3 +99,4 @@ export {
 export type { ConnectionState, SourceConnection } from './demo-connections';
 export { isActiveTask, type DemoTask, type TaskPhase } from './demo-tasks';
 export { demoConnections, demoTasks, startDemoDownload } from './demo-runtime';
+export { audioSession, useAudioSession, type SessionTrack } from './audio-session';

@@ -605,6 +605,81 @@ class SaveRestoreOut(ApiModel):
     safety_backup_id: str
 
 
+class AudioTrack(ApiModel):
+    id: str
+    name: str
+    folder: str
+    size_bytes: int
+    playable: bool
+    position: float
+    duration: float | None  # Known once it has been played; never guessed.
+
+
+class AudioOut(ApiModel):
+    state: Literal["ready", "empty", "offline", "no_copy"]
+    copy_id: str | None = None
+    tracks: list[AudioTrack]
+    complete: bool = True
+    last_track_id: str | None = None
+
+
+class AudioProgressIn(ApiModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, extra="forbid")
+
+    copy_id: str
+    track_id: str
+    position: Annotated[float, Field(ge=0, allow_inf_nan=False)]
+    duration: Annotated[float, Field(ge=0, allow_inf_nan=False)] | None = None
+
+
+class BookmarkIn(ApiModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, extra="forbid")
+
+    copy_id: str
+    resource_id: str
+    position: Annotated[float, Field(ge=0, allow_inf_nan=False)]
+    label: Annotated[str, StringConstraints(max_length=200)] | None = None
+
+
+class BookmarkOut(ApiModel):
+    id: str
+    resource_id: str
+    position: float
+    label: str | None
+    created_at: str
+
+
+class BookmarksOut(ApiModel):
+    bookmarks: list[BookmarkOut]
+
+
+class PlaylistItem(ApiModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, extra="forbid")
+
+    copy_id: str
+    track_id: str
+    work_id: str
+    name: Annotated[str, StringConstraints(max_length=500)]
+
+
+class PlaylistIn(ApiModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, extra="forbid")
+
+    id: str | None = None
+    name: Annotated[str, StringConstraints(min_length=1, max_length=120)]
+    items: Annotated[list[PlaylistItem], Field(max_length=5000)]
+
+
+class PlaylistOut(ApiModel):
+    id: str
+    name: str
+    items: list[PlaylistItem]
+
+
+class PlaylistsOut(ApiModel):
+    playlists: list[PlaylistOut]
+
+
 IntroStatus = Literal["ok", "empty", "unavailable"]
 
 

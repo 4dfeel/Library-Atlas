@@ -46,6 +46,7 @@ from app.services.game_updates import GameUpdater
 from app.services.introductions import WorkIntroductions
 from app.services.library_scan import LibraryScanner
 from app.services.local_copies import LocalCopies
+from app.services.local_media import AUDIO_TYPES, LocalMedia
 from app.services.update_checks import UpdateChecker
 
 logger = logging.getLogger("atlas")
@@ -78,6 +79,7 @@ class ServiceState:
     introductions: WorkIntroductions | None = None
     local_copies: LocalCopies | None = None
     scanner: LibraryScanner | None = None
+    media: LocalMedia | None = None
     updates_game: GameUpdater | None = None
     updates: UpdateChecker | None = None
 
@@ -204,6 +206,15 @@ def _game_updates(request: Request, _engine: EngineDep) -> GameUpdater:
 
 
 GameUpdatesDep = Annotated[GameUpdater, Depends(_game_updates)]
+
+
+def _media(request: Request, _engine: EngineDep) -> LocalMedia:
+    service = _state(request).media
+    assert service is not None  # Built whenever the engine is.
+    return service
+
+
+MediaDep = Annotated[LocalMedia, Depends(_media)]
 
 
 def _updates(request: Request, _engine: EngineDep) -> UpdateChecker:
@@ -535,6 +546,49 @@ def _build_api() -> APIRouter:
     ) -> models.SaveRestoreOut:
         return service.restore(backup_id, body.copy_id)
 
+    @api.get("/works/{work_id}/audio")
+    def work_audio(service: MediaDep, work_id: str) -> models.AudioOut:
+        return service.audio(work_id)
+
+    @api.get("/works/{work_id}/audio/bookmarks")
+    def audio_bookmarks(service: MediaDep, work_id: str) -> models.BookmarksOut:
+        return service.bookmarks(work_id, "audio")
+
+    @api.get("/media/audio/{copy_id}/{track_id}", include_in_schema=False)
+    def stream_audio(service: MediaDep, copy_id: str, track_id: str) -> Response:
+        # FileResponse answers range requests, and reads from disk as they are served.
+        path, media_type = service.resolve(copy_id, track_id, AUDIO_TYPES)
+        return FileResponse(path, media_type=media_type)
+
+    @api.put("/media/audio-progress")
+    def audio_progress(service: MediaDep, body: models.AudioProgressIn) -> dict[str, bool]:
+        service.save_progress(
+            body.copy_id, body.track_id, "audio", body.position, body.duration, set(AUDIO_TYPES)
+        )
+        return {"saved": True}
+
+    @api.post("/media/audio-bookmarks")
+    def add_audio_bookmark(service: MediaDep, body: models.BookmarkIn) -> models.BookmarksOut:
+        work_id = service.add_bookmark(body, "audio", set(AUDIO_TYPES))
+        return service.bookmarks(work_id, "audio")
+
+    @api.delete("/audio-bookmarks/{bookmark_id}")
+    def remove_audio_bookmark(service: MediaDep, bookmark_id: str) -> dict[str, bool]:
+        service.remove_bookmark(bookmark_id)
+        return {"removed": True}
+
+    @api.get("/media/playlists")
+    def list_playlists(service: MediaDep) -> models.PlaylistsOut:
+        return service.playlists()
+
+    @api.post("/media/playlists")
+    def save_playlist(service: MediaDep, body: models.PlaylistIn) -> models.PlaylistsOut:
+        return service.save_playlist(body)
+
+    @api.delete("/media/playlists/{playlist_id}")
+    def remove_playlist(service: MediaDep, playlist_id: str) -> models.PlaylistsOut:
+        return service.remove_playlist(playlist_id)
+
     @api.get("/settings/updates")
     def update_settings(checker: UpdatesDep) -> models.UpdateSettings:
         return checker.status()
@@ -646,6 +700,7 @@ def create_app(
                     else LibraryScanner(opened.engine, state.local_copies)
                 )
                 state.scanner.recover()
+                state.media = LocalMedia(opened.engine)
                 state.dlsite = dlsite_factory(settings, opened.engine)
                 state.covers = CoverCache(settings.data_dir / "cache" / "covers")
                 state.gallery = build_gallery(settings, opened.engine, state.covers)

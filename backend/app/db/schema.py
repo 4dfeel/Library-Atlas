@@ -8,6 +8,7 @@ from sqlalchemy import (
     JSON,
     CheckConstraint,
     Column,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -376,6 +377,52 @@ game_updates = Table(
         name="ck_game_updates_state",
     ),
     Index("ix_game_updates_work", "work_id", "created_at"),
+)
+
+media_progress = Table(
+    "media_progress",
+    metadata,
+    Column("resource_id", String, primary_key=True),
+    Column("work_id", String, ForeignKey("works.id"), nullable=False),
+    Column("kind", String, nullable=False),
+    Column("position", Float, nullable=False),
+    Column("total", Float, nullable=True),
+    Column("stamp", String, nullable=False),  # Which version of the file this is about.
+    Column("updated_at", String, nullable=False),
+    Index("ix_media_progress_work", "work_id", "kind"),
+)
+
+media_bookmarks = Table(
+    "media_bookmarks",
+    metadata,
+    Column("id", String, primary_key=True),
+    Column("work_id", String, ForeignKey("works.id"), nullable=False),
+    Column("kind", String, nullable=False),
+    Column("resource_id", String, nullable=False),
+    Column("position", Float, nullable=False),
+    Column("label", String, nullable=True),
+    Column("stamp", String, nullable=False),
+    Column("created_at", String, nullable=False),
+    Index("ix_media_bookmarks_work", "work_id", "kind"),
+)
+
+playlists = Table(
+    "playlists",
+    metadata,
+    Column("id", String, primary_key=True),
+    Column("name", String, nullable=False),
+    Column("created_at", String, nullable=False),
+)
+
+playlist_items = Table(
+    "playlist_items",
+    metadata,
+    Column("playlist_id", String, ForeignKey("playlists.id"), primary_key=True),
+    Column("position", Integer, primary_key=True),
+    Column("copy_id", String, nullable=False),
+    Column("track_id", String, nullable=False),
+    Column("work_id", String, ForeignKey("works.id"), nullable=False),
+    Column("name", String, nullable=False),
 )
 
 library_entries = Table(

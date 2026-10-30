@@ -245,3 +245,6 @@ frontend/src/features/game-detail/work-gallery.tsx  介绍图
 ## 18. Phase 2 检查点 9 实际落地（2026-10-31）
 - `services/game_updates.py`：备份并验证 → 下载 → 暂存解压 → 改名替换 → 迁入存档 → 等待确认 → 清理。每步先记录，崩溃时看磁盘恢复。
 - 迁移 `0013`：`save_configs`、`save_backups`、`game_updates`。备份在数据目录 `save-backups`。
+
+- `services/local_media.py`：在已关联副本内找媒体文件（不跟随链接，有数量上限，短期缓存），页面只用 ID。进度绑定文件版本（大小+修改时间）。迁移 `0014`：`media_progress`、`media_bookmarks`、`playlists`、`playlist_items`。
+- `lib/data/audio-session.ts`：页面树之外的单一音频会话，只由点击启动。

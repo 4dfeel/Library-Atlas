@@ -262,6 +262,45 @@ export interface GameUpdateStatus {
   backups: { id: string; createdAt: string; files: number; available: boolean }[];
 }
 
+export interface AudioTrack {
+  id: string;
+  name: string;
+  folder: string;
+  sizeBytes: number;
+  playable: boolean;
+  position: number;
+  duration: number | null;
+}
+
+export interface AudioData {
+  state: 'ready' | 'empty' | 'offline' | 'no_copy';
+  copyId: string | null;
+  tracks: AudioTrack[];
+  complete: boolean;
+  lastTrackId: string | null;
+}
+
+export interface MediaBookmark {
+  id: string;
+  resourceId: string;
+  position: number;
+  label: string | null;
+  createdAt: string;
+}
+
+export interface PlaylistEntry {
+  copyId: string;
+  trackId: string;
+  workId: string;
+  name: string;
+}
+
+export interface Playlist {
+  id: string;
+  name: string;
+  items: PlaylistEntry[];
+}
+
 export type IntroBlock =
   | { type: 'heading'; text: string }
   | { type: 'paragraph'; spans: { text: string; href?: string }[] }
@@ -579,6 +618,41 @@ export class RealLibrarySource implements LibrarySource {
     return apiWrite('POST', `/api/v1/save-backups/${encodeURIComponent(backupId)}/restore`, {
       copyId,
     });
+  }
+
+  audio(workId: string, signal?: AbortSignal) {
+    return apiGet<AudioData>(`${workPath(workId)}/audio`, undefined, signal);
+  }
+
+  async audioBookmarks(workId: string, signal?: AbortSignal) {
+    return (
+      await apiGet<{ bookmarks: MediaBookmark[] }>(
+        `${workPath(workId)}/audio/bookmarks`,
+        undefined,
+        signal,
+      )
+    ).bookmarks;
+  }
+
+  addAudioBookmark(copyId: string, resourceId: string, position: number) {
+    return apiWrite('POST', '/api/v1/media/audio-bookmarks', { copyId, resourceId, position });
+  }
+
+  removeAudioBookmark(id: string) {
+    return apiWrite('DELETE', `/api/v1/audio-bookmarks/${encodeURIComponent(id)}`);
+  }
+
+  async playlists(signal?: AbortSignal) {
+    return (await apiGet<{ playlists: Playlist[] }>('/api/v1/media/playlists', undefined, signal))
+      .playlists;
+  }
+
+  savePlaylist(name: string, items: PlaylistEntry[]) {
+    return apiWrite('POST', '/api/v1/media/playlists', { name, items });
+  }
+
+  removePlaylist(id: string) {
+    return apiWrite('DELETE', `/api/v1/media/playlists/${encodeURIComponent(id)}`);
   }
 
   introduction(workId: string, signal?: AbortSignal): Promise<WorkIntroduction> {

@@ -46,6 +46,7 @@ import {
 } from '@/lib/router';
 import { DashboardPage } from '@/features/dashboard/dashboard-page';
 import { SourcesDialog } from '@/features/demo-services/sources-dialog';
+import { MiniPlayer } from '@/features/audio/audio-panel';
 import { DownloadBar, DownloadsPage } from '@/features/downloads/downloads-page';
 import { TasksDialog } from '@/features/demo-services/tasks-dialog';
 import { AccountMenu } from '@/features/workspace/account-menu';
@@ -394,6 +395,7 @@ export function App() {
                   )}
                 </Suspense>
               </RouteBoundary>
+              {!isDemo && <MiniPlayer />}
               {!isDemo && <DownloadBar />}
             </div>
           </div>

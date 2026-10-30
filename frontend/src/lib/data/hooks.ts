@@ -22,6 +22,9 @@ import {
   type SyncJob,
   type DownloadAction,
   type LocalCopy,
+  type MediaBookmark,
+  type Playlist,
+  type PlaylistEntry,
   type SaveRule,
   type ScanItemState,
   type LocalCopyInput,
@@ -802,3 +805,67 @@ export function useGameUpdate(workId: string) {
       void run(realSource.restoreSaves(backupId, copyId)).catch(() => undefined),
   };
 }
+
+export function useAudioTracks(workId: string) {
+  const isReal = useWorkspaceMode() === 'real';
+  const query = useQuery({
+    queryKey: [...realRoot, 'audio', workId],
+    queryFn: ({ signal }) => realSource.audio(workId, signal),
+    enabled: isReal,
+    retry: false,
+  });
+  return { audio: query.data, loading: isReal && query.isPending };
+}
+
+export function useAudioBookmarks(workId: string) {
+  const query = useQuery({
+    queryKey: [...realRoot, 'audio-bookmarks', workId],
+    queryFn: ({ signal }) => realSource.audioBookmarks(workId, signal),
+    enabled: useWorkspaceMode() === 'real',
+    retry: false,
+  });
+  return { bookmarks: query.data ?? emptyBookmarks };
+}
+
+const emptyBookmarks: MediaBookmark[] = [];
+
+export function useBookmarkActions(workId: string) {
+  const queryClient = useQueryClient();
+  const refresh = () =>
+    queryClient.invalidateQueries({ queryKey: [...realRoot, 'audio-bookmarks', workId] });
+  return {
+    add: async (copyId: string, resourceId: string, position: number) => {
+      await realSource.addAudioBookmark(copyId, resourceId, position);
+      await refresh();
+    },
+    remove: async (id: string) => {
+      await realSource.removeAudioBookmark(id);
+      await refresh();
+    },
+  };
+}
+
+export function usePlaylists() {
+  const queryClient = useQueryClient();
+  const key = [...realRoot, 'playlists'];
+  const query = useQuery({
+    queryKey: key,
+    queryFn: ({ signal }) => realSource.playlists(signal),
+    enabled: useWorkspaceMode() === 'real',
+    retry: false,
+  });
+  const refresh = () => queryClient.invalidateQueries({ queryKey: key });
+  return {
+    playlists: query.data ?? emptyPlaylists,
+    save: async (name: string, items: PlaylistEntry[]) => {
+      await realSource.savePlaylist(name, items);
+      await refresh();
+    },
+    remove: async (id: string) => {
+      await realSource.removePlaylist(id);
+      await refresh();
+    },
+  };
+}
+
+const emptyPlaylists: Playlist[] = [];

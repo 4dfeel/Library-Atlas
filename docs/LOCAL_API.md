@@ -223,6 +223,15 @@
 | `POST /library-scan/undo/{batchId}` | 只撤销这一批关联 |
 | `POST /library-scan/items/{id}/link` `ignore` | 逐条决定 |
 
+### 音声
+| 接口 | 说明 |
+| --- | --- |
+| `GET /works/{id}/audio` | `{state,copyId,tracks,complete,lastTrackId}`；`state`：`ready` `empty` `offline` `no_copy` |
+| `GET /media/audio/{copyId}/{trackId}` | 音频内容，支持 Range。不接受路径 |
+| `PUT /media/audio-progress` | `{copyId,trackId,position,duration?}` |
+| `GET /works/{id}/audio/bookmarks`，`POST /media/audio-bookmarks`，`DELETE /audio-bookmarks/{id}` | 书签 |
+| `GET`、`POST /media/playlists`，`DELETE /media/playlists/{id}` | 播放列表，整表保存 |
+
 ### 游戏更新与存档
 | 接口 | 说明 |
 | --- | --- |

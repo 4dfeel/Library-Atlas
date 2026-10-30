@@ -18,6 +18,7 @@ import {
   kindLabels,
   platformLabels,
 } from '@/lib/utils';
+import { AudioPanel } from '@/features/audio/audio-panel';
 import { OfficialIntro } from './official-intro';
 import { WorkGallery } from './work-gallery';
 import { GameHero } from './game-hero';
@@ -99,6 +100,7 @@ function DetailBody({ game }: { game: GameDetail }) {
       : 0;
   return (
     <>
+      {!isDemo && game.kind === 'audio' && <AudioPanel game={game} />}
       {!isDemo && game.platform === 'dlsite' && <WorkGallery workId={game.id} />}
       <section className="detail-about" aria-labelledby="about-title">
         <span className="eyebrow">ABOUT THIS WORK</span>
