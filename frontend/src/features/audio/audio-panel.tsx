@@ -74,7 +74,7 @@ export function AudioPanel({ game }: { game: GameDetail }) {
     return (
       <section className="audio-panel" data-testid="audio-panel">
         <h2>收听</h2>
-        <p className="settings-note">下载并解压，或关联本地文件夹后，就可以在这里收听。</p>
+        <p className="settings-note">还没有在本机找到这部作品。下载并解压后，就可以在这里收听。</p>
       </section>
     );
   if (audio.state === 'offline' || audio.state === 'empty' || !copyId)

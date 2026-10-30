@@ -251,3 +251,5 @@ frontend/src/features/game-detail/work-gallery.tsx  介绍图
 
 - `services/reader.py`：把副本里的文件整理成册，压缩包原地读取，页面 ID 含内容版本。`domain/image_header.py`：读文件头判断类型和尺寸。迁移 `0015`：`reading_progress`、`reader_bookmarks`。
 - `features/reader/`：阅读器。PDF 用本地打包的 `pdfjs-dist`，按需加载，只渲染页面内容。
+
+- 迁移 `0016`：`scan_jobs.auto_linked`、`scan_jobs.batch_id`、`scan_items.declined`。`LibraryScanner.scan_automatically` 在启动和同步完成后运行，测试配置下没有盘，不做任何事。

@@ -123,14 +123,129 @@ def test_maker_and_title_match_is_likely_and_nothing_is_linked_yet(
     assert api.get(f"/api/v1/works/{all_works[0]['id']}/local-copies").json()["copies"] == []
 
 
-def test_title_with_another_maker_only_asks(api: TestClient, tmp_path: Path) -> None:
+def test_a_unique_title_with_another_maker_is_a_match(api: TestClient, tmp_path: Path) -> None:
     work = work_ids(api)[0]
     root = make_library(tmp_path / "Library", {("Game", "别的社团", work["title"]): True})
     status = scan(api, root)
+    assert status["counts"]["likely"] == 1
+    assert listed(api, "likely")[0]["candidates"][0]["workId"] == work["id"]
+
+
+def test_a_short_title_with_another_maker_only_asks(api: TestClient, tmp_path: Path) -> None:
+    work = work_ids(api)[0]
+    with engine_of(api).begin() as connection:
+        connection.execute(update(works).where(works.c.id == work["id"]).values(title="短名"))
+    root = make_library(tmp_path / "Library", {("Game", "别的社团", "短名"): True})
+    status = scan(api, root)
     assert status["counts"]["review"] == 1
     assert status["counts"]["likely"] == 0
-    item = listed(api, "review")[0]
-    assert item["candidates"][0]["workId"] == work["id"]
+
+
+def test_a_left_off_subtitle_with_the_same_maker_is_a_match(
+    api: TestClient, tmp_path: Path
+) -> None:
+    work = work_ids(api)[0]
+    with engine_of(api).begin() as connection:
+        connection.execute(
+            update(works)
+            .where(works.c.id == work["id"])
+            .values(title="とても長い作品の名前 副題つき", maker="虚构社团")
+        )
+    root = make_library(tmp_path / "Library", {("Game", "虚构社团", "とても長い作品の名前"): True})
+    assert scan(api, root)["counts"]["likely"] == 1
+
+
+def test_another_volume_is_not_a_left_off_subtitle(api: TestClient, tmp_path: Path) -> None:
+    work = work_ids(api)[0]
+    with engine_of(api).begin() as connection:
+        connection.execute(
+            update(works)
+            .where(works.c.id == work["id"])
+            .values(title="とても長い作品の名前 2", maker="虚构社团")
+        )
+    root = make_library(tmp_path / "Library", {("Game", "虚构社团", "とても長い作品の名前"): True})
+    assert scan(api, root)["counts"]["unmatched"] == 1
+
+
+def auto_scan(client: TestClient, root: Path) -> dict[str, Any]:
+    response = client.post(f"{BASE}/start", json={"roots": [str(root)], "autoLink": True})
+    assert response.status_code == 200, response.text
+    for _attempt in range(200):
+        status: dict[str, Any] = client.get(BASE).json()
+        if status["job"]["state"] != "running":
+            return status
+        time.sleep(0.05)
+    raise AssertionError("scan did not finish")
+
+
+def test_a_scan_links_clear_matches_by_itself(api: TestClient, tmp_path: Path) -> None:
+    one, two = work_ids(api)[:2]
+    folders = {**work_folders([one]), ("Game", "别的社团", "作品库里没有"): True}
+    root = make_library(tmp_path / "Library", folders)
+    before = snapshot(root)
+    status = auto_scan(api, root)
+    assert status["job"]["autoLinked"] == 1
+    assert status["counts"]["linked"] == 1
+    assert status["counts"]["unmatched"] == 1
+    copies = api.get(f"/api/v1/works/{one['id']}/local-copies").json()["copies"]
+    assert copies[0]["origin"] == "scanned"
+    assert api.get(f"/api/v1/works/{two['id']}/local-copies").json()["copies"] == []
+    assert snapshot(root) == before
+    again = auto_scan(api, root)
+    assert again["job"]["autoLinked"] == 0
+    assert len(api.get(f"/api/v1/works/{one['id']}/local-copies").json()["copies"]) == 1
+
+
+def test_it_never_picks_between_works_of_the_same_name(api: TestClient, tmp_path: Path) -> None:
+    one, two = work_ids(api)[:2]
+    with engine_of(api).begin() as connection:
+        connection.execute(
+            update(works)
+            .where(works.c.id.in_([one["id"], two["id"]]))
+            .values(title="同じ名前の作品")
+        )
+    root = make_library(tmp_path / "Library", {("Game", "别的社团", "同じ名前の作品"): True})
+    status = auto_scan(api, root)
+    assert status["job"]["autoLinked"] == 0
+    assert status["counts"]["review"] == 1
+
+
+def test_what_the_user_took_back_is_not_linked_again(api: TestClient, tmp_path: Path) -> None:
+    one = work_ids(api)[0]
+    root = make_library(tmp_path / "Library", work_folders([one]))
+    batch = auto_scan(api, root)["job"]["batchId"]
+    assert api.post(f"{BASE}/undo/{batch}").status_code == 200
+    status = auto_scan(api, root)
+    assert status["job"]["autoLinked"] == 0
+    assert api.get(f"/api/v1/works/{one['id']}/local-copies").json()["copies"] == []
+    # Unless they ask for it.
+    assert api.post(f"{BASE}/import", json={"includeLikely": True}).json()["linked"] == 1
+
+
+def test_automatic_scans_cover_fixed_drives_and_never_a_test_library(
+    api: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.adapters.system.volumes import Volume
+
+    service = api.app.state.service  # type: ignore[attr-defined]
+    scanner = service.scanner
+    started: list[Any] = []
+    monkeypatch.setattr(scanner, "start", started.append)
+    scanner.scan_automatically()
+    assert started == []
+    assert service.sync.on_finished == scanner.scan_automatically
+    monkeypatch.setattr(
+        scanner,
+        "_volumes",
+        lambda: [
+            Volume(letter="D", kind="fixed", available=True),
+            Volume(letter="E", kind="removable", available=True),
+            Volume(letter="F", kind="network", available=True),
+        ],
+    )
+    scanner.scan_automatically()
+    assert started[0].drives == ["D"]
+    assert started[0].auto_link is True
 
 
 def test_several_works_with_one_title_are_never_picked_between(
@@ -260,7 +375,9 @@ def test_the_same_work_on_two_drives_is_two_copies(api: TestClient, tmp_path: Pa
 
 def test_a_user_decision_links_a_question(api: TestClient, tmp_path: Path) -> None:
     work = work_ids(api)[0]
-    root = make_library(tmp_path / "Library", {("Game", "别的社团", work["title"]): True})
+    with engine_of(api).begin() as connection:
+        connection.execute(update(works).where(works.c.id == work["id"]).values(title="短名"))
+    root = make_library(tmp_path / "Library", {("Game", "别的社团", "短名"): True})
     scan(api, root)
     item = listed(api, "review")[0]
     assert api.post(f"{BASE}/items/{item['id']}/link", json={"workId": "wrong"}).status_code == 422

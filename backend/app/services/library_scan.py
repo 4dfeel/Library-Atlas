@@ -1,9 +1,10 @@
 """Finds the user's work folders on their drives and matches them to the library.
 
 Reads folder names only: no file is opened, moved, changed or run, and nothing in a folder decides
-what gets executed. It runs when asked, in the background, within a budget. Nothing is linked
-until the user says so, except what they asked to import. A title that matches is a good reason
-to ask, not proof: only a platform ID in a folder's name counts as certain.
+what gets executed. It runs in the background, within a budget: at startup, after a sync and when
+asked. The user's decision (2026-10-31) is that a clear match links by itself, so only links are
+written, each can be undone, and what they take back is not linked again unless they ask. An
+ambiguous match is never picked for them.
 """
 
 import json
@@ -32,7 +33,8 @@ from app.services.local_copies import LocalCopies
 logger = logging.getLogger("atlas")
 
 _KIND_FOLDERS = ("Game", "Audio", "Comic", "Illust", "Movie", "Other")
-_KNOWN_PLACES = ("DLsiteNest/Library", "Library", "DLsite/Library")
+# Where the user's library is, on whichever drive (user's statement, 2026-10-31).
+_KNOWN_PLACES = ("DLsiteNest/Library",)
 _ROOT_NAMES = {"library"}
 _ROOT_PARENT_NAMES = {"dlsitenest"}
 _SKIPPED = {
@@ -58,6 +60,9 @@ MAX_FOLDERS = 400_000
 _PROGRESS_EVERY = 500
 _ACTIVE = ("running",)
 _PAGE_LIMIT = 200
+# Long enough that a same name is not a coincidence.
+_MIN_UNIQUE_TITLE = 6
+_MIN_CONTAINED_TITLE = 8
 MESSAGES = {
     "budget": "这次扫描到达了文件夹数量上限，范围没有查完，可以指定具体文件夹再扫。",
     "interrupted": "上次扫描被中断了，已发现的结果还在，可以重新扫描。",
@@ -111,6 +116,19 @@ def looks_like_library(path: Path) -> bool:
         return False
     named = path.name.casefold() in _ROOT_NAMES or path.parent.name.casefold() in _ROOT_PARENT_NAMES
     return named or deep >= 2
+
+
+def _contained(title_key: str, same_maker: list[Row[Any]]) -> list[Row[Any]]:
+    """Works by this maker whose name holds the folder's, or the other way round: a subtitle left
+    off. A number in what is left over means another volume, so that is no match."""
+    found = []
+    for row in same_maker:
+        short, long = sorted((title_key, _norm(row.title)), key=len)
+        if len(short) < _MIN_CONTAINED_TITLE or short not in long:
+            continue
+        if not any(character.isdigit() for character in long.replace(short, "", 1)):
+            found.append(row)
+    return found
 
 
 @dataclass
@@ -196,6 +214,8 @@ class LibraryScanner:
             message=MESSAGES.get(row.code) if row.code else None,
             started_at=row.started_at,
             finished_at=row.finished_at,
+            auto_linked=row.auto_linked,
+            batch_id=row.batch_id,
         )
 
     def items(
@@ -272,12 +292,32 @@ class LibraryScanner:
                 )
             self._thread = threading.Thread(
                 target=self._run,
-                args=(job_id, [letter.upper() for letter in body.drives], roots, body.deep),
+                args=(
+                    job_id,
+                    [letter.upper() for letter in body.drives],
+                    roots,
+                    body.deep,
+                    body.auto_link,
+                ),
                 name="library-scan",
                 daemon=True,
             )
             self._thread.start()
         return self.status()
+
+    def scan_automatically(self) -> None:
+        """Looks in the known place on each fixed drive and links what clearly matches. Must not
+        disturb whatever called it, and a test library has no drives, so it does nothing there."""
+        try:
+            drives = [
+                volume.letter
+                for volume in self._volumes()
+                if volume.kind == "fixed" and volume.available
+            ]
+            if drives:
+                self.start(models.ScanStart(drives=drives, auto_link=True))
+        except Exception as error:  # noqa: BLE001 - type only, no paths.
+            logger.error("automatic library scan failed: %s", type(error).__name__)
 
     def cancel(self) -> models.ScanStatus:
         self._cancel.set()
@@ -287,7 +327,9 @@ class LibraryScanner:
         with writing(self._engine).begin() as connection:
             connection.execute(update(scan_jobs).where(scan_jobs.c.id == job_id).values(**values))
 
-    def _run(self, job_id: str, drives: list[str], named: list[Path], deep: bool) -> None:
+    def _run(
+        self, job_id: str, drives: list[str], named: list[Path], deep: bool, auto_link: bool
+    ) -> None:
         stats = {"folders": 0, "found": 0, "skipped": 0}
         complete = True
         try:
@@ -320,12 +362,14 @@ class LibraryScanner:
                     **stats,
                 )
                 return
+            linked: dict[str, Any] = self._link_matches(job_id) if auto_link else {}
             self._report(
                 job_id,
                 state="done",
                 complete=1 if complete else 0,
                 code=None if complete else "budget",
                 finished_at=_now(),
+                **linked,
                 **stats,
             )
         except Exception as error:  # noqa: BLE001 - must end the job; type only, no paths.
@@ -372,7 +416,9 @@ class LibraryScanner:
 
     # --- matching ---
 
-    def _index(self) -> tuple[dict[str, str], dict[str, list[Row[Any]]]]:
+    def _index(
+        self,
+    ) -> tuple[dict[str, str], dict[str, list[Row[Any]]], dict[str, list[Row[Any]]]]:
         """Ordinary works only: a hidden one must not be revealed by a folder that matches it."""
         with self._engine.connect() as connection:
             rows = connection.execute(
@@ -382,9 +428,11 @@ class LibraryScanner:
             ).all()
         by_id = {row.source_work_id.upper(): row.id for row in rows}
         by_title: dict[str, list[Row[Any]]] = {}
+        by_maker: dict[str, list[Row[Any]]] = {}
         for row in rows:
             by_title.setdefault(_norm(row.title), []).append(row)
-        return by_id, by_title
+            by_maker.setdefault(_norm(row.maker), []).append(row)
+        return by_id, by_title, by_maker
 
     @staticmethod
     def _match(
@@ -393,24 +441,31 @@ class LibraryScanner:
         title: str,
         by_id: dict[str, str],
         by_title: dict[str, list[Row[Any]]],
+        by_maker: dict[str, list[Row[Any]]],
     ) -> tuple[str, list[str], str]:
         for name in names:
             found = _ID.search(name)
             if found and found.group(1).upper() in by_id:
                 return "certain", [by_id[found.group(1).upper()]], "文件夹名里有作品编号"
-        same = by_title.get(_norm(title), [])
+        title_key = _norm(title)
+        same = by_title.get(title_key, [])
         if not same:
+            contained = _contained(title_key, by_maker.get(_norm(maker), []))
+            if len(contained) == 1:
+                return "likely", [contained[0].id], "制作方相同，作品名只差副标题"
             return "unmatched", [], "作品库里没有同名作品"
         same_maker = [row for row in same if _norm(row.maker) == _norm(maker)]
         if len(same_maker) == 1:
             return "likely", [same_maker[0].id], "制作方和作品名都相同"
         if len(same) == 1:
-            return "review", [same[0].id], "作品名相同，制作方不同"
+            if len(title_key) >= _MIN_UNIQUE_TITLE:
+                return "likely", [same[0].id], "作品名完全相同，且只有这一部"
+            return "review", [same[0].id], "作品名很短且制作方不同"
         return "review", [row.id for row in same], "有多部同名作品"
 
     def _read_library(self, root: Path, stats: dict[str, int], job_id: str) -> None:
         """`<type>/<maker>/<title>`. A folder already seen keeps what the user decided about it."""
-        by_id, by_title = self._index()
+        by_id, by_title, by_maker = self._index()
         now = _now()
         with writing(self._engine).begin() as connection:
             row = connection.execute(
@@ -455,7 +510,12 @@ class LibraryScanner:
                     if existing is not None and existing.state in ("linked", "ignored"):
                         continue
                     state, candidates, reason = self._match(
-                        [title.name, maker.name], maker.name, title.name, by_id, by_title
+                        [title.name, maker.name],
+                        maker.name,
+                        title.name,
+                        by_id,
+                        by_title,
+                        by_maker,
                     )
                     batch.append(
                         {
@@ -520,9 +580,31 @@ class LibraryScanner:
             connection.execute(
                 update(scan_items)
                 .where(scan_items.c.id == row.id)
-                .values(state="linked", work_id=work_id, batch_id=batch_id)
+                .values(state="linked", work_id=work_id, batch_id=batch_id, declined=0)
             )
         return True
+
+    def _link_matches(self, job_id: str) -> dict[str, Any]:
+        """What this scan found clearly, apart from what the user already took back. One folder
+        that cannot be linked does not stop the others."""
+        batch_id = uuid.uuid4().hex
+        with self._engine.connect() as connection:
+            rows = connection.execute(
+                select(scan_items).where(
+                    scan_items.c.job_id == job_id,
+                    scan_items.c.state.in_(("certain", "likely")),
+                    scan_items.c.declined == 0,
+                )
+            ).all()
+        linked = 0
+        for row in rows:
+            candidates = json.loads(row.candidates or "[]")
+            try:
+                if len(candidates) == 1 and self._link(row, candidates[0], batch_id):
+                    linked += 1
+            except AtlasError:
+                continue
+        return {"auto_linked": linked, "batch_id": batch_id if linked else None}
 
     def import_matches(self, body: models.ScanImport) -> models.ScanImportOut:
         """What the user chose to accept. One work with several folders gets several copies, and
@@ -571,7 +653,12 @@ class LibraryScanner:
             connection.execute(
                 update(scan_items)
                 .where(scan_items.c.batch_id == batch_id)
-                .values(state="likely", batch_id=None, work_id=None)
+                .values(state="likely", batch_id=None, work_id=None, declined=1)
+            )
+            connection.execute(
+                update(scan_jobs)
+                .where(scan_jobs.c.batch_id == batch_id)
+                .values(auto_linked=0, batch_id=None)
             )
         return models.ScanImportOut(batch_id=batch_id, linked=-int(removed), skipped=0)
 

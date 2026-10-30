@@ -75,6 +75,7 @@ class DlsiteSync:
         self._auth = auth
         self._client_factory = client_factory
         self._sleep = sleep
+        self.on_finished: Callable[[], None] | None = None
         self._lock = threading.Lock()
         self._cancel = threading.Event()
         self._thread: threading.Thread | None = None
@@ -187,6 +188,9 @@ class DlsiteSync:
         try:
             client = self._client_factory(cookies)
             self._execute(job_id, client, generation, totals)
+            # New works may match folders already on disk.
+            if self.on_finished is not None:
+                self.on_finished()
         except _Stop as stop:
             state = stop.state
             # Works saved before a failure stay; the run is reported as partial, not clean.

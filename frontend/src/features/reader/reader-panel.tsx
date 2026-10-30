@@ -23,7 +23,7 @@ export function ReaderPanel({ game }: { game: GameDetail }) {
     return (
       <section className="audio-panel" data-testid="reader-panel">
         {heading}
-        <p className="settings-note">下载并解压，或关联本地文件夹后，就可以在这里阅读。</p>
+        <p className="settings-note">还没有在本机找到这部作品。下载并解压后，就可以在这里阅读。</p>
       </section>
     );
   if (books.state === 'offline' || books.state === 'empty' || !books.copyId)

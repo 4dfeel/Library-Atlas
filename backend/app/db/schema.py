@@ -296,6 +296,8 @@ scan_jobs = Table(
     Column("code", String, nullable=True),
     Column("started_at", String, nullable=False),
     Column("finished_at", String, nullable=True),
+    Column("auto_linked", Integer, nullable=False, server_default=text("0")),
+    Column("batch_id", String, nullable=True),
     CheckConstraint(
         "state IN ('running', 'done', 'failed', 'cancelled', 'interrupted')",
         name="ck_scan_jobs_state",
@@ -320,6 +322,8 @@ scan_items = Table(
     Column("candidates", Text, nullable=True),
     Column("work_id", String, nullable=True),
     Column("batch_id", String, nullable=True),
+    # The user took this link back: scans leave it alone until they ask for it again.
+    Column("declined", Integer, nullable=False, server_default=text("0")),
     Column("job_id", String, nullable=True),
     CheckConstraint(
         "state IN ('certain', 'likely', 'review', 'unmatched', 'linked', 'ignored')",

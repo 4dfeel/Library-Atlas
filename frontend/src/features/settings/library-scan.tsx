@@ -94,16 +94,16 @@ function Items({ state }: { state: ScanItemState }) {
 }
 
 /**
- * Finds work folders across drives. Reads folder names only, moves and runs nothing, and links
- * nothing until the user accepts it. A title match is a reason to ask, not proof.
+ * Finds the library on the drives and links what clearly matches, by itself: at startup, after a
+ * sync, and from this button. Reads folder names only, moves and runs nothing. Anything ambiguous
+ * is listed here for the user, and a link can be taken back.
  */
 export function LibraryScanPanel() {
   const { status, start, cancel, importMatches, undo, error } = useLibraryScan();
   const [drives, setDrives] = useState<Set<string> | null>(null);
   const [deep, setDeep] = useState(false);
   const [root, setRoot] = useState('');
-  const [tab, setTab] = useState<ScanItemState>('likely');
-  const [lastBatch, setLastBatch] = useState<{ id: string; linked: number } | null>(null);
+  const [tab, setTab] = useState<ScanItemState>('review');
   if (!status) return <p className="settings-note">正在读取…</p>;
   const usable = status.volumes.filter((volume) => volume.available);
   const chosen = drives ?? new Set(usable.filter((v) => v.kind === 'fixed').map((v) => v.letter));
@@ -113,46 +113,50 @@ export function LibraryScanPanel() {
   return (
     <div className="library-scan" data-testid="library-scan">
       <p className="settings-note">
-        在选定的盘上寻找作品文件夹。只读取文件夹名称，不会移动、修改或运行任何文件。
+        Atlas 会在启动和同步后，自动查找各个盘的 DLsiteNest\Library
+        并关联匹配的作品。只读取文件夹名称，不会移动、修改或运行任何文件。
       </p>
-      <div className="scan-drives" role="group" aria-label="要扫描的盘">
-        {status.volumes.map((volume) => (
-          <label key={volume.letter} className={volume.available ? '' : 'is-disabled'}>
-            <input
-              type="checkbox"
-              disabled={!volume.available || running}
-              checked={chosen.has(volume.letter)}
-              onChange={(event) => {
-                const next = new Set(chosen);
-                if (event.target.checked) next.add(volume.letter);
-                else next.delete(volume.letter);
-                setDrives(next);
-              }}
-            />
-            {volume.letter}:{volume.kind === 'removable' && '（移动盘）'}
-            {volume.kind === 'network' && '（网络盘，不扫描）'}
-          </label>
-        ))}
-      </div>
-      <label className="scan-deep">
-        <input
-          type="checkbox"
-          checked={deep}
-          disabled={running}
-          onChange={(event) => setDeep(event.target.checked)}
-        />
-        深入扫描：检查盘上的目录结构（较慢）。不勾选时只看常见位置。
-      </label>
-      <div className="folder-controls">
-        <Input
-          aria-label="指定文件夹"
-          placeholder="也可以直接指定一个文件夹"
-          value={root}
-          spellCheck={false}
-          disabled={running}
-          onChange={(event) => setRoot(event.target.value)}
-        />
-      </div>
+      <details className="scan-advanced">
+        <summary>高级选项：指定盘或文件夹</summary>
+        <div className="scan-drives" role="group" aria-label="要扫描的盘">
+          {status.volumes.map((volume) => (
+            <label key={volume.letter} className={volume.available ? '' : 'is-disabled'}>
+              <input
+                type="checkbox"
+                disabled={!volume.available || running}
+                checked={chosen.has(volume.letter)}
+                onChange={(event) => {
+                  const next = new Set(chosen);
+                  if (event.target.checked) next.add(volume.letter);
+                  else next.delete(volume.letter);
+                  setDrives(next);
+                }}
+              />
+              {volume.letter}:{volume.kind === 'removable' && '（移动盘）'}
+              {volume.kind === 'network' && '（网络盘，不扫描）'}
+            </label>
+          ))}
+        </div>
+        <label className="scan-deep">
+          <input
+            type="checkbox"
+            checked={deep}
+            disabled={running}
+            onChange={(event) => setDeep(event.target.checked)}
+          />
+          深入扫描：检查盘上的目录结构（较慢）。不勾选时只看常见位置。
+        </label>
+        <div className="folder-controls">
+          <Input
+            aria-label="指定文件夹"
+            placeholder="也可以直接指定一个文件夹"
+            value={root}
+            spellCheck={false}
+            disabled={running}
+            onChange={(event) => setRoot(event.target.value)}
+          />
+        </div>
+      </details>
       <div className="dlsite-actions">
         {running ? (
           <Button variant="ghost" size="sm" onClick={cancel}>
@@ -163,13 +167,10 @@ export function LibraryScanPanel() {
           <Button
             size="sm"
             disabled={chosen.size === 0 && !root.trim()}
-            onClick={() => {
-              setLastBatch(null);
-              start([...chosen], root.trim() ? [root.trim()] : [], deep);
-            }}
+            onClick={() => start([...chosen], root.trim() ? [root.trim()] : [], deep)}
           >
             <Search size={14} />
-            发现本机作品库
+            重新扫描并关联
           </Button>
         )}
       </div>
@@ -205,39 +206,26 @@ export function LibraryScanPanel() {
       {!running && status.job && (
         <>
           <div className="dlsite-actions" data-testid="scan-summary">
-            <Button
-              size="sm"
-              disabled={accept === 0}
-              onClick={() =>
-                void importMatches(true).then((result) =>
-                  setLastBatch({ id: result.batchId, linked: result.linked }),
-                )
-              }
-            >
+            <span className="dlsite-note" role="status" data-testid="scan-linked">
               <CircleCheck size={14} />
-              关联 {accept} 部匹配的作品
-            </Button>
-            {lastBatch && lastBatch.linked > 0 && (
-              <>
-                <span className="dlsite-note" role="status">
-                  已关联 {lastBatch.linked} 部
-                </span>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    undo(lastBatch.id);
-                    setLastBatch(null);
-                  }}
-                >
-                  <RotateCcw size={14} />
-                  撤销这次关联
-                </Button>
-              </>
+              已关联 {counts.linked} 部
+              {status.job.autoLinked > 0 && `，这次自动关联 ${status.job.autoLinked} 部`}
+            </span>
+            {status.job.batchId && (
+              <Button variant="ghost" size="sm" onClick={() => undo(status.job!.batchId!)}>
+                <RotateCcw size={14} />
+                撤销这次关联
+              </Button>
+            )}
+            {accept > 0 && (
+              <Button variant="secondary" size="sm" onClick={() => void importMatches(true)}>
+                <CircleCheck size={14} />
+                关联 {accept} 部匹配的作品
+              </Button>
             )}
           </div>
           <div className="scan-tabs" role="tablist" aria-label="扫描结果">
-            {(['likely', 'certain', 'review', 'unmatched', 'linked', 'ignored'] as const).map(
+            {(['review', 'unmatched', 'linked', 'likely', 'certain', 'ignored'] as const).map(
               (state) => (
                 <button
                   key={state}

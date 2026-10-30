@@ -766,6 +766,8 @@ def create_app(
                 if state.dlsite is not None:
                     state.sync = dlsite_sync_factory(settings, opened.engine, state.dlsite)
                     state.sync.recover()
+                    assert state.scanner is not None  # Built just above.
+                    state.sync.on_finished = state.scanner.scan_automatically
                     assert state.folders is not None  # Built just above.
                     state.downloads = build_download_queue(
                         settings, opened.engine, state.dlsite, state.folders
@@ -779,6 +781,7 @@ def create_app(
                     opened.engine, settings, state.downloads, state.extractions
                 )
                 state.updates_game.recover()
+                state.scanner.scan_automatically()
             except DatabaseNotReady as error:
                 state.not_ready_reason = error.reason
                 logger.error("database not ready: %s", error.reason)

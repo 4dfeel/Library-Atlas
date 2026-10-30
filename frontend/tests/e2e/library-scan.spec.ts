@@ -54,7 +54,9 @@ test.describe('finding works on this computer', () => {
   });
   test.afterAll(async () => service?.dispose());
 
-  test('scan, accept the matches, undo, and no file is touched', async ({ page }) => {
+  test('a scan links what matches by itself, can be undone, and touches no file', async ({
+    page,
+  }) => {
     await enterRealMode(page);
     const library = join(base, test.info().project.name, 'Library');
     const works = (
@@ -72,25 +74,31 @@ test.describe('finding works on this computer', () => {
 
     await page.goto(`${service.origin}/settings`);
     const panel = page.getByTestId('library-scan');
+    await panel.getByText('高级选项').click();
     await panel.getByLabel('指定文件夹').fill(library);
-    await panel.getByRole('button', { name: '发现本机作品库' }).click();
-    const accept = panel.getByRole('button', { name: /关联 3 部匹配的作品/ });
-    await expect(accept).toBeVisible({ timeout: 20_000 });
+    await panel.getByRole('button', { name: '重新扫描并关联' }).click();
+    await expect(panel.getByTestId('scan-linked')).toContainText('这次自动关联 3 部', {
+      timeout: 20_000,
+    });
+    await panel.getByRole('tab', { name: /已关联/ }).click();
     await expect(panel.getByTestId('scan-items')).toContainText(works[0].title);
     await panel.getByRole('tab', { name: /没有匹配/ }).click();
     await expect(panel.getByTestId('scan-items')).toContainText('作品库里没有的作品');
     await shot(page, 'scan-results');
     await noHorizontalScroll(page);
 
-    await panel.getByRole('tab', { name: /很可能/ }).click();
-    await accept.click();
-    await expect(panel).toContainText('已关联 3 部');
     const copies = (await (await call(`/works/${works[0].id}/local-copies`)).json()).copies;
     expect(copies[0].origin).toBe('scanned');
     expect(copies[0].entry).toBe('Game.exe');
 
     await panel.getByRole('button', { name: '撤销这次关联' }).click();
     await expect(panel.getByRole('button', { name: /关联 3 部匹配的作品/ })).toBeVisible();
+    expect((await (await call(`/works/${works[0].id}/local-copies`)).json()).copies).toEqual([]);
+    // Taken back stays taken back: scanning again does not link them behind the user's back.
+    await panel.getByRole('button', { name: '重新扫描并关联' }).click();
+    await expect(panel.getByTestId('scan-linked')).toContainText('已关联 0 部', {
+      timeout: 20_000,
+    });
     expect((await (await call(`/works/${works[0].id}/local-copies`)).json()).copies).toEqual([]);
     expect(await readdir(folders[0]!)).toEqual(['Game.exe']);
     expect((await stat(join(folders[0]!, 'Game.exe'))).mtimeMs).toBe(before);

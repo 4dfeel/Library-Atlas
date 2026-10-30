@@ -223,6 +223,9 @@
 | `POST /library-scan/undo/{batchId}` | 只撤销这一批关联 |
 | `POST /library-scan/items/{id}/link` `ignore` | 逐条决定 |
 
+### 本机作品库的自动关联
+`POST /library-scan/start` 接受 `autoLink`。任务结果里有 `autoLinked` 和 `batchId`，`batchId` 传给 `undo` 可撤销。
+
 ### 音声
 | 接口 | 说明 |
 | --- | --- |

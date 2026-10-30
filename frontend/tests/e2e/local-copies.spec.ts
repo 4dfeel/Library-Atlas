@@ -81,7 +81,7 @@ test.describe('local copies', () => {
     await control({ pick: folder });
     await page.goto(`${service.origin}/library/${game.id}`);
     const panel = page.getByTestId('local-copy');
-    await panel.getByRole('button', { name: '关联本地文件' }).click();
+    await panel.getByRole('button', { name: '手动指定文件夹' }).click();
     const form = page.getByTestId('copy-form');
     await form.getByRole('button', { name: '选择' }).click();
     await expect(form.getByLabel('文件夹', { exact: true })).toHaveValue(folder);
@@ -108,7 +108,7 @@ test.describe('local copies', () => {
     await page.reload();
     await expect(panel.getByTestId('launch')).toBeEnabled();
     await panel.getByRole('button', { name: '取消关联' }).click();
-    await expect(panel.getByRole('button', { name: '关联本地文件' })).toBeVisible();
+    await expect(panel.getByRole('button', { name: '手动指定文件夹' })).toBeVisible();
     expect(await readdir(folder)).toContain('Game.exe');
   });
 

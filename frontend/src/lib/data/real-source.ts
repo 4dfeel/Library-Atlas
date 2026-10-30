@@ -222,6 +222,8 @@ export interface ScanStatus {
     state: 'running' | 'done' | 'failed' | 'cancelled' | 'interrupted';
     folders: number;
     found: number;
+    autoLinked: number;
+    batchId: string | null;
     complete: boolean;
     code: string | null;
     message: string | null;
@@ -611,7 +613,12 @@ export class RealLibrarySource implements LibrarySource {
   }
 
   scanStart(drives: string[], roots: string[], deep: boolean) {
-    return apiWrite<ScanStatus>('POST', '/api/v1/library-scan/start', { drives, roots, deep });
+    return apiWrite<ScanStatus>('POST', '/api/v1/library-scan/start', {
+      autoLink: true,
+      drives,
+      roots,
+      deep,
+    });
   }
 
   scanCancel() {

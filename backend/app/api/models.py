@@ -452,6 +452,8 @@ class ScanJobOut(ApiModel):
     message: str | None
     started_at: str
     finished_at: str | None
+    auto_linked: int
+    batch_id: str | None
 
 
 class ScanRootOut(ApiModel):
@@ -505,6 +507,7 @@ class ScanStart(ApiModel):
     drives: list[Annotated[str, StringConstraints(min_length=1, max_length=1)]] = []
     roots: list[Annotated[str, StringConstraints(min_length=1, max_length=1024)]] = []
     deep: bool = False
+    auto_link: bool = False
 
 
 class ScanImport(ApiModel):

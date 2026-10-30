@@ -314,7 +314,7 @@ export function LocalCopyPanel({ game }: { game: GameDetail }) {
       ) : (
         <Button variant="ghost" size="sm" onClick={() => setEditing('new')}>
           <FolderSearch size={14} />
-          关联本地文件
+          手动指定文件夹
         </Button>
       )}
       {error && (
