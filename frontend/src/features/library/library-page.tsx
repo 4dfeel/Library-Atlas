@@ -422,7 +422,7 @@ export function LibraryPage({
             ? '本地演示 · 不连接 Steam / DLsite'
             : isTestLibrary
               ? '隔离测试库 · 不连接 Steam / DLsite'
-              : '本地资料库 · 尚未连接 Steam / DLsite'}
+              : '本地资料库'}
         </span>
         <button onClick={onAbout}>
           {isDemo ? `${size.toLocaleString('zh-CN')} 款测试场景` : '资料库状态'}

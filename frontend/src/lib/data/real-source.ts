@@ -54,7 +54,34 @@ type ApiDashboard = Omit<
   recommendations: { game: ApiWork; reasons: string[] }[];
 };
 
-export type ConnectionStatus = 'not_connected' | 'connected' | 'reauth_required' | 'error';
+export type ConnectionStatus =
+  | 'not_connected'
+  | 'authenticating'
+  | 'needs_verification'
+  | 'verifying'
+  | 'connected'
+  | 'unverified'
+  | 'reauth_required'
+  | 'disconnect_failed'
+  | 'error';
+
+/** Safe to show: never the account name, session or anything from the platform. */
+export interface DlsiteConnection {
+  state: ConnectionStatus;
+  code?: string;
+  message?: string;
+  lastVerifiedAt?: string;
+  canReveal?: boolean;
+  /** Masked; absent after web login, where Atlas never sees the account name. */
+  accountAlias?: string;
+}
+
+export interface FolderInfo {
+  kind: 'library' | 'download_cache';
+  path: string | null;
+  isDefault: boolean;
+  status: 'ok' | 'not_set' | 'missing';
+}
 
 export interface SourceStatus {
   id: Platform;
@@ -100,6 +127,8 @@ function filterParams(filters: LibraryFilters, offset: number, limit: number) {
   return params;
 }
 
+const dlsitePath = '/api/v1/sources/dlsite';
+const folderPath = '/api/v1/settings/folders';
 const workPath = (id: string) => `/api/v1/works/${encodeURIComponent(id)}`;
 
 function saveError(error: unknown): unknown {
@@ -172,6 +201,37 @@ export class RealLibrarySource implements LibrarySource {
   async sources(signal?: AbortSignal): Promise<SourceStatus[]> {
     return (await apiGet<{ sources: SourceStatus[] }>('/api/v1/sources', undefined, signal))
       .sources;
+  }
+
+  async folders(signal?: AbortSignal): Promise<FolderInfo[]> {
+    return (await apiGet<{ folders: FolderInfo[] }>(folderPath, undefined, signal)).folders;
+  }
+
+  async setFolder(kind: FolderInfo['kind'], path: string): Promise<FolderInfo[]> {
+    return (await apiWrite<{ folders: FolderInfo[] }>('PUT', `${folderPath}/${kind}`, { path }))
+      .folders;
+  }
+
+  async folderAction(kind: FolderInfo['kind'], action: 'pick' | 'open'): Promise<FolderInfo[]> {
+    return (await apiWrite<{ folders: FolderInfo[] }>('POST', `${folderPath}/${kind}/${action}`))
+      .folders;
+  }
+
+  dlsiteConnection(signal?: AbortSignal): Promise<DlsiteConnection> {
+    return apiGet<DlsiteConnection>(`${dlsitePath}/connection`, undefined, signal);
+  }
+
+  /** The password is sent once in the request body and goes no further on this side. */
+  dlsiteLogin(loginId: string, password: string, confirmSwitch: boolean) {
+    return apiWrite<DlsiteConnection>('POST', `${dlsitePath}/login`, {
+      loginId,
+      password,
+      confirmSwitch,
+    });
+  }
+
+  dlsiteAction(action: 'login/window' | 'login/cancel' | 'login/reveal' | 'verify' | 'disconnect') {
+    return apiWrite<DlsiteConnection>('POST', `${dlsitePath}/${action}`);
   }
 
   /** A 503 still carries the reason, which is what the page needs to show. */

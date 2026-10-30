@@ -104,6 +104,6 @@ function serviceEnv(tempRoot: string): NodeJS.ProcessEnv {
   };
 }
 
-export async function useRealMode(page: Page) {
+export async function enterRealMode(page: Page) {
   await page.addInitScript((key) => window.localStorage.setItem(key, 'real'), modeKey);
 }

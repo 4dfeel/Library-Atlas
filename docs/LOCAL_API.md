@@ -1,6 +1,6 @@
 # Library Atlas 本地 API 契约
 
-状态：Phase 2 检查点 1 已实现。这是 Atlas 自有接口，不是 Steam 或 DLsite 的接口。实现见 `backend/app/api/`，端到端验证见 `frontend/tests/e2e/real-mode.spec.ts`。
+状态：Phase 2 检查点 1、2 已实现。这是 Atlas 自有接口，不是 Steam 或 DLsite 的接口。实现见 `backend/app/api/`，端到端验证见 `frontend/tests/e2e/real-mode.spec.ts`。
 
 ## 约定
 - 基址 `http://127.0.0.1:<port>/api/v1`，默认端口 8765，只绑定回环地址。开发期由 Vite 代理 `/api`，浏览器只看到一个来源。
@@ -93,7 +93,54 @@
 参数 `scope`（`all` `games` `steam` `dlsite-games` `dlsite-media`）与 `batch`（≥0）。统计口径与 Demo 的 `selectDashboard` 相同，每个范围的作品数等于作品库相应筛选的数量（有测试）。无时长记录的游戏不计入时长；非游戏作品没有游玩统计。推荐在同一天同一 `batch` 内固定。
 
 ### 来源 `GET /sources`
-`{sources:[{id,displayName,connection,workCount,lastSyncAt,capabilities:{connect,sync,download}}]}`。`connection` 为 `not_connected` `connected` `reauth_required` `error`，只来自账号记录；有来源记录不代表已认证。`capabilities` 在本检查点全部为 `false`。
+`{sources:[{id,displayName,connection,workCount,lastSyncAt,capabilities:{connect,sync,download}}]}`。`connection` 见下方“DLsite 连接”；有来源记录不代表已认证。`capabilities.connect` 仅 DLsite 为 `true`，其余为 `false`。
+
+### DLsite 连接
+都不返回账号名、会话或平台响应。写接口受请求边界保护。
+
+| 接口 | 说明 |
+| --- | --- |
+| `GET /sources/dlsite/connection` | `{state,code?,message?,lastVerifiedAt?,canReveal?}`。只读本地状态，不访问平台 |
+| `POST /sources/dlsite/login` | `{loginId,password,confirmSwitch?}`，启动一次登录。不接受其他字段，请求体不进日志和错误响应 |
+| `POST /sources/dlsite/login/window` | 备用网页登录，无请求体 |
+| `POST /sources/dlsite/login/cancel` | 取消当前尝试，其迟到结果被丢弃 |
+| `POST /sources/dlsite/login/reveal` | 把验证窗口调回前台 |
+| `POST /sources/dlsite/verify` | 用保存的会话向平台确认一次 |
+| `POST /sources/dlsite/disconnect` | 清除 Atlas 保存的会话，不影响作品和个人记录，也不代表退出平台其他设备 |
+
+| `state` | 含义 |
+| --- | --- |
+| `not_connected` | 没有可用会话 |
+| `authenticating` / `needs_verification` | 登录进行中 / 平台要求用户本人验证 |
+| `verifying` | 正在确认会话 |
+| `connected` | 已确认可用 |
+| `unverified` | 暂时无法确认（网络、限流、凭据存储读取故障），不代表失效 |
+| `reauth_required` | 平台明确拒绝，或保存的会话损坏，需重新登录 |
+| `disconnect_failed` | 已停用但清理未完成，可重试；重启也不会恢复 |
+
+| `code` | 含义 |
+| --- | --- |
+| `bad_credentials` | 账号或密码不正确 |
+| `form_changed` | 登录页结构不认识，可改用网页登录 |
+| `browser_unavailable` | 登录组件无法启动 |
+| `timeout` | 等待超时 |
+| `not_confirmed` | 没能确认登录成功 |
+| `store_failed` | 登录成功但无法安全保存，未保持连接 |
+| `store_unavailable` | 读不到系统凭据存储 |
+| `session_missing` / `session_expired` | 保存的会话不可用 / 已失效 |
+| `platform_unavailable` | 暂时连不上平台 |
+
+错误响应：409 `login_in_progress`（已有登录在进行）、409 `account_mismatch`（账号与之前不同，带 `confirmSwitch: true` 重试）、503 `credential_store_unavailable`。
+
+### 文件夹设置
+| 接口 | 说明 |
+| --- | --- |
+| `GET /settings/folders` | `{folders:[{kind,path,isDefault,status}]}`。`kind`：`library`、`download_cache`。`status`：`ok`、`not_set`、`missing` |
+| `PUT /settings/folders/{kind}` | `{path}`。必须是已存在、可写的绝对路径，不能是 Atlas 数据目录或系统文件夹，两个文件夹不能相同。无效返回 422 `folder_invalid` |
+| `POST /settings/folders/{kind}/pick` | 打开系统文件夹选择窗口，用户关闭后返回。取消不改动 |
+| `POST /settings/folders/{kind}/open` | 在资源管理器打开已登记的文件夹。请求不能指定路径 |
+
+只记录和校验，不扫描磁盘，不移动文件。选定的文件夹不见了时报告 `missing`，不会重建。下载功能开放前不会写入。
 
 ## 后续检查点的任务状态（仅契约，未实现）
 本检查点没有任务表和任务接口。契约见 [接入方案 §7](PHASE2_INTEGRATION_PLAN.md)。

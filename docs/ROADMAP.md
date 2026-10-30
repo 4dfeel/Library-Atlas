@@ -36,15 +36,15 @@
 | 检查点 | 主题 | 状态 |
 | --- | --- | --- |
 | 0 | 现状审查与平台能力验证 | 已交付，方案已获用户确认。见 [能力矩阵](PHASE2_CAPABILITY_MATRIX.md)、[接入方案](PHASE2_INTEGRATION_PLAN.md)、[报告](PHASE2_CHECKPOINT0_REPORT.md) |
-| 1 | 本地服务、持久化与真实模式基础 | 工程检查完成，待用户确认。见 [报告](PHASE2_CHECKPOINT1_REPORT.md)、[API](LOCAL_API.md)、[运行说明](LOCAL_DEVELOPMENT.md) |
-| 2 | DLsite 认证与会话保持 | 未开始，须另行授权 |
+| 1 | 本地服务、持久化与真实模式基础 | 工程检查完成，CI 通过，待用户确认。见 [报告](PHASE2_CHECKPOINT1_REPORT.md)、[API](LOCAL_API.md)、[运行说明](LOCAL_DEVELOPMENT.md) |
+| 2 | DLsite 认证与会话保持 | 实现完成，**待用户真实登录验证**。见 [报告](PHASE2_CHECKPOINT2_REPORT.md) |
 | 3 | DLsite 已购作品同步与分类 | 未开始 |
 | 4 | 真实下载队列 | 未开始 |
 | 5 | 解压与一键下载并解压 | 未开始 |
 | 6 | Steam 真实接入 | 未开始 |
 | 7 | 全链路验收 | 未开始 |
 
-真实登录、同步、下载、解压、Steam 接入均未实现。
+作品同步、下载、解压、Steam 接入均未实现。
 
 ## Phase 0 初始化检查记录
 - 工作区 `H:\VSC workspacce\Library Atlas` 初始为空，无既有代码和 AGENTS；本轮仅创建文档、`.gitignore` 并初始化本地 Git。

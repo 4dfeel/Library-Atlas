@@ -3,17 +3,33 @@ import type { ConnectionState, DemoTask, SourceStatus, TaskPhase } from '@/lib/d
 export const connectionLabels: Record<ConnectionState, string> = {
   connected: '已连接',
   connecting: '连接中',
+  unverified: '暂时无法验证',
   expired: '会话已过期',
   error: '连接失败',
   disconnected: '未连接',
 };
 
 /** Real connection states map onto the shared badge; absent data is never "connected". */
-export function realConnectionState(source: SourceStatus | undefined): ConnectionState {
-  if (source?.connection === 'connected') return 'connected';
-  if (source?.connection === 'reauth_required') return 'expired';
-  if (source?.connection === 'error') return 'error';
-  return 'disconnected';
+export function realConnectionState(
+  source: Pick<SourceStatus, 'connection'> | undefined,
+): ConnectionState {
+  switch (source?.connection) {
+    case 'connected':
+      return 'connected';
+    case 'unverified':
+      return 'unverified';
+    case 'authenticating':
+    case 'needs_verification':
+    case 'verifying':
+      return 'connecting';
+    case 'reauth_required':
+      return 'expired';
+    case 'error':
+    case 'disconnect_failed':
+      return 'error';
+    default:
+      return 'disconnected';
+  }
 }
 
 export const phaseLabels: Record<TaskPhase, string> = {

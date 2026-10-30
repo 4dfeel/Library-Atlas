@@ -12,6 +12,7 @@ import {
   type SourceConnection,
   type SourceStatus,
 } from '@/lib/data';
+import { DlsiteConnectionPanel } from '@/features/workspace/dlsite-connection';
 import { platformLabels } from '@/lib/utils';
 import { connectionLabels, realConnectionState } from './labels';
 
@@ -32,7 +33,9 @@ function RealSourceRow({ platform, source }: { platform: Platform; source?: Sour
         </span>
         <div>
           <h3 id={`source-${platform}`}>{name}</h3>
-          <p>连接与同步将在后续版本开放。</p>
+          <p>
+            {platform === 'dlsite' ? '在这里登录，全程不用离开 Atlas。' : '连接将在后续版本开放。'}
+          </p>
         </div>
         <ConnectionBadge state={realConnectionState(source)} />
       </div>
@@ -46,6 +49,7 @@ function RealSourceRow({ platform, source }: { platform: Platform; source?: Sour
           <dd>暂无记录</dd>
         </div>
       </dl>
+      {platform === 'dlsite' && <DlsiteConnectionPanel />}
     </section>
   );
 }
@@ -190,7 +194,7 @@ export function SourcesDialog({
       description={
         demoEnabled
           ? '仅演示：不会要求、接收或保存任何密码、Cookie 或令牌。真实连接将在后续阶段由你在平台官方页面登录完成。'
-          : '真实连接将在后续阶段由你在平台官方页面登录完成；不会要求、接收或保存任何密码。'
+          : 'Atlas 只保存登录后的会话，存放在 Windows 凭据管理器中，不会保存你的密码。'
       }
     >
       {demoEnabled ? (
@@ -219,7 +223,7 @@ export function SourcesDialog({
           ))}
           <p className="dialog-footnote">
             <PlugZap size={14} />
-            真实来源连接尚未接入，Steam 与 DLsite 均未连接。
+            作品同步尚未开放，连接后作品库暂时还是空的。
           </p>
         </div>
       )}

@@ -17,8 +17,8 @@ from tests.conftest import client_for, seed_library
 MIGRATION_0002 = """
 import sqlalchemy as sa
 from alembic import op
-revision = "0002"
-down_revision = "0001"
+revision = "0004"
+down_revision = "0003"
 branch_labels = None
 depends_on = None
 def upgrade():
@@ -27,8 +27,8 @@ def upgrade():
 FAILING_0002 = """
 import sqlalchemy as sa
 from alembic import op
-revision = "0002"
-down_revision = "0001"
+revision = "0004"
+down_revision = "0003"
 branch_labels = None
 depends_on = None
 def upgrade():
@@ -41,7 +41,7 @@ def upgrade():
 def extra_migration(tmp_path: Path, source: str) -> Path:
     folder = tmp_path / "versions-extra"
     folder.mkdir()
-    (folder / "0002_probe.py").write_text(source, encoding="utf-8")
+    (folder / "0004_probe.py").write_text(source, encoding="utf-8")
     return folder
 
 
@@ -75,7 +75,7 @@ def test_fresh_database_needs_no_backup(settings: Settings) -> None:
     opened = open_database(settings.database_path, settings.backup_dir, settings.profile)
     opened.engine.dispose()
     assert opened.backup is None
-    assert opened.revision == "0001"
+    assert opened.revision == "0003"
 
 
 def test_upgrade_backs_up_first_and_keeps_edits(settings: Settings, tmp_path: Path) -> None:
@@ -95,12 +95,12 @@ def test_upgrade_backs_up_first_and_keeps_edits(settings: Settings, tmp_path: Pa
     opened.engine.dispose()
     assert row == "迁移前的备注"
     assert "probe_column" in columns
-    assert opened.revision == "0002"
+    assert opened.revision == "0004"
     # The backup is a real, restorable copy of the state before the upgrade.
     assert opened.backup is not None
     assert read_personal(opened.backup) == ("迁移前的备注", 4)
     with closing(sqlite3.connect(opened.backup)) as connection:
-        assert connection.execute("SELECT version_num FROM alembic_version").fetchone() == ("0001",)
+        assert connection.execute("SELECT version_num FROM alembic_version").fetchone() == ("0003",)
 
 
 def test_failed_upgrade_rolls_back_entirely(settings: Settings, tmp_path: Path) -> None:
@@ -116,7 +116,7 @@ def test_failed_upgrade_rolls_back_entirely(settings: Settings, tmp_path: Path) 
     assert error.value.reason == "migration_failed"
     assert read_personal(settings.database_path) == ("迁移前的备注", 4)
     with closing(sqlite3.connect(settings.database_path)) as connection:
-        assert connection.execute("SELECT version_num FROM alembic_version").fetchone() == ("0001",)
+        assert connection.execute("SELECT version_num FROM alembic_version").fetchone() == ("0003",)
         columns = [c[1] for c in connection.execute("PRAGMA table_info(works)")]
     assert "probe_column" not in columns
 

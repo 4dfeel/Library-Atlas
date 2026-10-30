@@ -24,6 +24,9 @@ from app.core.errors import NOT_READY_MESSAGES, AtlasError
 from app.core.security import LocalBoundaryMiddleware, new_csrf_token
 from app.db.bootstrap import DatabaseNotReady, open_database
 from app.services import library
+from app.services.dlsite_auth import DlsiteAuth
+from app.services.dlsite_factory import build_dlsite_auth, build_folder_service
+from app.services.folders import FolderService
 
 logger = logging.getLogger("atlas")
 
@@ -45,6 +48,8 @@ class ServiceState:
     engine: Engine | None = None
     revision: str | None = None
     not_ready_reason: str | None = "starting"
+    dlsite: DlsiteAuth | None = None
+    folders: FolderService | None = None
 
 
 def _error_body(
@@ -79,6 +84,27 @@ def _engine(request: Request) -> Engine:
 
 
 EngineDep = Annotated[Engine, Depends(_engine)]
+
+
+def _dlsite(request: Request, _engine: EngineDep) -> DlsiteAuth:
+    auth = _state(request).dlsite
+    if auth is None:
+        raise AtlasError(
+            "credential_store_unavailable", "系统凭据存储不可用，无法连接 DLsite。", status=503
+        )
+    return auth
+
+
+DlsiteDep = Annotated[DlsiteAuth, Depends(_dlsite)]
+
+
+def _folders(request: Request, _engine: EngineDep) -> FolderService:
+    service = _state(request).folders
+    assert service is not None  # Built whenever the engine is.
+    return service
+
+
+FoldersDep = Annotated[FolderService, Depends(_folders)]
 
 
 def _build_api() -> APIRouter:
@@ -142,8 +168,57 @@ def _build_api() -> APIRouter:
         return library.dashboard(engine, query)
 
     @api.get("/sources")
-    def sources(engine: EngineDep) -> models.SourcesOut:
-        return library.source_status(engine)
+    def sources(request: Request, engine: EngineDep) -> models.SourcesOut:
+        auth = _state(request).dlsite
+        return library.source_status(engine, auth.summary_state() if auth else None)
+
+    @api.get("/sources/dlsite/connection", response_model_exclude_none=True)
+    def dlsite_connection(auth: DlsiteDep) -> models.DlsiteConnection:
+        return auth.connection()
+
+    @api.post("/sources/dlsite/login", response_model_exclude_none=True)
+    def dlsite_login(auth: DlsiteDep, body: models.DlsiteLogin) -> models.DlsiteConnection:
+        return auth.start_login(
+            body.login_id, body.password.get_secret_value(), confirm_switch=body.confirm_switch
+        )
+
+    @api.post("/sources/dlsite/login/window", response_model_exclude_none=True)
+    def dlsite_window_login(auth: DlsiteDep) -> models.DlsiteConnection:
+        return auth.start_window_login()
+
+    @api.post("/sources/dlsite/login/cancel", response_model_exclude_none=True)
+    def dlsite_cancel(auth: DlsiteDep) -> models.DlsiteConnection:
+        return auth.cancel()
+
+    @api.post("/sources/dlsite/login/reveal", response_model_exclude_none=True)
+    def dlsite_reveal(auth: DlsiteDep) -> models.DlsiteConnection:
+        return auth.reveal()
+
+    @api.post("/sources/dlsite/verify", response_model_exclude_none=True)
+    def dlsite_verify(auth: DlsiteDep) -> models.DlsiteConnection:
+        return auth.verify()
+
+    @api.get("/settings/folders")
+    def get_folders(service: FoldersDep) -> models.FoldersOut:
+        return service.folders()
+
+    @api.put("/settings/folders/{kind}")
+    def set_folder(
+        service: FoldersDep, kind: models.FolderKind, body: models.FolderUpdate
+    ) -> models.FoldersOut:
+        return service.set_folder(kind, body.path)
+
+    @api.post("/settings/folders/{kind}/pick")
+    def pick_folder(service: FoldersDep, kind: models.FolderKind) -> models.FoldersOut:
+        return service.pick(kind)
+
+    @api.post("/settings/folders/{kind}/open")
+    def open_folder(service: FoldersDep, kind: models.FolderKind) -> models.FoldersOut:
+        return service.open_folder(kind)
+
+    @api.post("/sources/dlsite/disconnect", response_model_exclude_none=True)
+    def dlsite_disconnect(auth: DlsiteDep) -> models.DlsiteConnection:
+        return auth.disconnect()
 
     @api.api_route(
         "/{rest:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"], include_in_schema=False
@@ -168,7 +243,12 @@ def _static_response(static_dir: Path | None, path: str) -> Response:
     return FileResponse(root / "index.html", headers={"Cache-Control": "no-cache"})
 
 
-def create_app(settings: Settings, *, open_db: bool = True) -> FastAPI:
+def create_app(
+    settings: Settings,
+    *,
+    open_db: bool = True,
+    dlsite_factory: Callable[[Settings, Engine], DlsiteAuth | None] = build_dlsite_auth,
+) -> FastAPI:
     state = ServiceState(settings=settings, csrf_token=new_csrf_token())
 
     @asynccontextmanager
@@ -180,10 +260,16 @@ def create_app(settings: Settings, *, open_db: bool = True) -> FastAPI:
                 )
                 state.engine, state.revision = opened.engine, opened.revision
                 state.not_ready_reason = None
+                state.folders = build_folder_service(settings, opened.engine)
+                state.dlsite = dlsite_factory(settings, opened.engine)
+                if state.dlsite is not None:
+                    state.dlsite.restore()
             except DatabaseNotReady as error:
                 state.not_ready_reason = error.reason
                 logger.error("database not ready: %s", error.reason)
         yield
+        if state.dlsite is not None:
+            state.dlsite.shutdown()
         if state.engine is not None:
             state.engine.dispose()
 

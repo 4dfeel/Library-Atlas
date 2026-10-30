@@ -27,6 +27,13 @@ library_meta = Table(
     Column("value", String, nullable=False),
 )
 
+app_settings = Table(
+    "app_settings",
+    metadata,
+    Column("key", String, primary_key=True),
+    Column("value", String, nullable=False),
+)
+
 sources = Table(
     "sources",
     metadata,
@@ -44,8 +51,13 @@ source_accounts = Table(
     Column("credential_ref", String, nullable=True),
     # Hash of the platform's account identity, never the identity itself.
     Column("account_fingerprint", String, nullable=True),
+    # Masked for display, such as a14•••@example.com. Never the full name.
+    Column("account_alias", String, nullable=True),
     Column("state", String, nullable=False, server_default="not_connected"),
     Column("last_verified_at", String, nullable=True),
+    # Set before a stored session is deleted and cleared after. While set, the session is
+    # never read, so a failed cleanup cannot bring a disconnected account back.
+    Column("cleanup_pending", Integer, nullable=False, server_default=text("0")),
     CheckConstraint(
         "state IN ('not_connected', 'connected', 'reauth_required', 'error')",
         name="ck_source_accounts_state",

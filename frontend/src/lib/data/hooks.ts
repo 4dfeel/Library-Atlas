@@ -12,7 +12,14 @@ import type { Connections } from './demo-connections';
 import { demoConnections, demoTasks, onDemoTaskComplete } from './demo-runtime';
 import type { DemoTask } from './demo-tasks';
 import { getDemoSource } from './demo-source';
-import { realPageSize, realSource, type LibrarySummary } from './real-source';
+import {
+  realPageSize,
+  realSource,
+  type ConnectionStatus,
+  type DlsiteConnection,
+  type FolderInfo,
+  type LibrarySummary,
+} from './real-source';
 import type { DemoScenario, DemoSize, Game, GameDetail, GameUpdate, LibraryFilters } from './types';
 import { useWorkspaceMode, type WorkspaceMode } from './workspace';
 
@@ -267,6 +274,72 @@ export function useRealSources(enabled = true) {
   });
 }
 
+const inProgress = new Set<ConnectionStatus>(['authenticating', 'needs_verification', 'verifying']);
+
+/**
+ * The real DLsite connection. Login goes around useMutation on purpose: mutation state
+ * keeps its variables, and the password must not stay in any cache.
+ */
+export function useDlsiteConnection(enabled = true) {
+  const queryClient = useQueryClient();
+  const key = [...realRoot, 'dlsite-connection'];
+  const query = useQuery({
+    enabled,
+    queryKey: key,
+    queryFn: ({ signal }) => realSource.dlsiteConnection(signal),
+    retry: false,
+    // Only while something is happening; this asks the local service, not the platform.
+    refetchInterval: (current) =>
+      current.state.data && inProgress.has(current.state.data.state) ? 700 : 30_000,
+  });
+  // A login finishes in the background, so badges follow the state rather than the click.
+  const currentState = query.data?.state;
+  useEffect(() => {
+    if (currentState) void queryClient.invalidateQueries({ queryKey: [...realRoot, 'sources'] });
+  }, [currentState, queryClient]);
+  const settle = (connection: DlsiteConnection) => {
+    queryClient.setQueryData(key, connection);
+    return connection;
+  };
+  return {
+    connection: query.data,
+    isError: query.isError && !query.data,
+    actions: {
+      login: async (loginId: string, password: string, confirmSwitch: boolean) =>
+        settle(await realSource.dlsiteLogin(loginId, password, confirmSwitch)),
+      loginWithWindow: async () => settle(await realSource.dlsiteAction('login/window')),
+      cancel: async () => settle(await realSource.dlsiteAction('login/cancel')),
+      reveal: async () => settle(await realSource.dlsiteAction('login/reveal')),
+      verify: async () => settle(await realSource.dlsiteAction('verify')),
+      disconnect: async () => settle(await realSource.dlsiteAction('disconnect')),
+    },
+  };
+}
+
+const foldersKey = [...realRoot, 'folders'];
+
+export function useFolders() {
+  return useQuery({
+    queryKey: foldersKey,
+    queryFn: ({ signal }) => realSource.folders(signal),
+    staleTime: 10_000,
+    retry: false,
+  });
+}
+
+export function useFolderActions(kind: FolderInfo['kind']) {
+  const queryClient = useQueryClient();
+  const onSuccess = (folders: FolderInfo[]) => queryClient.setQueryData(foldersKey, folders);
+  return {
+    pick: useMutation({ mutationFn: () => realSource.folderAction(kind, 'pick'), onSuccess }),
+    open: useMutation({ mutationFn: () => realSource.folderAction(kind, 'open'), onSuccess }),
+    save: useMutation({
+      mutationFn: (path: string) => realSource.setFolder(kind, path),
+      onSuccess,
+    }),
+  };
+}
+
 /** Service state for the current session; polled while real mode is showing. */
 export function useServiceReady(enabled: boolean) {
   return useQuery({
@@ -332,6 +405,10 @@ export function useModeCacheIsolation() {
     void queryClient.cancelQueries({ queryKey: workspaceRoot(previous) });
     if (previous === 'real') queryClient.removeQueries({ queryKey: realRoot });
   }, [mode, queryClient]);
+}
+
+export function isAccountMismatch(error: unknown): boolean {
+  return error instanceof ApiError && error.code === 'account_mismatch';
 }
 
 export function isConflict(error: unknown): boolean {

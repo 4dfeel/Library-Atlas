@@ -13,11 +13,10 @@ describe('demo services when demo mode is off', () => {
   it('never presents a demo session as a real connection', () => {
     renderWithQuery(<SourcesDialog open onOpenChange={vi.fn()} size={1500} demoEnabled={false} />);
     const dialog = screen.getByRole('dialog', { name: '来源连接' });
-    expect(dialog).toHaveTextContent('真实来源连接尚未接入');
     expect(dialog).toHaveTextContent('未连接');
     expect(dialog).not.toHaveTextContent('已连接');
     expect(dialog).not.toHaveTextContent('演示');
-    expect(screen.queryByRole('button', { name: /连接|断开/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /演示连接|断开/ })).toBeNull();
   });
 
   it('shows the demo connections only while demo mode is on', () => {

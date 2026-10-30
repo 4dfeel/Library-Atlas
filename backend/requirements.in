@@ -4,3 +4,6 @@ uvicorn==0.40.0
 pydantic==2.12.5
 sqlalchemy==2.0.45
 alembic==1.17.2
+httpx==0.28.1
+pywebview==6.2.1
+pythonnet==3.2.1

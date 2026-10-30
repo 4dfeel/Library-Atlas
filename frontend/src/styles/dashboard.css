@@ -526,6 +526,9 @@
 .connection-connected {
   color: var(--success);
 }
+.connection-unverified {
+  color: var(--warning);
+}
 .connection-connecting {
   color: var(--accent);
 }
@@ -843,4 +846,218 @@
   height: 196px;
   border-radius: 8px;
   background: var(--surface);
+}
+.dlsite-login,
+.dlsite-connected,
+.dlsite-verify {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+.dlsite-login label {
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.dlsite-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.dlsite-note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--text-muted);
+}
+.dlsite-message {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--warning);
+}
+.dlsite-message > svg {
+  flex: none;
+  margin-top: 3px;
+}
+.dlsite-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.dlsite-progress > button {
+  margin-left: auto;
+}
+.dlsite-verify > p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+@media (max-height: 800px) {
+  [data-testid='real-sources'] .source-facts {
+    display: none;
+  }
+}
+.account-menu {
+  position: relative;
+}
+.account-button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 240px;
+  padding: 4px 8px 4px 4px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.account-button:hover,
+.account-button[aria-expanded='true'] {
+  background: var(--surface-raised);
+}
+.account-avatar {
+  position: relative;
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--success) 16%, transparent);
+  font-size: 12px;
+  font-weight: 600;
+}
+.account-avatar > i {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  width: 8px;
+  height: 8px;
+  border: 2px solid var(--surface);
+  border-radius: 50%;
+  background: currentColor;
+}
+.account-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.account-panel {
+  position: absolute;
+  z-index: 60;
+  top: calc(100% + 8px);
+  right: 0;
+  display: grid;
+  gap: 10px;
+  width: 280px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: 0 16px 48px #0006;
+}
+.account-panel-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 14px;
+}
+.account-alias {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+.account-panel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+.settings-page {
+  overflow-y: auto;
+}
+.settings-frame {
+  display: grid;
+  gap: 32px;
+  max-width: 900px;
+  margin-inline: 0;
+  padding-block: 32px 64px;
+}
+.settings-frame h1 {
+  margin: 6px 0 0;
+  font-size: 28px;
+}
+.settings-section {
+  display: grid;
+  gap: 16px;
+  padding-top: 24px;
+  border-top: 1px solid var(--border);
+}
+.settings-section h2 {
+  margin: 0;
+  font-size: 17px;
+}
+.settings-section h3 {
+  margin: 0;
+  font-size: 14px;
+}
+.settings-section > button {
+  justify-self: start;
+}
+.settings-section .workspace-switch {
+  margin-bottom: 0;
+}
+.settings-account {
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+}
+.settings-note {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-muted);
+}
+.folder-row {
+  display: grid;
+  gap: 6px;
+}
+.folder-row > label {
+  font-size: 14px;
+  color: var(--text-primary);
+}
+.folder-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+.folder-controls .input {
+  flex: 1 1 320px;
+  min-width: 0;
 }

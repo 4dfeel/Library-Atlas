@@ -127,7 +127,7 @@ scripts/                 # Windows 启动、构建和检查
 ## 9. 多平台扩展：DLsite（2026-10-30 用户决定，待 Phase 2 调查）
 - **模型**：上表 games 改为平台中立的作品表；前端 `Game` 类型已包含 `platform`、`kind`、`maker`、`releaseDate`（类型名沿用历史名称，含义为“任意平台的作品条目”）。可见性、本地偏好、收藏、Backlog 与平台无关。
 - **适配器**：`adapters/dlsite/` 与 Steam 并列，输出同一标准化观测；按 (platform, external_id) 幂等合并，缺项不删除库存。新条目进入 quarantined，直至用户确认。
-- **会话凭据**：用户在官方登录页完成登录（含验证码/二步验证），后端仅保存会话 Cookie 至 Windows Credential Manager 并以引用访问；不保存密码，不进数据库、日志、前端、导出或错误上报。会话失效返回明确的 `reauth_required` 状态，不自动重试登录。只读请求，限速，手动或低频触发。
+- **会话凭据**（2026-10-31 用户决定更新）：用户默认在 Atlas 面板输入账号密码，经本地服务和进程管道交给隐藏的 WebView2 提交；验证码/二步验证由用户本人完成；另有备用网页登录。密码只用于本次尝试，不保存。后端仅保存会话 Cookie 至 Windows Credential Manager 并以引用访问；不进数据库、日志、前端、导出或错误上报。会话失效返回明确的 `reauth_required` 状态，不自动重试登录。只读请求，限速，手动或低频触发。
 - **打开作品**：后端按作品类型执行：游戏只启动用户确认并登记的可执行文件；其他类型交给系统默认程序或资源管理器。使用参数数组启动，不经 shell 拼接；扫描到的程序不自动运行。
 - **下载解压（候选）**：仅限会话可访问的已购作品下载链接与 DLsite 主机白名单；断点续传、大小与完整性校验、限定写入目录；解压逐项校验目标路径（拒绝绝对路径与 `..`）、限制展开大小与文件数。需许可证认证的作品不处理授权。引入 7-Zip/unrar 等组件前另行征询。
 - **待调查**：Nest 本地数据位置与格式（是否加密）、网站购买列表与下载链接的获取方式及稳定性、使用条款对自动化读取/下载的限制、作品编号格式、封面与元数据许可。结论写入 §7 能力表后再实现。
@@ -164,3 +164,21 @@ frontend/src/lib/data/
 - **表**：`library_meta`、`sources`、`source_accounts`（空）、`works`、`work_files`、`library_entries`、`personal_records`。来源数据与个人记录分表，同步代码写不到个人记录。
 - **未落地**：真实认证、同步、下载、解压、任务系统、私人空间、图片资产路由（封面现在只有合成样本的本地绘制与缺图占位）、Steam 适配器、观测表、收藏夹与分类规则。
 - **Demo**：仍是纯前端，不需要服务。其可见性过滤只作用于合成数据，真实模式的可见性只在服务端。
+
+## 11. Phase 2 检查点 2 实际落地（2026-10-31）
+```text
+backend/app/
+  adapters/dlsite/browser.py     隐藏浏览器进程（独立进程，stdin/stdout JSON 行）
+  adapters/dlsite/login_page.py  登录页状态判断（纯函数）
+  adapters/dlsite/login_host.py  服务侧：启动进程、读事件
+  adapters/dlsite/session.py     Cookie 过滤、编解码、有效性检查
+  core/session_vault.py          凭据分片（清单最后写、最先删，校验长度和哈希）
+  services/dlsite_auth.py        连接状态机：单一尝试、过期结果丢弃
+  services/dlsite_factory.py     按 profile 装配真实或测试部件
+  repositories/accounts.py       非敏感账号状态
+  testing/fake_dlsite.py         假平台，仅 test 配置
+```
+- **已落地**：登录、备用网页登录、取消、验证窗口、会话保存与恢复、重新验证、断开与清理重试、换号确认。迁移 `0002` 增加 `source_accounts.cleanup_pending`。
+- **未验证**：向真实站点提交后的全部行为，见[检查点 2 报告](PHASE2_CHECKPOINT2_REPORT.md)。
+- **设置**：`app_settings` 表（迁移 `0003`）保存下载文件夹；`services/folders.py` 校验，`adapters/system/folder_dialog.py` 在独立进程打开系统选择窗口。`source_accounts.account_alias` 保存打码账号。前端路由 `/settings`，顶部 `AccountMenu`。
+- **未落地**：作品同步、下载、解压、Steam。

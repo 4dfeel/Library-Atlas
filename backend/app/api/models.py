@@ -2,7 +2,15 @@
 
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt, StringConstraints
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    SecretStr,
+    StrictBool,
+    StrictInt,
+    StringConstraints,
+)
 from pydantic.alias_generators import to_camel
 
 Platform = Literal["steam", "dlsite"]
@@ -170,17 +178,73 @@ class DashboardOut(ApiModel):
 
 
 class SourceCapabilities(ApiModel):
-    """What Atlas can do with this source today. All false until later checkpoints."""
+    """What Atlas can do with this source today."""
 
     connect: bool = False
     sync: bool = False
     download: bool = False
 
 
+ConnectionState = Literal[
+    "not_connected",
+    "authenticating",
+    "needs_verification",
+    "verifying",
+    "connected",
+    "unverified",
+    "reauth_required",
+    "disconnect_failed",
+    "error",
+]
+
+
+class DlsiteConnection(ApiModel):
+    """Safe to show. Never holds the account name, session or any platform response."""
+
+    state: ConnectionState
+    code: str | None = None
+    message: str | None = None
+    last_verified_at: str | None = None
+    can_reveal: bool = False
+    # Masked account name; absent after web login, where Atlas never sees the name.
+    account_alias: str | None = None
+
+
+class DlsiteLogin(ApiModel):
+    """`SecretStr`: a stray log or repr shows asterisks, not the password."""
+
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, extra="forbid")
+
+    login_id: Annotated[str, StringConstraints(min_length=1, max_length=256)]
+    password: Annotated[SecretStr, Field(min_length=1, max_length=256)]
+    confirm_switch: StrictBool = False
+
+
+FolderKind = Literal["library", "download_cache"]
+FolderStatus = Literal["ok", "not_set", "missing"]
+
+
+class FolderOut(ApiModel):
+    kind: FolderKind
+    path: str | None
+    is_default: bool
+    status: FolderStatus
+
+
+class FoldersOut(ApiModel):
+    folders: list[FolderOut]
+
+
+class FolderUpdate(ApiModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, extra="forbid")
+
+    path: Annotated[str, StringConstraints(min_length=1, max_length=1024)]
+
+
 class SourceOut(ApiModel):
     id: Platform
     display_name: str
-    connection: Literal["not_connected", "connected", "reauth_required", "error"]
+    connection: ConnectionState
     work_count: int
     last_sync_at: str | None = None
     capabilities: SourceCapabilities = SourceCapabilities()

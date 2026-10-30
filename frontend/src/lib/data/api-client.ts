@@ -73,7 +73,7 @@ export async function apiGet<T>(
   return (await response.json()) as T;
 }
 
-export async function apiWrite<T>(method: 'PATCH' | 'POST', path: string, body?: unknown) {
+export async function apiWrite<T>(method: 'PATCH' | 'POST' | 'PUT', path: string, body?: unknown) {
   const attempt = async (token: string) =>
     send(path, {
       method,

@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { resolve } from 'node:path';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { noHorizontalScroll, viewportTag, watchConsole } from './evidence';
-import { modeKey, RealService, useRealMode } from './real-service';
+import { modeKey, RealService, enterRealMode } from './real-service';
 
 /** Real service, real database, production build. Synthetic data only; no platform accounts. */
 const evidenceDir = resolve('../artifacts/phase-2-checkpoint-1');
@@ -30,7 +30,7 @@ test.describe('empty real library', () => {
 
   test('shows the truth: empty, not connected, no demo works', async ({ page }) => {
     const console_ = watchConsole(page);
-    await useRealMode(page);
+    await enterRealMode(page);
     await page.goto(`${service.origin}/library`);
     await expect(indicator(page)).toHaveText('我的资料库');
     await expect(page.getByText('你的作品库还是空的')).toBeVisible();
@@ -41,11 +41,11 @@ test.describe('empty real library', () => {
     await noHorizontalScroll(page);
     await shot(page, 'real-empty-library');
 
-    await page.getByRole('button', { name: '查看来源状态' }).click();
+    await page.getByRole('button', { name: '连接 DLsite' }).click();
     const dialog = page.getByTestId('real-sources');
     await expect(dialog).toContainText('未连接');
     await expect(dialog).not.toContainText('已连接');
-    await expect(dialog.getByRole('button')).toHaveCount(0);
+    await expect(dialog.getByRole('button', { name: '登录', exact: true })).toBeVisible();
     await shot(page, 'real-sources-not-connected');
     await page.keyboard.press('Escape');
 
@@ -77,7 +77,7 @@ test.describe('isolated test library', () => {
   test('browse, filter, edit, sync across pages and survive a restart', async ({ page }, info) => {
     const suffix = info.project.name;
     const note = `重启后仍在 ${suffix}`;
-    await useRealMode(page);
+    await enterRealMode(page);
     await page.goto(`${service.origin}/library`);
     await expect(indicator(page)).toHaveText('测试库 · 合成数据');
     // The toolbar note hides on narrow windows; the top bar label above never does.
@@ -155,7 +155,7 @@ test.describe('isolated test library', () => {
   });
 
   test('deep link, refresh, back and forward work on the real library', async ({ page }) => {
-    await useRealMode(page);
+    await enterRealMode(page);
     await page.goto(`${service.origin}/library/syn-steam-1001`);
     await expect(page.getByTestId('detail-title')).toContainText('同名样本');
     await expect(page.getByText('未提供成就信息')).toHaveCount(0);
@@ -170,7 +170,7 @@ test.describe('isolated test library', () => {
   });
 
   test('private and absent IDs look the same', async ({ page }) => {
-    await useRealMode(page);
+    await enterRealMode(page);
     const texts: string[] = [];
     for (const id of ['syn-private', 'syn-hidden', 'syn-quarantined', 'no-such-work']) {
       await page.goto(`${service.origin}/library/${id}`);
@@ -183,7 +183,7 @@ test.describe('isolated test library', () => {
   });
 
   test('unknown fields read as unknown, not as zero or absent', async ({ page }) => {
-    await useRealMode(page);
+    await enterRealMode(page);
     await page.goto(`${service.origin}/library/syn-unknown`);
     await expect(page.getByTestId('detail-title')).toHaveText('未知字段样本');
     await expect(page.locator('.hero-install')).toHaveText('本机状态未知');
@@ -199,7 +199,7 @@ test.describe('isolated test library', () => {
   });
 
   test('a failed save keeps the note and says it was not saved', async ({ page }) => {
-    await useRealMode(page);
+    await enterRealMode(page);
     await page.goto(`${service.origin}/library/syn-dlsite-1001`);
     await expect(page.getByTestId('detail-title')).toContainText('同名样本');
     await page.getByRole('button', { name: /添加备注|编辑备注/ }).click();
@@ -226,7 +226,7 @@ test.describe('isolated test library', () => {
   });
 
   test('an edit from another tab is not silently overwritten', async ({ page, request }) => {
-    await useRealMode(page);
+    await enterRealMode(page);
     await page.goto(`${service.origin}/library/syn-steam-1001`);
     await page.getByRole('button', { name: /添加备注|编辑备注/ }).click();
     await page.locator('.note-input').fill('旧页面里的草稿');
@@ -254,7 +254,7 @@ test.describe('isolated test library', () => {
   });
 
   test('service outage shows an outage, never an empty library or demo data', async ({ page }) => {
-    await useRealMode(page);
+    await enterRealMode(page);
     // Opening a detail first means its page module is already in memory.
     await page.goto(`${service.origin}/library/syn-steam-1001`);
     await expect(page.getByTestId('detail-title')).toContainText('同名样本');
@@ -288,7 +288,7 @@ test.describe('isolated test library', () => {
   });
 
   test('a page module lost with the service does not blank the app', async ({ page }) => {
-    await useRealMode(page);
+    await enterRealMode(page);
     await page.goto(`${service.origin}/library`);
     await expect(page.getByTestId('library-results')).toHaveAttribute('data-count', '120');
     await service.stop();
@@ -354,7 +354,7 @@ test.describe('isolated test library', () => {
   });
 
   test('a late real response cannot repaint the demo', async ({ page }) => {
-    await useRealMode(page);
+    await enterRealMode(page);
     let release = () => {};
     const gate = new Promise<void>((done) => (release = done));
     await page.route('**/api/v1/works?*', async (route) => {
@@ -400,7 +400,7 @@ test.describe('large synthetic libraries', () => {
             ms: request.timing().responseEnd,
           });
         });
-        await useRealMode(page);
+        await enterRealMode(page);
         const started = Date.now();
         await page.goto(`${service.origin}/library`);
         const results = page.getByTestId('library-results');

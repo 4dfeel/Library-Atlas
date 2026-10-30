@@ -182,7 +182,7 @@ def dashboard(engine: Engine, query: models.DashboardQuery) -> models.DashboardO
     )
 
 
-def source_status(engine: Engine) -> models.SourcesOut:
+def source_status(engine: Engine, dlsite_state: models.ConnectionState | None) -> models.SourcesOut:
     with engine.connect() as connection:
         rows = repo.source_summaries(connection)
         accounts = {
@@ -197,8 +197,13 @@ def source_status(engine: Engine) -> models.SourcesOut:
                 id=row.id,
                 display_name=row.display_name,
                 # A source row alone never implies an authenticated account.
-                connection=accounts.get(row.id, "not_connected"),
+                connection=(
+                    dlsite_state
+                    if row.id == "dlsite" and dlsite_state
+                    else accounts.get(row.id, "not_connected")
+                ),
                 work_count=row.work_count,
+                capabilities=models.SourceCapabilities(connect=row.id == "dlsite"),
             )
             for row in rows
         ]

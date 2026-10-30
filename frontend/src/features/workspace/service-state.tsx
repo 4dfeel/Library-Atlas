@@ -1,7 +1,7 @@
 import { Unplug } from 'lucide-react';
 import { useShell } from '@/app/shell-context';
 import { FeedbackState } from '@/components/feedback-state';
-import { ApiError, ServiceUnavailableError } from '@/lib/data';
+import { ApiError, ServiceUnavailableError, useRealSources } from '@/lib/data';
 
 /**
  * Real-mode read failure. An unreachable service, a database that is not ready and a
@@ -47,13 +47,19 @@ export function ReadFailure({ error, onRetry }: { error: Error; onRetry: () => v
 /** A real library with nothing in it. Never filled with samples. */
 export function RealLibraryEmpty() {
   const { openSources } = useShell();
+  const dlsite = useRealSources().data?.find((source) => source.id === 'dlsite');
+  const connected = dlsite?.connection === 'connected' || dlsite?.connection === 'unverified';
   return (
     <FeedbackState
       kind="empty"
       eyebrow="YOUR LIBRARY"
       title="你的作品库还是空的"
-      description="Steam 和 DLsite 都还没有连接，所以这里没有作品。连接与同步开放后，你拥有的作品会出现在这里；这里不会放入演示作品。"
-      action="查看来源状态"
+      description={
+        connected
+          ? 'DLsite 已连接。作品同步将在后续版本开放，开放后你拥有的作品会出现在这里；这里不会放入演示作品。'
+          : '还没有连接来源，所以这里没有作品。作品同步开放后，你拥有的作品会出现在这里；这里不会放入演示作品。'
+      }
+      action={connected ? '查看来源状态' : '连接 DLsite'}
       onAction={openSources}
     />
   );

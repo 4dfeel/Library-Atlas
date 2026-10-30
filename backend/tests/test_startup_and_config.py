@@ -76,14 +76,17 @@ def test_test_profile_is_isolated_from_real_data(tmp_path: Path) -> None:
 def test_fresh_directory_becomes_ready_and_empty(empty_client) -> None:
     ready = empty_client.get("/api/v1/ready")
     assert ready.status_code == 200
-    assert ready.json() == {"status": "ready", "profile": "test", "schemaRevision": "0001"}
+    assert ready.json() == {"status": "ready", "profile": "test", "schemaRevision": "0003"}
     page = empty_client.get("/api/v1/works").json()
     assert page["items"] == []
     assert page["totalVisible"] == 0
     sources = empty_client.get("/api/v1/sources").json()["sources"]
     assert [source["id"] for source in sources] == ["steam", "dlsite"]
     assert {source["connection"] for source in sources} == {"not_connected"}
-    assert all(source["capabilities"]["connect"] is False for source in sources)
+    assert {s["id"]: s["capabilities"]["connect"] for s in sources} == {
+        "steam": False,
+        "dlsite": True,
+    }
 
 
 def test_repeated_start_does_not_seed_or_duplicate(settings: Settings) -> None:

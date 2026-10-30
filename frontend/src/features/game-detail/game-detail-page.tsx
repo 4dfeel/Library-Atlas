@@ -214,8 +214,11 @@ function DetailBody({ game }: { game: GameDetail }) {
             <div>
               <dt>资料来源</dt>
               <dd>
-                {isDemo ? '合成演示数据' : isTestLibrary ? '合成测试样本' : '本地资料库'} · 未连接{' '}
-                {platformLabels[game.platform]}
+                {isDemo
+                  ? `合成演示数据 · 未连接 ${platformLabels[game.platform]}`
+                  : isTestLibrary
+                    ? '合成测试样本'
+                    : '本地资料库'}
               </dd>
             </div>
           </dl>

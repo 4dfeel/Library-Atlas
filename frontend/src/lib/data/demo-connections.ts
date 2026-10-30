@@ -5,7 +5,8 @@ import type { Platform } from './types';
  * cookie or token: "演示连接" just moves the state machine. Real platform sign-in is
  * Phase 2 work behind the backend and the Windows credential store.
  */
-export type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'expired' | 'error';
+export type ConnectionState =
+  'disconnected' | 'connecting' | 'connected' | 'unverified' | 'expired' | 'error';
 
 export interface SourceConnection {
   platform: Platform;

@@ -33,11 +33,13 @@ import {
   type DemoSize,
 } from '@/lib/data';
 import { AppLink } from '@/components/app-link';
-import { dashboardHref, libraryHref, matchRoute, useLocationKey } from '@/lib/router';
+import { dashboardHref, libraryHref, matchRoute, settingsHref, useLocationKey } from '@/lib/router';
 import { DashboardPage } from '@/features/dashboard/dashboard-page';
 import { SourcesDialog } from '@/features/demo-services/sources-dialog';
 import { TasksDialog } from '@/features/demo-services/tasks-dialog';
+import { AccountMenu } from '@/features/workspace/account-menu';
 import { WorkspaceSwitch } from '@/features/workspace/workspace-switch';
+import { SettingsPage } from '@/features/settings/settings-page';
 import { RouteBoundary } from './route-boundary';
 import { ShellContext } from './shell-context';
 import { LibraryPage } from '@/features/library/library-page';
@@ -229,14 +231,15 @@ export function App() {
                     </span>
                   </div>
                 )}
-                <button
-                  className="nav-item"
-                  onClick={openAbout}
-                  title={isDemo ? '演示设置' : '资料库设置'}
+                <AppLink
+                  aria-label="设置"
+                  to={settingsHref}
+                  className={`nav-item${route.name === 'settings' ? ' active' : ''}`}
+                  aria-current={route.name === 'settings' ? 'page' : undefined}
                 >
                   <Settings2 size={19} />
-                  {!collapsed && <span>{isDemo ? '演示设置' : '资料库设置'}</span>}
-                </button>
+                  {!collapsed && <span>设置</span>}
+                </AppLink>
                 <div className="sidebar-profile">
                   <span className="profile-avatar">A</span>
                   {!collapsed &&
@@ -283,6 +286,8 @@ export function App() {
                       <span aria-current="page">首页</span>
                     ) : route.name === 'library' ? (
                       <span aria-current="page">作品库</span>
+                    ) : route.name === 'settings' ? (
+                      <span aria-current="page">设置</span>
                     ) : (
                       <>
                         <AppLink to={libraryHref(size)} className="breadcrumb-link">
@@ -313,6 +318,7 @@ export function App() {
                           ? '测试库 · 合成数据'
                           : '我的资料库'}
                   </button>
+                  {!isDemo && <AccountMenu />}
                   <span className="topbar-divider" />
                   <Tooltip content={isDemo ? '下载与解压任务（演示）' : '下载与解压（尚未接入）'}>
                     <Button
@@ -350,6 +356,8 @@ export function App() {
                       onAbout={openAbout}
                       notify={notify}
                     />
+                  ) : route.name === 'settings' ? (
+                    <SettingsPage key={`${mode}-settings`} onDemoSettings={openAbout} />
                   ) : route.name === 'game' ? (
                     <GameDetailPage
                       key={`${mode}-${route.id}-${size}`}
@@ -388,7 +396,7 @@ export function App() {
                     {serviceDown
                       ? (serviceMessage ??
                         '本地服务没有响应。你的资料没有受到影响；请确认服务已启动。')
-                      : '本地服务已连接。Steam 与 DLsite 尚未连接，同步和下载将在后续版本开放。'}
+                      : '本地服务已连接。作品同步和下载将在后续版本开放。'}
                   </p>
                   {serviceDown && (
                     <Button variant="ghost" size="sm" onClick={retryService}>

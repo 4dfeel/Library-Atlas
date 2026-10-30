@@ -44,6 +44,9 @@ def serve(settings: Settings) -> int:
         return EXIT_PORT
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     logging.getLogger("alembic").setLevel(logging.WARNING)
+    # Its INFO lines hold full request addresses, and future download links may be signed.
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
     print(f"Library Atlas · {settings.profile} · http://{LOOPBACK_HOST}:{settings.port}")
     uvicorn.run(
         create_app(settings),

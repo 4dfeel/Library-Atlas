@@ -501,7 +501,7 @@ function Sources({ data, size }: { data: DashboardResult; size: DemoSize }) {
         来源与同步
       </h2>
       <p className="dash-module-note">
-        {isDemo ? '演示状态；不会连接真实账号。' : '连接与同步将在后续版本开放。'}
+        {isDemo ? '演示状态；不会连接真实账号。' : '作品同步将在后续版本开放。'}
       </p>
       <ul className="source-list">
         {(['steam', 'dlsite'] as const).map((platform) => (

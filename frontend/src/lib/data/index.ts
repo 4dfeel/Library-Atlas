@@ -24,11 +24,21 @@ export type {
   WorkKind,
 } from './types';
 export { ApiError, ServiceUnavailableError } from './api-client';
-export type { ConnectionStatus, LibrarySummary, SourceStatus } from './real-source';
+export type {
+  ConnectionStatus,
+  DlsiteConnection,
+  FolderInfo,
+  LibrarySummary,
+  SourceStatus,
+} from './real-source';
 export { demoAvailable, setWorkspaceMode, useWorkspaceMode, type WorkspaceMode } from './workspace';
 export {
   getDemoEditCount,
+  isAccountMismatch,
   isConflict,
+  useDlsiteConnection,
+  useFolderActions,
+  useFolders,
   useGameDetail,
   useLibraryCollection,
   useModeCacheIsolation,

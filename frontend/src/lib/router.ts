@@ -8,6 +8,7 @@ export type Route =
   | { name: 'dashboard' }
   | { name: 'library' }
   | { name: 'game'; id: string }
+  | { name: 'settings' }
   | { name: 'not-found' };
 
 /** Entry state written by Atlas. Other keys in history.state are preserved. */
@@ -74,6 +75,7 @@ export function matchRoute(pathname: string): Route {
   const path = pathname.replace(/\/+$/, '') || '/';
   if (path === '/') return { name: 'dashboard' };
   if (path === '/library') return { name: 'library' };
+  if (path === '/settings') return { name: 'settings' };
   const match = /^\/library\/([^/]+)$/.exec(path);
   if (match) {
     try {
@@ -84,6 +86,8 @@ export function matchRoute(pathname: string): Route {
   }
   return { name: 'not-found' };
 }
+
+export const settingsHref = '/settings';
 
 export function gameHref(id: string, size: number): string {
   return `/library/${encodeURIComponent(id)}${size === 5000 ? '?size=5000' : ''}`;
