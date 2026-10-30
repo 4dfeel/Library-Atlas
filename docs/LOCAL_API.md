@@ -211,3 +211,14 @@
 | `POST /local-copies/{id}/default` `open` `launch` | `launch` 返回 `{submitted,repeated}`，只表示已交给 Windows |
 
 `status`：`ok` `no_entry` `root_missing` `offline` `entry_missing`。
+
+### 本机作品库
+| 接口 | 说明 |
+| --- | --- |
+| `GET /library-scan` | 盘、任务、已发现的库、各状态数量 |
+| `GET /library-scan/items?state=&offset=&limit=` | 分页结果 |
+| `POST /library-scan/start` | `{drives,roots,deep}`。网络盘被拒绝 |
+| `POST /library-scan/cancel` | 停止遍历 |
+| `POST /library-scan/import` | `{includeLikely}`，批量关联，返回 `batchId` |
+| `POST /library-scan/undo/{batchId}` | 只撤销这一批关联 |
+| `POST /library-scan/items/{id}/link` `ignore` | 逐条决定 |

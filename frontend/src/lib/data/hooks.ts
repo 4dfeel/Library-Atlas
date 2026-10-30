@@ -22,6 +22,7 @@ import {
   type SyncJob,
   type DownloadAction,
   type LocalCopy,
+  type ScanItemState,
   type LocalCopyInput,
   type DownloadList,
   type DownloadState,
@@ -698,4 +699,56 @@ export function useLocalCopyActions(workId: string) {
     open: (id: string) => realSource.localCopyAction(id, 'open'),
     launch: (id: string) => realSource.launchLocalCopy(id),
   };
+}
+
+const scanKey = [...realRoot, 'library-scan'];
+
+export function useLibraryScan() {
+  const queryClient = useQueryClient();
+  const [error, setError] = useState<string | null>(null);
+  const query = useQuery({
+    queryKey: scanKey,
+    queryFn: ({ signal }) => realSource.scanStatus(signal),
+    enabled: useWorkspaceMode() === 'real',
+    retry: false,
+    refetchInterval: (current) => (current.state.data?.job?.state === 'running' ? 1_000 : false),
+  });
+  const refresh = () =>
+    Promise.all([
+      queryClient.invalidateQueries({ queryKey: scanKey }),
+      queryClient.invalidateQueries({ queryKey: [...realRoot, 'local-copies'] }),
+    ]);
+  const run = <T>(work: Promise<T>) =>
+    work
+      .then(async (result) => {
+        setError(null);
+        await refresh();
+        return result;
+      })
+      .catch((failure: unknown) => {
+        setError(failure instanceof Error ? failure.message : '操作没有完成，请重试。');
+        throw failure;
+      });
+  return {
+    status: query.data,
+    error,
+    start: (drives: string[], roots: string[], deep: boolean) =>
+      void run(realSource.scanStart(drives, roots, deep)).catch(() => undefined),
+    cancel: () => void run(realSource.scanCancel()).catch(() => undefined),
+    importMatches: (includeLikely: boolean) => run(realSource.scanImport(includeLikely)),
+    undo: (batchId: string) => void run(realSource.scanUndo(batchId)).catch(() => undefined),
+    link: (itemId: string, workId: string) =>
+      void run(realSource.scanLink(itemId, workId)).catch(() => undefined),
+    ignore: (itemId: string) => void run(realSource.scanIgnore(itemId)).catch(() => undefined),
+  };
+}
+
+export function useLibraryScanItems(state: ScanItemState, offset: number, limit: number) {
+  const query = useQuery({
+    queryKey: [...scanKey, 'items', state, offset, limit],
+    queryFn: ({ signal }) => realSource.scanItems(state, offset, limit, signal),
+    placeholderData: (previous) => previous,
+    retry: false,
+  });
+  return { items: query.data?.items ?? [], total: query.data?.total ?? 0 };
 }

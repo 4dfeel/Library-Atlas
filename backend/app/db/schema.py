@@ -273,6 +273,60 @@ local_copies = Table(
     Index("ix_local_copies_work", "work_id", "is_default"),
 )
 
+scan_roots = Table(
+    "scan_roots",
+    metadata,
+    Column("id", String, primary_key=True),
+    Column("path", String, nullable=False),
+    Column("path_key", String, nullable=False, unique=True),
+    Column("active", Integer, nullable=False, server_default=text("1")),
+    Column("last_scanned_at", String, nullable=True),
+)
+
+scan_jobs = Table(
+    "scan_jobs",
+    metadata,
+    Column("id", String, primary_key=True),
+    Column("state", String, nullable=False),
+    Column("folders", Integer, nullable=False, server_default=text("0")),
+    Column("found", Integer, nullable=False, server_default=text("0")),
+    Column("skipped", Integer, nullable=False, server_default=text("0")),
+    Column("complete", Integer, nullable=False, server_default=text("0")),
+    Column("code", String, nullable=True),
+    Column("started_at", String, nullable=False),
+    Column("finished_at", String, nullable=True),
+    CheckConstraint(
+        "state IN ('running', 'done', 'failed', 'cancelled', 'interrupted')",
+        name="ck_scan_jobs_state",
+    ),
+    Index("ix_scan_jobs_started", "started_at"),
+)
+
+scan_items = Table(
+    "scan_items",
+    metadata,
+    Column("id", String, primary_key=True),
+    Column("root_id", String, ForeignKey("scan_roots.id"), nullable=False),
+    Column("path", String, nullable=False),
+    Column("path_key", String, nullable=False, unique=True),
+    Column("kind_folder", String, nullable=False),
+    Column("maker", String, nullable=False),
+    Column("maker_key", String, nullable=False),
+    Column("title", String, nullable=False),
+    Column("title_key", String, nullable=False),
+    Column("state", String, nullable=False),
+    Column("reason", String, nullable=True),
+    Column("candidates", Text, nullable=True),
+    Column("work_id", String, nullable=True),
+    Column("batch_id", String, nullable=True),
+    Column("job_id", String, nullable=True),
+    CheckConstraint(
+        "state IN ('certain', 'likely', 'review', 'unmatched', 'linked', 'ignored')",
+        name="ck_scan_items_state",
+    ),
+    Index("ix_scan_items_state", "state", "maker_key", "title_key"),
+)
+
 library_entries = Table(
     "library_entries",
     metadata,

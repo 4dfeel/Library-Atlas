@@ -431,6 +431,100 @@ class LaunchOut(ApiModel):
     repeated: bool = False
 
 
+ScanState = Literal["running", "done", "failed", "cancelled", "interrupted"]
+ScanItemState = Literal["certain", "likely", "review", "unmatched", "linked", "ignored"]
+
+
+class VolumeOut(ApiModel):
+    letter: str
+    kind: str
+    available: bool
+
+
+class ScanJobOut(ApiModel):
+    id: str
+    state: ScanState
+    folders: int
+    found: int
+    skipped: int
+    complete: bool  # False means the range was not fully seen; never read it as "nothing more".
+    code: str | None
+    message: str | None
+    started_at: str
+    finished_at: str | None
+
+
+class ScanRootOut(ApiModel):
+    id: str
+    path: str
+    active: bool
+    available: bool
+    last_scanned_at: str | None
+
+
+class ScanCounts(ApiModel):
+    certain: int
+    likely: int
+    review: int
+    unmatched: int
+    linked: int
+    ignored: int
+
+
+class ScanStatus(ApiModel):
+    volumes: list[VolumeOut]
+    job: ScanJobOut | None
+    roots: list[ScanRootOut]
+    counts: ScanCounts
+
+
+class ScanCandidate(ApiModel):
+    work_id: str
+    title: str
+
+
+class ScanItemOut(ApiModel):
+    id: str
+    path: str
+    kind_folder: str
+    maker: str
+    title: str
+    state: ScanItemState
+    reason: str | None
+    candidates: list[ScanCandidate]
+
+
+class ScanItemsOut(ApiModel):
+    total: int
+    items: list[ScanItemOut]
+
+
+class ScanStart(ApiModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, extra="forbid")
+
+    drives: list[Annotated[str, StringConstraints(min_length=1, max_length=1)]] = []
+    roots: list[Annotated[str, StringConstraints(min_length=1, max_length=1024)]] = []
+    deep: bool = False
+
+
+class ScanImport(ApiModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, extra="forbid")
+
+    include_likely: bool = False
+
+
+class ScanImportOut(ApiModel):
+    batch_id: str
+    linked: int
+    skipped: int
+
+
+class ScanLink(ApiModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, extra="forbid")
+
+    work_id: str
+
+
 IntroStatus = Literal["ok", "empty", "unavailable"]
 
 

@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { DlsiteConnectionPanel } from '@/features/workspace/dlsite-connection';
 import { WorkspaceSwitch } from '@/features/workspace/workspace-switch';
+import { LibraryScanPanel } from './library-scan';
 import { useFolderActions, useFolders, useWorkspace, type FolderInfo } from '@/lib/data';
 
 const folderText: Record<FolderInfo['kind'], { title: string; note: string }> = {
@@ -169,6 +170,13 @@ export function SettingsPage({ onDemoSettings }: { onDemoSettings: () => void })
             </>
           )}
         </section>
+
+        {!isDemo && (
+          <section className="settings-section" aria-labelledby="settings-scan">
+            <h2 id="settings-scan">本机作品库</h2>
+            <LibraryScanPanel />
+          </section>
+        )}
 
         <section className="settings-section" aria-labelledby="settings-space">
           <h2 id="settings-space">资料空间</h2>

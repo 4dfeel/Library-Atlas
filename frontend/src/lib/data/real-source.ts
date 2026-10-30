@@ -213,6 +213,34 @@ export interface CopyPreview {
   suggested: string | null;
 }
 
+export type ScanItemState = 'certain' | 'likely' | 'review' | 'unmatched' | 'linked' | 'ignored';
+
+export interface ScanStatus {
+  volumes: { letter: string; kind: string; available: boolean }[];
+  job: {
+    id: string;
+    state: 'running' | 'done' | 'failed' | 'cancelled' | 'interrupted';
+    folders: number;
+    found: number;
+    complete: boolean;
+    code: string | null;
+    message: string | null;
+  } | null;
+  roots: { id: string; path: string; active: boolean; available: boolean }[];
+  counts: Record<ScanItemState, number>;
+}
+
+export interface ScanItem {
+  id: string;
+  path: string;
+  kindFolder: string;
+  maker: string;
+  title: string;
+  state: ScanItemState;
+  reason: string | null;
+  candidates: { workId: string; title: string }[];
+}
+
 export type IntroBlock =
   | { type: 'heading'; text: string }
   | { type: 'paragraph'; spans: { text: string; href?: string }[] }
@@ -462,6 +490,49 @@ export class RealLibrarySource implements LibrarySource {
       'POST',
       `/api/v1/local-copies/${encodeURIComponent(id)}/launch`,
     );
+  }
+
+  scanStatus(signal?: AbortSignal) {
+    return apiGet<ScanStatus>('/api/v1/library-scan', undefined, signal);
+  }
+
+  scanItems(state: ScanItemState, offset: number, limit: number, signal?: AbortSignal) {
+    const params = new URLSearchParams({ state, offset: String(offset), limit: String(limit) });
+    return apiGet<{ total: number; items: ScanItem[] }>(
+      '/api/v1/library-scan/items',
+      params,
+      signal,
+    );
+  }
+
+  scanStart(drives: string[], roots: string[], deep: boolean) {
+    return apiWrite<ScanStatus>('POST', '/api/v1/library-scan/start', { drives, roots, deep });
+  }
+
+  scanCancel() {
+    return apiWrite<ScanStatus>('POST', '/api/v1/library-scan/cancel');
+  }
+
+  scanImport(includeLikely: boolean) {
+    return apiWrite<{ batchId: string; linked: number; skipped: number }>(
+      'POST',
+      '/api/v1/library-scan/import',
+      { includeLikely },
+    );
+  }
+
+  scanUndo(batchId: string) {
+    return apiWrite('POST', `/api/v1/library-scan/undo/${encodeURIComponent(batchId)}`);
+  }
+
+  scanLink(itemId: string, workId: string) {
+    return apiWrite('POST', `/api/v1/library-scan/items/${encodeURIComponent(itemId)}/link`, {
+      workId,
+    });
+  }
+
+  scanIgnore(itemId: string) {
+    return apiWrite('POST', `/api/v1/library-scan/items/${encodeURIComponent(itemId)}/ignore`);
   }
 
   introduction(workId: string, signal?: AbortSignal): Promise<WorkIntroduction> {

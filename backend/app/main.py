@@ -43,6 +43,7 @@ from app.services.extractions import ExtractionService
 from app.services.folders import FolderService
 from app.services.gallery import WorkGallery
 from app.services.introductions import WorkIntroductions
+from app.services.library_scan import LibraryScanner
 from app.services.local_copies import LocalCopies
 from app.services.update_checks import UpdateChecker
 
@@ -75,6 +76,7 @@ class ServiceState:
     gallery: WorkGallery | None = None
     introductions: WorkIntroductions | None = None
     local_copies: LocalCopies | None = None
+    scanner: LibraryScanner | None = None
     updates: UpdateChecker | None = None
 
 
@@ -182,6 +184,15 @@ def _local_copies(request: Request, _engine: EngineDep) -> LocalCopies:
 
 
 CopiesDep = Annotated[LocalCopies, Depends(_local_copies)]
+
+
+def _scanner(request: Request, _engine: EngineDep) -> LibraryScanner:
+    service = _state(request).scanner
+    assert service is not None  # Built whenever the engine is.
+    return service
+
+
+ScannerDep = Annotated[LibraryScanner, Depends(_scanner)]
 
 
 def _updates(request: Request, _engine: EngineDep) -> UpdateChecker:
@@ -434,6 +445,43 @@ def _build_api() -> APIRouter:
     def launch_copy(service: CopiesDep, copy_id: str) -> models.LaunchOut:
         return service.launch(copy_id)
 
+    @api.get("/library-scan")
+    def scan_status(service: ScannerDep) -> models.ScanStatus:
+        return service.status()
+
+    @api.get("/library-scan/items")
+    def scan_items(
+        service: ScannerDep,
+        state: models.ScanItemState | None = None,
+        offset: Annotated[int, Query(ge=0)] = 0,
+        limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    ) -> models.ScanItemsOut:
+        return service.items(state, offset, limit)
+
+    @api.post("/library-scan/start")
+    def scan_start(service: ScannerDep, body: models.ScanStart) -> models.ScanStatus:
+        return service.start(body)
+
+    @api.post("/library-scan/cancel")
+    def scan_cancel(service: ScannerDep) -> models.ScanStatus:
+        return service.cancel()
+
+    @api.post("/library-scan/import")
+    def scan_import(service: ScannerDep, body: models.ScanImport) -> models.ScanImportOut:
+        return service.import_matches(body)
+
+    @api.post("/library-scan/undo/{batch_id}")
+    def scan_undo(service: ScannerDep, batch_id: str) -> models.ScanImportOut:
+        return service.undo(batch_id)
+
+    @api.post("/library-scan/items/{item_id}/link")
+    def scan_link(service: ScannerDep, item_id: str, body: models.ScanLink) -> models.ScanItemsOut:
+        return service.link_item(item_id, body.work_id)
+
+    @api.post("/library-scan/items/{item_id}/ignore")
+    def scan_ignore(service: ScannerDep, item_id: str) -> models.ScanItemsOut:
+        return service.ignore_item(item_id)
+
     @api.get("/settings/updates")
     def update_settings(checker: UpdatesDep) -> models.UpdateSettings:
         return checker.status()
@@ -538,6 +586,13 @@ def create_app(
                 state.extractions.recover()
                 state.local_copies = build_local_copies(settings, opened.engine, state.folders)
                 state.extractions.on_result = state.local_copies.record_unpacked
+                # A test library is never shown the real drives, so no test can read them.
+                state.scanner = (
+                    LibraryScanner(opened.engine, state.local_copies, lambda: [])
+                    if settings.profile == "test"
+                    else LibraryScanner(opened.engine, state.local_copies)
+                )
+                state.scanner.recover()
                 state.dlsite = dlsite_factory(settings, opened.engine)
                 state.covers = CoverCache(settings.data_dir / "cache" / "covers")
                 state.gallery = build_gallery(settings, opened.engine, state.covers)
@@ -557,6 +612,8 @@ def create_app(
                 state.not_ready_reason = error.reason
                 logger.error("database not ready: %s", error.reason)
         yield
+        if state.scanner is not None:
+            state.scanner.shutdown()
         if state.updates is not None:
             state.updates.shutdown()
         if state.extractions is not None:
