@@ -232,6 +232,17 @@
 | `GET /works/{id}/audio/bookmarks`，`POST /media/audio-bookmarks`，`DELETE /audio-bookmarks/{id}` | 书签 |
 | `GET`、`POST /media/playlists`，`DELETE /media/playlists/{id}` | 播放列表，整表保存 |
 
+### 阅读
+| 接口 | 说明 |
+| --- | --- |
+| `GET /works/{id}/books` | `{state,copyId,books,unsupported,complete,lastBookId}`；`kind`：`images` `archive` `pdf` |
+| `GET /media/books/{copyId}/{bookId}/pages` | `{pages,skipped,encrypted,version,pageId,pageIndex,readState}`；PDF 的 `pages` 为空 |
+| `GET /media/pages/{copyId}/{bookId}/{pageId}` | 页面图片。文件头不符或超限返回 415 |
+| `GET /media/books/{copyId}/{bookId}/file` | PDF，支持 Range |
+| `PUT /media/reading` | `{copyId,bookId,pageId,pageIndex,pageCount?,finished?}` |
+| `PUT /media/read-state` | `{copyId,bookId,read}` |
+| `GET /media/books/{copyId}/{bookId}/bookmarks`，`POST /media/reader-bookmarks`，`DELETE /reader-bookmarks/{id}` | 书签 |
+
 ### 游戏更新与存档
 | 接口 | 说明 |
 | --- | --- |

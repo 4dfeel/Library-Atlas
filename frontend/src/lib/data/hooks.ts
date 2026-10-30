@@ -25,6 +25,7 @@ import {
   type MediaBookmark,
   type Playlist,
   type PlaylistEntry,
+  type ReaderBookmark,
   type SaveRule,
   type ScanItemState,
   type LocalCopyInput,
@@ -869,3 +870,70 @@ export function usePlaylists() {
 }
 
 const emptyPlaylists: Playlist[] = [];
+
+export function useBooks(workId: string) {
+  const isReal = useWorkspaceMode() === 'real';
+  const queryClient = useQueryClient();
+  const key = [...realRoot, 'books', workId];
+  const query = useQuery({
+    queryKey: key,
+    queryFn: ({ signal }) => realSource.books(workId, signal),
+    enabled: isReal,
+    retry: false,
+  });
+  return {
+    books: query.data,
+    loading: isReal && query.isPending,
+    refresh: () => queryClient.invalidateQueries({ queryKey: key }),
+  };
+}
+
+export function useBookPages(copyId: string, bookId: string) {
+  const query = useQuery({
+    // Read once per opening: the saved place must not move under the reader's feet.
+    queryKey: [...realRoot, 'book-pages', copyId, bookId],
+    queryFn: ({ signal }) => realSource.bookPages(copyId, bookId, signal),
+    gcTime: 0,
+    staleTime: Infinity,
+    retry: false,
+  });
+  return {
+    data: query.data,
+    error: query.error ? (query.error as Error).message : null,
+    retry: () => void query.refetch(),
+  };
+}
+
+export function useReaderBookmarks(copyId: string, bookId: string) {
+  const query = useQuery({
+    queryKey: [...realRoot, 'reader-bookmarks', bookId],
+    queryFn: ({ signal }) => realSource.readerBookmarks(copyId, bookId, signal),
+    retry: false,
+  });
+  return { bookmarks: query.data ?? emptyReaderBookmarks };
+}
+
+const emptyReaderBookmarks: ReaderBookmark[] = [];
+
+export function useReaderActions(copyId: string, bookId: string) {
+  const queryClient = useQueryClient();
+  return useMemo(() => {
+    const refresh = () =>
+      queryClient.invalidateQueries({ queryKey: [...realRoot, 'reader-bookmarks', bookId] });
+    return {
+      savePosition: (pageId: string, pageIndex: number, pageCount: number, finished: boolean) =>
+        void realSource
+          .saveReading({ copyId, bookId, pageId, pageIndex, pageCount, finished })
+          .catch(() => undefined),
+      setRead: (read: boolean) => realSource.saveReadState(copyId, bookId, read),
+      addBookmark: async (pageId: string, pageIndex: number) => {
+        await realSource.addReaderBookmark(copyId, bookId, pageId, pageIndex);
+        await refresh();
+      },
+      removeBookmark: async (id: string) => {
+        await realSource.removeReaderBookmark(id);
+        await refresh();
+      },
+    };
+  }, [bookId, copyId, queryClient]);
+}

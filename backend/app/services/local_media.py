@@ -139,7 +139,7 @@ class LocalMedia:
 
     # --- finding files ---
 
-    def _copy_for(self, work_id: str, copy_id: str | None) -> Row[Any] | None:
+    def copy_for(self, work_id: str, copy_id: str | None) -> Row[Any] | None:
         with self._engine.connect() as connection:
             get_ordinary_work(connection, work_id)
             statement = select(local_copies).where(local_copies.c.work_id == work_id)
@@ -151,7 +151,7 @@ class LocalMedia:
                 )
             return connection.execute(statement.limit(1)).first()
 
-    def _ordinary_copy(self, copy_id: str) -> Row[Any]:
+    def ordinary_copy(self, copy_id: str) -> Row[Any]:
         with self._engine.connect() as connection:
             row = connection.execute(
                 select(local_copies).where(local_copies.c.id == copy_id)
@@ -181,7 +181,7 @@ class LocalMedia:
     def resolve(self, copy_id: str, file_id: str, types: dict[str, str]) -> tuple[Path, str]:
         """A saved copy and an ID found by looking, never a path from the request. The file is
         checked again here: it may have been replaced by a link since it was listed."""
-        row = self._ordinary_copy(copy_id)
+        row = self.ordinary_copy(copy_id)
         root = Path(row.root_path)
         if not root.is_dir():
             raise AtlasError("media_offline", "这个文件夹现在不可用。", status=404)
@@ -198,7 +198,7 @@ class LocalMedia:
     # --- audio ---
 
     def audio(self, work_id: str) -> models.AudioOut:
-        row = self._copy_for(work_id, None)
+        row = self.copy_for(work_id, None)
         if row is None:
             return models.AudioOut(state="no_copy", tracks=[])
         root = Path(row.root_path)
@@ -245,7 +245,7 @@ class LocalMedia:
         return {row.resource_id: row for row in rows}
 
     def _stamp(self, copy_id: str, file_id: str, suffixes: set[str]) -> tuple[Row[Any], str]:
-        row = self._ordinary_copy(copy_id)
+        row = self.ordinary_copy(copy_id)
         files, _complete = self.files(copy_id, Path(row.root_path), suffixes)
         match = next((item for item in files if item.id == file_id), None)
         if match is None:

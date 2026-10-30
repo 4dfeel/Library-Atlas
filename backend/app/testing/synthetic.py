@@ -50,7 +50,9 @@ def _at(rng: random.Random) -> str:
 
 def _generated(index: int, rng: random.Random) -> Sample:
     steam = index % 3 != 2
-    kind = "game" if steam or index % 6 == 2 else ("image", "video", "audio", "other")[index % 4]
+    kind = (
+        "game" if steam or index % 6 == 2 else ("image", "video", "audio", "other")[index // 6 % 4]
+    )
     title = f"{rng.choice(_ADJECTIVES)}{rng.choice(_NOUNS)} {index}"
     is_game = kind == "game"
     tracked = steam and index % 7 != 3
@@ -60,7 +62,9 @@ def _generated(index: int, rng: random.Random) -> Sample:
         source_id="steam" if steam else "dlsite",
         source_work_id=str(100000 + index) if steam else f"RJ{100000 + index}",
         kind=kind,
-        raw_kind=None if steam else ("RPG" if is_game else ("ICG", "MOV", "SOU", "ET3")[index % 4]),
+        raw_kind=None
+        if steam
+        else ("RPG" if is_game else ("ICG", "MOV", "SOU", "ET3")[index // 6 % 4]),
         title=title,
         subtitle=None if index % 4 else "合成样本",
         maker=None if index % 17 == 5 else rng.choice(_MAKERS),

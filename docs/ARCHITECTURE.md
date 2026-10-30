@@ -248,3 +248,6 @@ frontend/src/features/game-detail/work-gallery.tsx  介绍图
 
 - `services/local_media.py`：在已关联副本内找媒体文件（不跟随链接，有数量上限，短期缓存），页面只用 ID。进度绑定文件版本（大小+修改时间）。迁移 `0014`：`media_progress`、`media_bookmarks`、`playlists`、`playlist_items`。
 - `lib/data/audio-session.ts`：页面树之外的单一音频会话，只由点击启动。
+
+- `services/reader.py`：把副本里的文件整理成册，压缩包原地读取，页面 ID 含内容版本。`domain/image_header.py`：读文件头判断类型和尺寸。迁移 `0015`：`reading_progress`、`reader_bookmarks`。
+- `features/reader/`：阅读器。PDF 用本地打包的 `pdfjs-dist`，按需加载，只渲染页面内容。

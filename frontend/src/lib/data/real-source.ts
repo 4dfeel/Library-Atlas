@@ -301,6 +301,51 @@ export interface Playlist {
   items: PlaylistEntry[];
 }
 
+export interface ReaderBook {
+  id: string;
+  kind: 'images' | 'archive' | 'pdf';
+  name: string;
+  group: string;
+  pageCount: number | null;
+  pageIndex: number | null;
+  readState: 'unread' | 'reading' | 'read';
+}
+
+export interface BooksData {
+  state: 'ready' | 'empty' | 'offline' | 'no_copy';
+  copyId: string | null;
+  books: ReaderBook[];
+  unsupported: { name: string; reason: string }[];
+  complete: boolean;
+  lastBookId: string | null;
+}
+
+export interface ReaderPage {
+  id: string;
+  name: string;
+  section: string;
+}
+
+export interface BookPages {
+  id: string;
+  kind: ReaderBook['kind'];
+  name: string;
+  version: string;
+  pages: ReaderPage[];
+  skipped: number;
+  encrypted: boolean;
+  pageId: string | null;
+  pageIndex: number | null;
+  readState: ReaderBook['readState'];
+  workId: string;
+}
+
+export interface ReaderBookmark {
+  id: string;
+  pageId: string;
+  pageIndex: number;
+}
+
 export type IntroBlock =
   | { type: 'heading'; text: string }
   | { type: 'paragraph'; spans: { text: string; href?: string }[] }
@@ -653,6 +698,56 @@ export class RealLibrarySource implements LibrarySource {
 
   removePlaylist(id: string) {
     return apiWrite('DELETE', `/api/v1/media/playlists/${encodeURIComponent(id)}`);
+  }
+
+  books(workId: string, signal?: AbortSignal) {
+    return apiGet<BooksData>(`${workPath(workId)}/books`, undefined, signal);
+  }
+
+  bookPages(copyId: string, bookId: string, signal?: AbortSignal) {
+    return apiGet<BookPages>(
+      `/api/v1/media/books/${encodeURIComponent(copyId)}/${encodeURIComponent(bookId)}/pages`,
+      undefined,
+      signal,
+    );
+  }
+
+  saveReading(body: {
+    copyId: string;
+    bookId: string;
+    pageId: string;
+    pageIndex: number;
+    pageCount: number;
+    finished: boolean;
+  }) {
+    return apiWrite('PUT', '/api/v1/media/reading', body);
+  }
+
+  saveReadState(copyId: string, bookId: string, read: boolean) {
+    return apiWrite('PUT', '/api/v1/media/read-state', { copyId, bookId, read });
+  }
+
+  async readerBookmarks(copyId: string, bookId: string, signal?: AbortSignal) {
+    return (
+      await apiGet<{ bookmarks: ReaderBookmark[] }>(
+        `/api/v1/media/books/${encodeURIComponent(copyId)}/${encodeURIComponent(bookId)}/bookmarks`,
+        undefined,
+        signal,
+      )
+    ).bookmarks;
+  }
+
+  addReaderBookmark(copyId: string, bookId: string, pageId: string, pageIndex: number) {
+    return apiWrite('POST', '/api/v1/media/reader-bookmarks', {
+      copyId,
+      bookId,
+      pageId,
+      pageIndex,
+    });
+  }
+
+  removeReaderBookmark(id: string) {
+    return apiWrite('DELETE', `/api/v1/reader-bookmarks/${encodeURIComponent(id)}`);
   }
 
   introduction(workId: string, signal?: AbortSignal): Promise<WorkIntroduction> {

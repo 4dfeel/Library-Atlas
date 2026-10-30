@@ -680,6 +680,93 @@ class PlaylistsOut(ApiModel):
     playlists: list[PlaylistOut]
 
 
+BookKind = Literal["images", "archive", "pdf"]
+ReadState = Literal["unread", "reading", "read"]
+PageIndex = Annotated[int, Field(ge=0, le=1_000_000)]
+
+
+class BookOut(ApiModel):
+    id: str
+    kind: BookKind
+    name: str
+    group: str
+    page_count: int | None  # A ZIP or PDF is not opened until the user does.
+    page_index: int | None
+    read_state: ReadState
+
+
+class UnsupportedBook(ApiModel):
+    name: str
+    reason: str
+
+
+class BooksOut(ApiModel):
+    state: Literal["ready", "empty", "offline", "no_copy"]
+    copy_id: str | None = None
+    books: list[BookOut]
+    unsupported: list[UnsupportedBook]
+    complete: bool = True
+    last_book_id: str | None = None
+
+
+class PageOut(ApiModel):
+    id: str
+    name: str
+    section: str
+
+
+class BookPagesOut(ApiModel):
+    id: str
+    kind: BookKind
+    name: str
+    version: str
+    pages: list[PageOut]  # Empty for a PDF: the page knows its own count once it is opened.
+    skipped: int
+    encrypted: bool
+    page_id: str | None
+    page_index: int | None
+    read_state: ReadState
+    work_id: str
+
+
+class ReadingPositionIn(ApiModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, extra="forbid")
+
+    copy_id: str
+    book_id: str
+    page_id: Annotated[str, StringConstraints(max_length=64)]
+    page_index: PageIndex
+    page_count: PageIndex | None = None
+    finished: bool = False
+
+
+class ReadStateIn(ApiModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, extra="forbid")
+
+    copy_id: str
+    book_id: str
+    read: bool
+
+
+class ReaderBookmarkIn(ApiModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, extra="forbid")
+
+    copy_id: str
+    book_id: str
+    page_id: Annotated[str, StringConstraints(max_length=64)]
+    page_index: PageIndex
+
+
+class ReaderBookmark(ApiModel):
+    id: str
+    page_id: str
+    page_index: int
+
+
+class ReaderBookmarksOut(ApiModel):
+    bookmarks: list[ReaderBookmark]
+
+
 IntroStatus = Literal["ok", "empty", "unavailable"]
 
 

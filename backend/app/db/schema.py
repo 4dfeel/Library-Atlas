@@ -425,6 +425,31 @@ playlist_items = Table(
     Column("name", String, nullable=False),
 )
 
+reading_progress = Table(
+    "reading_progress",
+    metadata,
+    Column("book_id", String, primary_key=True),
+    Column("work_id", String, ForeignKey("works.id"), nullable=False),
+    Column("page_id", String, nullable=True),
+    Column("page_index", Integer, nullable=False),
+    Column("page_count", Integer, nullable=True),
+    Column("read_state", String, nullable=False),  # unread | reading | read
+    Column("updated_at", String, nullable=False),
+    Index("ix_reading_progress_work", "work_id"),
+)
+
+reader_bookmarks = Table(
+    "reader_bookmarks",
+    metadata,
+    Column("id", String, primary_key=True),
+    Column("work_id", String, ForeignKey("works.id"), nullable=False),
+    Column("book_id", String, nullable=False),
+    Column("page_id", String, nullable=False),
+    Column("page_index", Integer, nullable=False),
+    Column("created_at", String, nullable=False),
+    Index("ix_reader_bookmarks_book", "book_id"),
+)
+
 library_entries = Table(
     "library_entries",
     metadata,

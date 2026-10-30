@@ -166,3 +166,11 @@
 | WAV 播放、跳转、接续 | 已验证（自制音频） |
 | MP3、FLAC、OGG、Opus、M4A、AAC | 接口可提供，真实文件未验证，取决于浏览器 |
 | WMA、APE、TAK、TTA、WV、MIDI | 只列出，标为不可播放 |
+
+## 本地阅读（检查点 11）
+| 能力 | 状态 |
+| --- | --- |
+| PNG 文件夹、ZIP/CBZ、简单 PDF | 已验证（自制文件） |
+| JPEG、WebP、GIF、BMP、AVIF，真实日文或扫描版 PDF | 未用真实文件验证 |
+| RAR、CBR、7z、CB7、EPUB、MOBI、AZW3 | 不支持，列出并说明 |
+| 平台专用格式（如 `.dlst`） | 不解密，请用官方阅读器 |

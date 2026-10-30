@@ -150,9 +150,13 @@ def _zip_encoding(archive: zipfile.ZipFile) -> str:
     """Without the UTF-8 flag a name's encoding is unrecorded. Many tools write UTF-8 anyway, and
     Japanese ones wrote cp932: the system's own code page, GBK on a Chinese Windows, would turn
     those into nonsense. Text that is valid UTF-8 is almost never accidental, so that comes
-    first. Anything fitting neither is refused rather than guessed at."""
+    first. Anything fitting neither is refused rather than guessed at. The original name is the one
+    to test: the tidied one has had its backslashes turned into slashes, and that byte is half of
+    common cp932 characters such as 表 and ソ."""
     names = [
-        info.filename.encode("cp437") for info in archive.infolist() if not info.flag_bits & 0x800
+        info.orig_filename.encode("cp437")
+        for info in archive.infolist()
+        if not info.flag_bits & 0x800
     ]
     for encoding in ("utf-8", "cp932"):
         try:
@@ -164,7 +168,7 @@ def _zip_encoding(archive: zipfile.ZipFile) -> str:
     raise ArchiveProblem("name_encoding")
 
 
-def _open_zip(path: Path) -> zipfile.ZipFile:
+def open_zip(path: Path) -> zipfile.ZipFile:
     try:
         with zipfile.ZipFile(path) as probe:
             encoding = _zip_encoding(probe)
@@ -179,7 +183,7 @@ def _open_zip(path: Path) -> zipfile.ZipFile:
 
 
 def list_zip(path: Path, limits: Limits) -> Listing:
-    with _open_zip(path) as archive:
+    with open_zip(path) as archive:
         entries: list[Entry] = []
         for info in archive.infolist():
             if info.flag_bits & 0x1:
@@ -204,7 +208,7 @@ def extract_zip(path: Path, output: Path, limits: Limits, progress: Progress, ch
     """Counts what actually comes out: an entry may declare one size and hold another."""
     began = time.monotonic()
     done = 0
-    with _open_zip(path) as archive:
+    with open_zip(path) as archive:
         for info in archive.infolist():
             target = output.joinpath(*safe_parts(info.filename))
             if info.is_dir():

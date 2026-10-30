@@ -10,6 +10,6 @@
 | C8 跨盘发现导入 | 已实现，真实只读核对通过；批量关联待用户 | `phase-2/checkpoint-8` | [C8](PHASE2_CHECKPOINT8_REPORT.md) |
 | C9 存档保护更新 | 已实现，合成验证通过；真实更新待人工 | `phase-2/checkpoint-9` | [C9](PHASE2_CHECKPOINT9_REPORT.md) |
 | C10 音声 | 已实现，自制音频验证通过；真实作品待人工 | `phase-2/checkpoint-10` | [C10](PHASE2_CHECKPOINT10_REPORT.md) |
-| C11 漫画/CG | 未开始 | | |
+| C11 漫画/CG | 已实现，自制文件验证通过；真实作品待人工 | `phase-2/checkpoint-11` | [C11](PHASE2_CHECKPOINT11_REPORT.md) |
 
 本账本不记录私人路径、作品名或凭据。

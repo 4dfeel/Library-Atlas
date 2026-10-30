@@ -47,6 +47,7 @@ from app.services.introductions import WorkIntroductions
 from app.services.library_scan import LibraryScanner
 from app.services.local_copies import LocalCopies
 from app.services.local_media import AUDIO_TYPES, LocalMedia
+from app.services.reader import Reader
 from app.services.update_checks import UpdateChecker
 
 logger = logging.getLogger("atlas")
@@ -80,6 +81,7 @@ class ServiceState:
     local_copies: LocalCopies | None = None
     scanner: LibraryScanner | None = None
     media: LocalMedia | None = None
+    reader: Reader | None = None
     updates_game: GameUpdater | None = None
     updates: UpdateChecker | None = None
 
@@ -215,6 +217,15 @@ def _media(request: Request, _engine: EngineDep) -> LocalMedia:
 
 
 MediaDep = Annotated[LocalMedia, Depends(_media)]
+
+
+def _reader(request: Request, _engine: EngineDep) -> Reader:
+    service = _state(request).reader
+    assert service is not None  # Built whenever the engine is.
+    return service
+
+
+ReaderDep = Annotated[Reader, Depends(_reader)]
 
 
 def _updates(request: Request, _engine: EngineDep) -> UpdateChecker:
@@ -589,6 +600,52 @@ def _build_api() -> APIRouter:
     def remove_playlist(service: MediaDep, playlist_id: str) -> models.PlaylistsOut:
         return service.remove_playlist(playlist_id)
 
+    @api.get("/works/{work_id}/books")
+    def work_books(service: ReaderDep, work_id: str) -> models.BooksOut:
+        return service.books(work_id)
+
+    @api.get("/media/books/{copy_id}/{book_id}/pages")
+    def book_pages(service: ReaderDep, copy_id: str, book_id: str) -> models.BookPagesOut:
+        return service.pages(copy_id, book_id)
+
+    @api.get("/media/books/{copy_id}/{book_id}/file", include_in_schema=False)
+    def book_file(service: ReaderDep, copy_id: str, book_id: str) -> Response:
+        return FileResponse(service.pdf(copy_id, book_id), media_type="application/pdf")
+
+    @api.get("/media/pages/{copy_id}/{book_id}/{page_id}", include_in_schema=False)
+    def book_page(service: ReaderDep, copy_id: str, book_id: str, page_id: str) -> Response:
+        # A page's ID covers its content, so what the browser kept cannot go out of date.
+        headers = {"Cache-Control": "private, max-age=3600"}
+        page = service.page(copy_id, book_id, page_id)
+        if page.path is not None:
+            return FileResponse(page.path, media_type=page.media_type, headers=headers)
+        return Response(page.content, media_type=page.media_type, headers=headers)
+
+    @api.put("/media/reading")
+    def save_reading(service: ReaderDep, body: models.ReadingPositionIn) -> dict[str, bool]:
+        service.save_position(body)
+        return {"saved": True}
+
+    @api.put("/media/read-state")
+    def save_read_state(service: ReaderDep, body: models.ReadStateIn) -> dict[str, bool]:
+        service.set_read(body)
+        return {"saved": True}
+
+    @api.get("/media/books/{copy_id}/{book_id}/bookmarks")
+    def book_bookmarks(service: ReaderDep, copy_id: str, book_id: str) -> models.ReaderBookmarksOut:
+        return service.bookmarks(copy_id, book_id)
+
+    @api.post("/media/reader-bookmarks")
+    def add_reader_bookmark(
+        service: ReaderDep, body: models.ReaderBookmarkIn
+    ) -> models.ReaderBookmarksOut:
+        return service.add_bookmark(body)
+
+    @api.delete("/reader-bookmarks/{bookmark_id}")
+    def remove_reader_bookmark(service: ReaderDep, bookmark_id: str) -> dict[str, bool]:
+        service.remove_bookmark(bookmark_id)
+        return {"removed": True}
+
     @api.get("/settings/updates")
     def update_settings(checker: UpdatesDep) -> models.UpdateSettings:
         return checker.status()
@@ -701,6 +758,7 @@ def create_app(
                 )
                 state.scanner.recover()
                 state.media = LocalMedia(opened.engine)
+                state.reader = Reader(opened.engine, state.media)
                 state.dlsite = dlsite_factory(settings, opened.engine)
                 state.covers = CoverCache(settings.data_dir / "cache" / "covers")
                 state.gallery = build_gallery(settings, opened.engine, state.covers)
