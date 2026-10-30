@@ -1,4 +1,5 @@
 import { createDefaultEditStore, isValidRating, type DemoEditStore } from './demo-edits';
+import { selectDashboard, type DashboardResult, type DashboardScope } from './dashboard';
 import { describeDemoGame } from './details';
 import { generateDemoGames } from './generator';
 import { isOrdinaryGame, selectLibrary } from './selectors';
@@ -108,6 +109,7 @@ export class DemoLibrarySource implements LibrarySource {
       ...game,
       status: edits.status ?? game.status,
       favorite: edits.favorite ?? game.favorite,
+      installed: game.installed || edits.downloaded === true,
     };
   }
 
@@ -127,6 +129,23 @@ export class DemoLibrarySource implements LibrarySource {
     await previewScenario(scenario, signal);
     const ordinary = this.games.filter(isOrdinaryGame).map((game) => this.withEdits(game));
     return selectLibrary(scenario === 'empty' ? [] : ordinary, filters);
+  }
+
+  /** Same privacy-first snapshot as the Library: filter, then apply demo edits. */
+  async dashboard({
+    scope,
+    batch = 0,
+    scenario = 'normal',
+    signal,
+  }: {
+    scope: DashboardScope;
+    batch?: number;
+    scenario?: DemoScenario;
+    signal?: AbortSignal;
+  }): Promise<DashboardResult> {
+    await previewScenario(scenario === 'empty' ? 'normal' : scenario, signal);
+    const ordinary = this.games.filter(isOrdinaryGame).map((game) => this.withEdits(game));
+    return selectDashboard(scenario === 'empty' ? [] : ordinary, scope, batch);
   }
 
   async getGame({ id, scenario = 'normal', signal }: GameRequest): Promise<GameDetail> {
@@ -151,6 +170,17 @@ export class DemoLibrarySource implements LibrarySource {
   async toggleFavorite(id: string): Promise<void> {
     const { game } = this.ordinary(id);
     await this.updateGame(id, { favorite: !this.withEdits(game).favorite });
+  }
+
+  /**
+   * Records a finished demo download. Only works whose capabilities allow it; this
+   * never marks a game installed or launchable, only that demo files are present.
+   */
+  markDownloaded(id: string): void {
+    const { game } = this.ordinary(id);
+    if (!game.capabilities.download) throw new GameUpdateError('该作品不支持演示下载。');
+    const current = this.store.read();
+    this.store.write({ ...current, [id]: { ...current[id], downloaded: true } });
   }
 
   /** Number of locally stored demo records; used to describe the reset scope. */

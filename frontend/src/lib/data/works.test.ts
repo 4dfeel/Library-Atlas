@@ -48,9 +48,11 @@ describe('multi-platform works', () => {
     const work = await source.getGame({ id: 'demo-00027' });
     expect(work).toMatchObject({ platform: 'dlsite', kind: 'audio', playtimeMinutes: null });
     expect(work.achievements).toBeNull();
-    expect(work.lastPlayedAt).toBeNull();
+    // Demo usage record (收听), never a play time.
+    expect(work.lastPlayedAt).not.toBeNull();
     expect(workMeta(work)).toBe('音声 · DLsite');
-    expect(availabilityLabel({ kind: 'audio', installed: true })).toBe('已下载');
-    expect(availabilityLabel({ kind: 'game', installed: false })).toBe('未安装');
+    expect(availabilityLabel({ platform: 'dlsite', installed: true })).toBe('已下载');
+    expect(availabilityLabel({ platform: 'steam', installed: false })).toBe('未安装');
+    expect(availabilityLabel({ platform: 'dlsite', installed: false })).toBe('未下载');
   });
 });

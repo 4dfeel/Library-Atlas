@@ -8,7 +8,7 @@ import {
   type DemoSize,
   type GameDetail,
 } from '@/lib/data';
-import { libraryHref, navigate, readHistoryState } from '@/lib/router';
+import { dashboardHref, libraryHref, navigate, readHistoryState } from '@/lib/router';
 import { availabilityLabel, formatDate, kindLabels, platformLabels } from '@/lib/utils';
 import { GameHero } from './game-hero';
 import { PersonalRecord } from './personal-record';
@@ -21,16 +21,22 @@ function scenarioFromUrl(): DemoScenario {
 }
 
 /** Back goes to the exact Library entry when we came from it; otherwise to /library. */
+/**
+ * Back returns to the exact Library or Dashboard entry the detail was opened from;
+ * opened directly, it goes to /library.
+ */
 function useBackToLibrary(size: DemoSize) {
-  const href = libraryHref(size);
+  const [origin] = useState(() => readHistoryState());
+  const fromDashboard = Boolean(origin.fromDashboard);
+  const href = fromDashboard ? dashboardHref(size) : libraryHref(size);
   const onBack = (event: MouseEvent<HTMLAnchorElement>) => {
     if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey) return;
-    if (readHistoryState().fromLibrary) {
+    if (origin.fromLibrary || origin.fromDashboard) {
       event.preventDefault();
       window.history.back();
     }
   };
-  return { href, onBack };
+  return { href, onBack, label: fromDashboard ? '返回首页' : '返回作品库' };
 }
 
 function DetailBody({ game }: { game: GameDetail }) {
@@ -319,6 +325,7 @@ export function GameDetailPage({
         notify={notify}
         backHref={back.href}
         onBack={back.onBack}
+        backLabel={back.label}
         headingRef={headingRef}
       />
       <div className="detail-frame detail-body">

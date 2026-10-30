@@ -120,19 +120,25 @@ export function generateDemoGames(size: DemoSize): readonly Game[] {
     const status = statuses[Math.floor(random() * statuses.length)] ?? 'unplayed';
     let title: string =
       entry?.[0] ??
-      `${words[index % words.length]}：${qualifiers[index % qualifiers.length]} ${String(index + 1).padStart(4, '0')}`;
+      // Strides decorrelate the word cycle from the platform/kind cycle for variety.
+      `${words[(index * 3) % words.length]}：${qualifiers[(index * 7 + Math.floor(index / 10)) % qualifiers.length]} ${String(index + 1).padStart(4, '0')}`;
     if (index === 28)
       title =
         '跨越星海的最后一封信：遠い銀河の向こうへ — A Journey Beyond the Infinite Horizon · 完整典藏纪念版';
     if (index === 29)
       title = 'TheLastObservatoryBeyondTheEndOfTheKnownUniverseCollectorsEditionWithoutAnySpaces';
     if (visibility !== 'normal') title = `PRIVATE_SENTINEL_${visibility.toUpperCase()}_${index}`;
-    const playtimeMinutes = status === 'unplayed' ? 0 : Math.round(30 + random() * 14_000);
+    // Skewed like a real library: many short sessions, a few very long games.
+    const playtimeMinutes =
+      status === 'unplayed' ? 0 : Math.round(30 - Math.log(1 - random() * 0.9999) * 2_400);
     const { platform, kind } = sourceFor(index);
     const dlsite = platform === 'dlsite';
     return {
       id: `demo-${String(index + 1).padStart(5, '0')}`,
       platform,
+      // Synthetic numbers. A DLsite work deliberately reuses the preceding Steam
+      // entry's number, proving identity is (platform, sourceId).
+      sourceId: String(200_000 + (dlsite ? index - 1 : index)),
       kind,
       maker: makers[index % makers.length]!,
       releaseDate:
@@ -162,10 +168,25 @@ export function generateDemoGames(size: DemoSize): readonly Game[] {
           ? null
           : `/demo/backdrops/backdrop-${String((index % 24) + 1).padStart(2, '0')}.svg`,
       addedAt: new Date(Date.UTC(2026, 9, 30) - index * 86_400_000).toISOString(),
+      // Demo usage record. Some started DLsite works deliberately have none.
       lastPlayedAt:
-        status === 'unplayed' || dlsite
+        status === 'unplayed' || (dlsite && index % 4 === 1)
           ? null
-          : new Date(Date.UTC(2026, 9, 30) - (index % 60) * 86_400_000).toISOString(),
+          : // Minute-level spread across ~60 days, so recent lists are not ID-ordered ties.
+            new Date(Date.UTC(2026, 9, 30, 13) - ((index * 7_919) % 86_400) * 60_000).toISOString(),
+      capabilities: {
+        download: dlsite && index % 10 !== 7,
+        extract:
+          dlsite && index % 10 !== 7 && (kind === 'game' || kind === 'image' || kind === 'other'),
+        officialViewerOnly: dlsite && index % 10 === 7,
+      },
+      file: dlsite
+        ? {
+            version: `v1.${index % 4}`,
+            // Unknown size stays null; it is never shown as 0 B.
+            sizeBytes: index % 13 === 5 ? null : (40 + ((index * 7919) % 2600)) * 1_048_576,
+          }
+        : null,
     };
   });
 }

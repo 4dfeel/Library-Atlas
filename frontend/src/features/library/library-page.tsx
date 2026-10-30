@@ -12,6 +12,7 @@ import {
   List,
   Monitor,
   Package,
+  Shapes,
   Search,
   SlidersHorizontal,
   Star,
@@ -27,7 +28,6 @@ import {
   type DemoScenario,
   type DemoSize,
   type LibraryFilters,
-  type WorkKind,
   workKinds,
 } from '@/lib/data';
 import { kindLabels } from '@/lib/utils';
@@ -36,14 +36,17 @@ import { gameHref, patchHistoryState, readHistoryState } from '@/lib/router';
 import { GameCollection, type CollectionRestore, type ViewMode } from './game-collection';
 import { libraryUrl, parseLibraryUrl } from './library-url';
 
-const kindIcons: Record<WorkKind | 'all', typeof LayoutGrid> = {
+const kindIcons: Record<LibraryFilters['kind'], typeof LayoutGrid> = {
   all: LayoutGrid,
   game: Gamepad2,
+  'non-game': Shapes,
   image: Image,
   video: Clapperboard,
   audio: Headphones,
   other: Package,
 };
+
+const tabKinds: LibraryFilters['kind'][] = ['all', 'game', 'non-game', ...workKinds.slice(1)];
 
 function scenarioFromUrl(): DemoScenario {
   const value = new URLSearchParams(window.location.search).get('state');
@@ -174,9 +177,14 @@ export function LibraryPage({
 
       <section className="library-controls" aria-label="作品库工具栏">
         <div className="collection-tabs" role="group" aria-label="作品类型">
-          {(['all', ...workKinds] as const).map((kind) => {
+          {tabKinds.map((kind) => {
             const Icon = kindIcons[kind];
-            const count = kind === 'all' ? data?.totalVisible : data?.kindCounts[kind];
+            const count =
+              kind === 'all'
+                ? data?.totalVisible
+                : kind === 'non-game'
+                  ? data && data.totalVisible - data.kindCounts.game
+                  : data?.kindCounts[kind];
             return (
               <button
                 key={kind}
@@ -185,7 +193,7 @@ export function LibraryPage({
                 onClick={() => setFilters((current) => ({ ...current, kind, genre: 'all' }))}
               >
                 <Icon size={16} />
-                {kind === 'all' ? '全部' : kindLabels[kind]}
+                {kind === 'all' ? '全部' : kind === 'non-game' ? '非游戏' : kindLabels[kind]}
                 <span>{(count ?? 0).toLocaleString('zh-CN')}</span>
               </button>
             );

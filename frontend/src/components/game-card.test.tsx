@@ -7,6 +7,9 @@ import { GameCard, GameCover } from './game-card';
 const game: Game = {
   id: 'demo-unit',
   platform: 'steam',
+  sourceId: '200000',
+  capabilities: { download: false, extract: false, officialViewerOnly: false },
+  file: null,
   kind: 'game',
   maker: 'Atlas Original',
   releaseDate: null,

@@ -1,4 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useSyncExternalStore } from 'react';
+import type { DashboardScope } from './dashboard';
+import type { Connections } from './demo-connections';
+import { demoConnections, demoTasks, onDemoTaskComplete } from './demo-runtime';
+import type { DemoTask } from './demo-tasks';
 import { getDemoSource } from './demo-source';
 import type { DemoScenario, DemoSize, GameDetail, GameUpdate, LibraryFilters } from './types';
 
@@ -63,11 +68,47 @@ export function useToggleFavorite(size: DemoSize) {
 export function useResetDemoEdits(size: DemoSize) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: () => getDemoSource(size).resetEdits(),
+    mutationFn: async () => {
+      await getDemoSource(size).resetEdits();
+      demoTasks.dispose();
+      demoConnections.reset();
+    },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: demoRoot }),
   });
 }
 
 export function getDemoEditCount(size: DemoSize): number {
   return getDemoSource(size).editedCount();
+}
+
+export function useDashboard(
+  scope: DashboardScope,
+  { size, scenario = 'normal', batch = 0 }: LibraryOptions & { batch?: number },
+) {
+  return useQuery({
+    queryKey: [...demoRoot, size, 'ordinary-dashboard', scope, batch, scenario],
+    queryFn: ({ signal }) => getDemoSource(size).dashboard({ scope, batch, scenario, signal }),
+    staleTime: 60_000,
+    gcTime: 120_000,
+    retry: false,
+    // Keep the previous range on screen while a new range aggregates.
+    placeholderData: (previous) => previous,
+  });
+}
+
+export function useConnections(): Connections {
+  return useSyncExternalStore(demoConnections.subscribe, demoConnections.getSnapshot);
+}
+
+export function useDemoTasks(): readonly DemoTask[] {
+  return useSyncExternalStore(demoTasks.subscribe, demoTasks.getSnapshot);
+}
+
+/** Mount once: finished demo tasks refresh every cached Library/detail/Dashboard view. */
+export function useDemoTaskSync() {
+  const queryClient = useQueryClient();
+  useEffect(
+    () => onDemoTaskComplete(() => void queryClient.invalidateQueries({ queryKey: demoRoot })),
+    [queryClient],
+  );
 }

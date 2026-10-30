@@ -5,6 +5,7 @@ import '@fontsource-variable/noto-sans-sc';
 import { App } from './app/App';
 import './styles/globals.css';
 import './styles/game-detail.css';
+import './styles/dashboard.css';
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: false, staleTime: Infinity, refetchOnWindowFocus: false } },

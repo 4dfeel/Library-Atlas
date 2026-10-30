@@ -17,7 +17,7 @@ export interface LibraryUrlState {
 
 const statuses = new Set(['all', 'unplayed', 'playing', 'completed', 'paused']);
 const installed = new Set(['all', 'installed', 'not-installed']);
-const kinds = new Set(['all', ...workKinds]);
+const kinds = new Set(['all', 'non-game', ...workKinds]);
 const platforms = new Set(['all', 'steam', 'dlsite']);
 const sorts = new Set<LibrarySort>([
   'curated',
@@ -65,4 +65,17 @@ export function libraryUrl(current: string, { filters, view }: LibraryUrlState):
   set('sort', filters.sort, 'curated');
   set('view', view, 'grid');
   return `${url.pathname}${params.size ? `?${params}` : ''}`;
+}
+
+/** A Library link pre-filtered by the given values (used by Dashboard entries). */
+export function libraryHrefFor(size: number, filters: Partial<LibraryFilters>): string {
+  const params = new URLSearchParams();
+  if (filters.kind && filters.kind !== 'all') params.set('kind', filters.kind);
+  if (filters.platform && filters.platform !== 'all') params.set('platform', filters.platform);
+  if (filters.status && filters.status !== 'all') params.set('status', filters.status);
+  if (filters.genre && filters.genre !== 'all') params.set('genre', filters.genre);
+  if (filters.installed && filters.installed !== 'all') params.set('installed', filters.installed);
+  if (filters.sort && filters.sort !== 'curated') params.set('sort', filters.sort);
+  if (size === 5000) params.set('size', '5000');
+  return `/library${params.size ? `?${params}` : ''}`;
 }

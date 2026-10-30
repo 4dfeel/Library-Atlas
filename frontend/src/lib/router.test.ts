@@ -5,7 +5,8 @@ import { gameHref, matchRoute } from './router';
 
 describe('routes', () => {
   it('maps Library and stable game IDs, and rejects other paths', () => {
-    expect(matchRoute('/')).toEqual({ name: 'library' });
+    expect(matchRoute('/')).toEqual({ name: 'dashboard' });
+    expect(matchRoute('/library')).toEqual({ name: 'library' });
     expect(matchRoute('/library/')).toEqual({ name: 'library' });
     expect(matchRoute('/library/demo-00001')).toEqual({ name: 'game', id: 'demo-00001' });
     expect(matchRoute('/library/%E0%A4%A')).toEqual({ name: 'not-found' });

@@ -14,24 +14,47 @@ export const workKinds: readonly WorkKind[] = ['game', 'image', 'video', 'audio'
  * support; it covers games, image, video, audio and other works alike.
  */
 export interface Game {
+  /** Atlas-internal stable ID; routes and demo edits use it. */
   id: string;
   platform: Platform;
+  /** ID inside the source platform. Identity is (platform, sourceId), never sourceId alone. */
+  sourceId: string;
   kind: WorkKind;
   /** Studio, circle or brand. */
   maker: string;
   releaseDate: string | null;
   title: string;
   subtitle: string;
+  /** Genre or theme tag (RPG, 有声剧…); never the content kind. */
   genre: string;
   status: GameStatus;
+  /**
+   * Locally available: an installed Steam game, or downloaded DLsite files. Labels
+   * differ per platform; downloaded never implies installed or launchable.
+   */
   installed: boolean;
+  /** Game play time only; `null` when the source does not report it. */
   playtimeMinutes: number | null;
   favorite: boolean;
   visibility: Visibility;
   cover: { kind: 'art' | 'procedural' | 'missing'; index: number };
   background: string | null;
   addedAt: string;
+  /** Last use: played for games; read, watched or listened for others. Demo record. */
   lastPlayedAt: string | null;
+  /** What Atlas could do with this work once the source is connected. */
+  capabilities: WorkCapabilities;
+  /** Minimal file identity; versions or language packs are not merged by title. */
+  file: { version: string; sizeBytes: number | null } | null;
+}
+
+export interface WorkCapabilities {
+  /** Purchased files can be fetched directly (DLsite only, demo). */
+  download: boolean;
+  /** Downloaded files are archives that need extracting. */
+  extract: boolean;
+  /** Only viewable in the platform's own reader; Atlas never bypasses this. */
+  officialViewerOnly: boolean;
 }
 
 export interface LibraryFilters {
@@ -39,7 +62,8 @@ export interface LibraryFilters {
   genre: string;
   status: GameStatus | 'all';
   installed: 'all' | 'installed' | 'not-installed';
-  kind: WorkKind | 'all';
+  /** `non-game` lists every kind except games (dashboard DLsite media range). */
+  kind: WorkKind | 'all' | 'non-game';
   platform: Platform | 'all';
   favoritesOnly: boolean;
   sort: LibrarySort;

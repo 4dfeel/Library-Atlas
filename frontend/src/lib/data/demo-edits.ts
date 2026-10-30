@@ -6,6 +6,8 @@ export interface DemoGameEdits {
   rating?: number | null;
   note?: string;
   favorite?: boolean;
+  /** Set when a demo download task finishes. Additive field: v1 payloads stay valid. */
+  downloaded?: boolean;
 }
 
 export type DemoEdits = Readonly<Record<string, DemoGameEdits>>;
@@ -50,6 +52,7 @@ export function sanitizeDemoEdits(input: unknown): DemoEdits {
     if (typeof entry.note === 'string' && entry.note.length <= noteMaxLength)
       edits.note = entry.note;
     if (typeof entry.favorite === 'boolean') edits.favorite = entry.favorite;
+    if (entry.downloaded === true) edits.downloaded = true;
     if (Object.keys(edits).length) result[id] = edits;
   }
   return result;

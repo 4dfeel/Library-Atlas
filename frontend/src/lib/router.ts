@@ -4,12 +4,18 @@ import { useSyncExternalStore } from 'react';
  * Minimal History API routing for the two checkpoint routes. A router dependency
  * is not justified yet; swap this module if nested routes arrive in later phases.
  */
-export type Route = { name: 'library' } | { name: 'game'; id: string } | { name: 'not-found' };
+export type Route =
+  | { name: 'dashboard' }
+  | { name: 'library' }
+  | { name: 'game'; id: string }
+  | { name: 'not-found' };
 
 /** Entry state written by Atlas. Other keys in history.state are preserved. */
 export interface AtlasHistoryState {
   /** This detail entry was pushed from a Library entry directly behind it. */
   fromLibrary?: boolean;
+  /** This detail entry was pushed from the Dashboard entry directly behind it. */
+  fromDashboard?: boolean;
   /** First visible item index of the Library entry, restored on return. */
   libraryAnchor?: number;
   /** Game whose link should regain focus when returning to this Library entry. */
@@ -66,7 +72,8 @@ export function navigate(
 
 export function matchRoute(pathname: string): Route {
   const path = pathname.replace(/\/+$/, '') || '/';
-  if (path === '/' || path === '/library') return { name: 'library' };
+  if (path === '/') return { name: 'dashboard' };
+  if (path === '/library') return { name: 'library' };
   const match = /^\/library\/([^/]+)$/.exec(path);
   if (match) {
     try {
@@ -84,4 +91,11 @@ export function gameHref(id: string, size: number): string {
 
 export function libraryHref(size: number): string {
   return size === 5000 ? '/library?size=5000' : '/library';
+}
+
+export function dashboardHref(size: number, scope = 'all'): string {
+  const params = new URLSearchParams();
+  if (scope !== 'all') params.set('scope', scope);
+  if (size === 5000) params.set('size', '5000');
+  return `/${params.size ? `?${params}` : ''}`;
 }

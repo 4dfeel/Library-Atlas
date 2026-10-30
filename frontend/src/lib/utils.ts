@@ -31,7 +31,7 @@ export const statusLabels = {
 
 export const kindLabels: Record<WorkKind, string> = {
   game: '游戏',
-  image: '图像',
+  image: '漫画/图像',
   video: '视频',
   audio: '音声',
   other: '其他',
@@ -39,9 +39,12 @@ export const kindLabels: Record<WorkKind, string> = {
 
 export const platformLabels: Record<Platform, string> = { steam: 'Steam', dlsite: 'DLsite' };
 
-/** Games are installed; other works are downloaded. Same local-availability flag. */
-export function availabilityLabel(game: Pick<Game, 'kind' | 'installed'>): string {
-  if (game.kind === 'game') return game.installed ? '已安装' : '未安装';
+/**
+ * Steam games are installed; DLsite works (games included) are downloaded. A demo
+ * download never makes a DLsite game "installed" or launchable.
+ */
+export function availabilityLabel(game: Pick<Game, 'platform' | 'installed'>): string {
+  if (game.platform === 'steam') return game.installed ? '已安装' : '未安装';
   return game.installed ? '已下载' : '未下载';
 }
 
@@ -59,4 +62,27 @@ export function workMeta(game: Pick<Game, 'kind' | 'platform' | 'playtimeMinutes
   if (game.platform === 'steam' && game.kind === 'game')
     return formatPlaytime(game.playtimeMinutes);
   return `${kindLabels[game.kind]} · ${platformLabels[game.platform]}`;
+}
+
+/** Binary units; callers render `null` as 大小未知, never 0 B. */
+export function formatBytes(bytes: number): string {
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  if (bytes < 1024 ** 3) return `${(bytes / 1024 ** 2).toFixed(0)} MB`;
+  return `${(bytes / 1024 ** 3).toFixed(2)} GB`;
+}
+
+/** Verb for the last-use record; games are played, other works read/watched/heard. */
+export const usageVerbs: Record<WorkKind, string> = {
+  game: '游玩',
+  image: '阅读',
+  video: '观看',
+  audio: '收听',
+  other: '打开',
+};
+
+const shortDate = new Intl.DateTimeFormat('zh-CN', { month: 'long', day: 'numeric' });
+export function formatShortDate(iso: string | null): string | null {
+  if (!iso) return null;
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? null : shortDate.format(date);
 }

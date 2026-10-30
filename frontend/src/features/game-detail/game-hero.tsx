@@ -7,9 +7,11 @@ import {
   getCoverSource,
   useUpdateGame,
   type DemoSize,
+  type Game,
   type GameDetail,
 } from '@/lib/data';
 import { AppLink } from '@/components/app-link';
+import { DownloadAction } from './download-action';
 import {
   availabilityLabel,
   formatDate,
@@ -25,7 +27,7 @@ type Notify = (message: string, tone?: 'success' | 'error') => void;
  * Wide local art when present. Otherwise an ambient wash from the cover, or the
  * Atlas contour pattern when there is no cover either. Failed images fall back once.
  */
-function HeroBackdrop({ game }: { game: GameDetail }) {
+export function HeroBackdrop({ game }: { game: Game }) {
   const backdrop = getBackdropSource(game);
   const cover = getCoverSource(game);
   const [backdropFailed, setBackdropFailed] = useState(false);
@@ -91,6 +93,7 @@ export function GameHero({
   notify,
   backHref,
   onBack,
+  backLabel,
   headingRef,
 }: {
   game: GameDetail;
@@ -98,6 +101,7 @@ export function GameHero({
   notify: Notify;
   backHref: string;
   onBack: (event: MouseEvent<HTMLAnchorElement>) => void;
+  backLabel: string;
   headingRef: Ref<HTMLHeadingElement>;
 }) {
   const favorite = useUpdateGame(size, game.id);
@@ -122,7 +126,7 @@ export function GameHero({
       <div className="detail-frame hero-inner">
         <AppLink to={backHref} className="back-link" onClick={onBack} data-testid="back-to-library">
           <ArrowLeft size={16} />
-          返回作品库
+          {backLabel}
         </AppLink>
         <div className="hero-main">
           <div className="hero-cover">
@@ -190,6 +194,7 @@ export function GameHero({
                 暂不可用 · 演示模式未接入 {platformLabels[game.platform]}
               </span>
             </div>
+            <DownloadAction game={game} size={size} />
             <dl className="hero-facts">
               {tracksPlay ? (
                 <>

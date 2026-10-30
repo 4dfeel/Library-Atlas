@@ -33,6 +33,7 @@ jobs:
           path: |
             artifacts/checkpoint-1/
             artifacts/checkpoint-2/
+            artifacts/checkpoint-3/
             frontend/playwright-report/
             frontend/test-results/
           retention-days: 7

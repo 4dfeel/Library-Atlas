@@ -25,7 +25,12 @@ export function selectLibrary(games: readonly Game[], filters: LibraryFilters): 
         .includes(search)
     )
       return false;
-    if (filters.kind !== 'all' && game.kind !== filters.kind) return false;
+    if (
+      filters.kind === 'non-game'
+        ? game.kind === 'game'
+        : filters.kind !== 'all' && game.kind !== filters.kind
+    )
+      return false;
     if (filters.platform !== 'all' && game.platform !== filters.platform) return false;
     if (filters.genre !== 'all' && game.genre !== filters.genre) return false;
     if (filters.status !== 'all' && game.status !== filters.status) return false;
@@ -60,7 +65,11 @@ export function selectLibrary(games: readonly Game[], filters: LibraryFilters): 
     genres: [
       ...new Set(
         visible
-          .filter((game) => filters.kind === 'all' || game.kind === filters.kind)
+          .filter((game) =>
+            filters.kind === 'non-game'
+              ? game.kind !== 'game'
+              : filters.kind === 'all' || game.kind === filters.kind,
+          )
           .map((game) => game.genre),
       ),
     ].sort(collator.compare),
