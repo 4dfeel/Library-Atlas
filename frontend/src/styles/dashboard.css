@@ -2323,7 +2323,10 @@
   object-fit: contain;
 }
 
-.reader-stage[data-fit='page'] .reader-spread[data-count='2'] .reader-slot:first-child .reader-page {
+.reader-stage[data-fit='page']
+  .reader-spread[data-count='2']
+  .reader-slot:first-child
+  .reader-page {
   object-position: right center;
 }
 
