@@ -304,7 +304,7 @@ function DownloadRow({ task, size }: { task: DownloadTask; size: DemoSize }) {
           {done && !task.fileMissing && (
             <Button variant="ghost" size="sm" onClick={act('open-folder')}>
               <FolderOpen size={14} />
-              打开文件夹
+              打开压缩包位置
             </Button>
           )}
         </>
@@ -328,7 +328,7 @@ function ExtractRow({ task, size }: { task: ExtractTask; size: DemoSize }) {
       title={task.title}
       size={size}
       testId={{ 'data-extract-task': task.id }}
-      status={extractLabels[task.state]}
+      status={done && task.format === 'file' ? '已放入作品文件夹' : extractLabels[task.state]}
       statusIcon={
         done ? (
           <CircleCheck size={14} />
@@ -345,7 +345,7 @@ function ExtractRow({ task, size }: { task: ExtractTask; size: DemoSize }) {
           {task.resultMissing && <span className="save-error">解压结果已经不在原位置</span>}
           {task.cleanupFailed && (
             <span className="save-error">
-              有临时文件没能删除，可以手动删除解压文件夹里以 .atlas-extract- 开头的文件夹
+              有临时文件没能删除，可以手动删除作品文件夹里以 .atlas-extract- 开头的文件夹
             </span>
           )}
         </>
@@ -377,7 +377,7 @@ function ExtractRow({ task, size }: { task: ExtractTask; size: DemoSize }) {
           {done && !task.resultMissing && (
             <Button variant="ghost" size="sm" onClick={act('open-folder')}>
               <FolderOpen size={14} />
-              打开解压文件夹
+              打开作品文件夹
             </Button>
           )}
         </>

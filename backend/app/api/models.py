@@ -279,7 +279,7 @@ class SyncStatus(ApiModel):
     job: SyncJob | None = None
 
 
-FolderKind = Literal["library", "download_cache", "extract"]
+FolderKind = Literal["library", "download_cache"]
 FolderStatus = Literal["ok", "not_set", "missing"]
 
 
@@ -376,7 +376,6 @@ class DownloadPlanOut(ApiModel):
     parts: list[int]
     total_bytes: int | None
     folder: FolderOut
-    extract_folder: FolderOut
     free_bytes: int | None
 
 

@@ -6,6 +6,7 @@ import hashlib
 import json
 import logging
 import os
+import shutil
 import subprocess
 import sys
 import threading
@@ -36,6 +37,7 @@ from app.domain.download_names import (
     name_from_path,
     numbered,
     safe_file_name,
+    work_folder,
 )
 from app.services import downloads as downloads_module
 from app.services.downloads import MAX_RUNNING
@@ -53,8 +55,11 @@ SIZE = 2_000_000
 class Rig:
     def __init__(self, settings: Settings, tmp_path: Path) -> None:
         self.settings = settings
+        # Where archives go; works themselves go to `works`.
         self.library = tmp_path / "作品 フォルダ"
         self.library.mkdir()
+        self.works = tmp_path / "作品 Works"
+        self.works.mkdir()
         self.control: dict[str, Any] = {"size": 6}
         self.save_control()
 
@@ -102,10 +107,9 @@ def prepare(client: TestClient, rig: Rig) -> None:
         lambda: (client.get("/api/v1/sources/dlsite/sync").json().get("job") or {}).get("state")
         == "succeeded"
     )
-    assert (
-        client.put("/api/v1/settings/folders/library", json={"path": str(rig.library)}).status_code
-        == 200
-    )
+    for kind, folder in (("library", rig.works), ("download_cache", rig.library)):
+        response = client.put(f"/api/v1/settings/folders/{kind}", json={"path": str(folder)})
+        assert response.status_code == 200
 
 
 @pytest.fixture
@@ -152,13 +156,14 @@ def run_one(client: TestClient, **body: Any) -> tuple[dict[str, Any], dict[str, 
     return work, ended(client, task["id"])
 
 
-def parts_left(settings: Settings) -> list[Path]:
-    cache = settings.data_dir / "download-cache"
-    return list(cache.glob("*.part")) if cache.exists() else []
+def parts_left(rig: Rig) -> list[Path]:
+    return list((rig.library / ".partial").glob("*.part"))
 
 
 def final_files(rig: Rig) -> list[Path]:
-    return sorted(path for path in rig.library.rglob("*") if path.is_file())
+    return sorted(
+        path for path in rig.library.rglob("*") if path.is_file() and ".partial" not in path.parts
+    )
 
 
 # --- names ---
@@ -201,6 +206,35 @@ def test_names_come_from_headers_and_addresses() -> None:
     assert name_from_path("/home/download") is None
     assert numbered("a.zip", 2) == "a (2).zip"
     assert numbered("noext", 3) == "noext (3)"
+
+
+@pytest.mark.parametrize(
+    ("kind", "raw", "maker", "title", "expected"),
+    [
+        ("game", "SLN", "虚构社团", "作品 A", ("Game", "虚构社团", "作品 A")),
+        ("audio", "SOU", "虚构社团", "作品", ("Audio", "虚构社团", "作品")),
+        ("video", "MOV", "虚构社团", "作品", ("Movie", "虚构社团", "作品")),
+        ("image", "MNG", "虚构社团", "作品", ("Comic", "虚构社团", "作品")),
+        ("image", "ICG", "虚构社团", "作品", ("Illust", "虚构社团", "作品")),
+        ("other", "ZZZ", "虚构社团", "作品", ("Other", "虚构社团", "作品")),
+        ("game", "SLN", None, "作品", ("Game", "未知制作方", "作品")),
+        ("game", "SLN", "A/B:社", "前/后?篇", ("Game", "A_B_社", "前_后_篇")),
+        ("game", "SLN", "社.", "CON", ("Game", "社", "_CON")),
+        ("game", "SLN", "社", "...", ("Game", "社", "RJ1")),
+        ("game", "SLN", "..\\..", "..\\..\\evil", ("Game", "未知制作方", ".._.._evil")),
+    ],
+)
+def test_works_are_filed_by_type_maker_and_title(
+    kind: str, raw: str, maker: str | None, title: str, expected: tuple[str, str, str]
+) -> None:
+    assert work_folder(kind, raw, maker, title, "RJ1") == expected
+
+
+def test_a_long_title_keeps_room_for_what_unpacks_inside() -> None:
+    _kind, maker, title = work_folder("game", "SLN", "社" * 200, "長" * 300, "RJ1")
+    assert len(title.encode()) <= 120
+    assert len(maker.encode()) <= 80
+    title.encode().decode()
 
 
 # --- address rules ---
@@ -300,7 +334,7 @@ def test_a_file_arrives_whole_in_the_chosen_folder(api: TestClient, rig: Rig) ->
     assert files[0].parent == rig.library / source_id
     assert files[0].name == f"{source_id}.zip"
     assert files[0].read_bytes() == file_bytes(source_id, 0, SIZE)
-    assert parts_left(rig.settings) == []
+    assert parts_left(rig) == []
     assert task["location"] == str(rig.library / source_id)
     # Downloaded, and nothing more than that.
     assert api.get(f"/api/v1/works/{work['id']}").json()["installed"] is True
@@ -387,7 +421,7 @@ def test_answers_that_are_not_the_file_are_never_saved(
     assert task["code"] == code
     assert task["message"]
     assert final_files(rig) == []
-    assert parts_left(rig.settings) == []
+    assert parts_left(rig) == []
 
 
 def test_a_refused_file_gets_one_fresh_address_then_stops(api: TestClient, rig: Rig) -> None:
@@ -598,11 +632,17 @@ def test_a_missing_folder_is_not_recreated(api: TestClient, rig: Rig) -> None:
     assert not rig.library.exists()
 
 
-def test_a_folder_lost_during_the_transfer_is_reported(api: TestClient, rig: Rig) -> None:
+def test_a_folder_lost_before_continuing_is_reported_not_recreated(
+    api: TestClient, rig: Rig
+) -> None:
     rig.behave(mode="slow", size=SIZE, delay=0.02)
     task = start(api, first_work(api)["id"])[0]
     wait_for(lambda: task_by_id(api, task["id"])["state"] == "downloading")
-    os.rmdir(rig.library)
+    time.sleep(0.15)
+    api.post(f"{BASE}/{task['id']}/pause")
+    assert ended(api, task["id"])["state"] == "paused"
+    shutil.rmtree(rig.library)
+    api.post(f"{BASE}/{task['id']}/retry")
     done = ended(api, task["id"])
     assert done["state"] == "failed"
     assert done["code"] == "folder_missing"
@@ -617,7 +657,7 @@ def test_changing_the_folder_does_not_move_a_task(
     rig.behave(mode="slow", size=SIZE, delay=0.02)
     work = first_work(api)
     task = start(api, work["id"])[0]
-    api.put("/api/v1/settings/folders/library", json={"path": str(other)})
+    api.put("/api/v1/settings/folders/download_cache", json={"path": str(other)})
     assert ended(api, task["id"])["state"] == "done"
     assert (rig.library / work["sourceId"]).is_dir()
     assert list(other.iterdir()) == []
@@ -646,7 +686,7 @@ def test_files_cross_drives_by_copying_first(
     work, task = run_one(api)
     assert task["state"] == "done"
     assert final_files(rig)[0].read_bytes() == file_bytes(work["sourceId"], 0, SIZE)
-    assert parts_left(rig.settings) == []
+    assert parts_left(rig) == []
     assert [path.name for path in final_files(rig)] == [f"{work['sourceId']}.zip"]
 
 
@@ -656,7 +696,7 @@ def test_not_enough_space_stops_before_writing(api: TestClient, rig: Rig) -> Non
     _work, task = run_one(api)
     assert task["state"] == "failed"
     assert task["code"] == "disk_full"
-    assert parts_left(rig.settings) == []
+    assert parts_left(rig) == []
 
 
 def test_a_write_failure_is_reported(
@@ -683,7 +723,7 @@ def test_a_disk_filling_up_mid_write_is_reported(
     rig.behave(size=1000)
     _work, task = run_one(api)
     assert task["code"] == "disk_full"
-    assert parts_left(rig.settings) == []
+    assert parts_left(rig) == []
 
 
 # --- the queue ---
@@ -746,6 +786,30 @@ def test_edits_and_new_tasks_are_not_refused_while_transfers_write_progress(
         assert ended(api, task["id"])["state"] == "done"
 
 
+def test_a_task_is_never_run_twice(api: TestClient, rig: Rig) -> None:
+    """Looking for work while a worker has started but not yet said so used to start that task
+    again, with two workers writing one file. Every task must fetch its file exactly once."""
+    rig.behave(parts=8, size=300_000)
+    work = first_work(api)
+    queue = queue_of(api)
+    tasks = start(api, work["id"])
+    pending = {task["id"] for task in tasks}
+    while pending:
+        queue._pump()
+        pending = {
+            task["id"]
+            for task in api.get(BASE).json()["tasks"]
+            if task["id"] in pending and task["state"] not in ENDED
+        }
+    requests = [str(item["path"]) for item in _file_requests(api)]
+    assert len(requests) == 8
+    assert len(set(requests)) == 8
+    source_id = work["sourceId"]
+    for number in range(1, 9):
+        file = rig.library / source_id / f"{source_id}.part{number}.rar"
+        assert file.read_bytes() == file_bytes(source_id, number, 300_000)
+
+
 def test_only_a_few_run_at_once(api: TestClient, rig: Rig) -> None:
     rig.behave(mode="slow", size=SIZE, delay=0.02)
     tasks = [start(api, work["id"])[0] for work in work_ids(api)[:4]]
@@ -764,7 +828,7 @@ def test_only_a_few_run_at_once(api: TestClient, rig: Rig) -> None:
 def test_cancel_stops_the_transfer_and_cleans_up_only_its_own_file(
     api: TestClient, rig: Rig
 ) -> None:
-    keep = rig.settings.data_dir / "download-cache" / "not-mine.part"
+    keep = rig.library / ".partial" / "not-mine.part"
     keep.parent.mkdir(exist_ok=True)
     keep.write_bytes(b"x")
     rig.behave(mode="slow", size=2_000_000, delay=0.02)
@@ -776,7 +840,7 @@ def test_cancel_stops_the_transfer_and_cleans_up_only_its_own_file(
     assert time.monotonic() - began < 2.0
     assert done["state"] == "cancelled"
     assert final_files(rig) == []
-    assert parts_left(rig.settings) == [keep]
+    assert parts_left(rig) == [keep]
     # Nothing keeps writing after it says cancelled.
     assert keep.read_bytes() == b"x"
     assert api.post(f"{BASE}/{task['id']}/cancel").json()["state"] == "cancelled"

@@ -17,10 +17,10 @@ from app.core.errors import AtlasError
 from app.db.engine import writing
 from app.repositories import app_settings
 
+_DEFAULT_ARCHIVES = "Archives"
 _KEYS: dict[models.FolderKind, str] = {
     "library": "folder.library",
     "download_cache": "folder.download_cache",
-    "extract": "folder.extract",
 }
 
 
@@ -44,8 +44,11 @@ class FolderService:
         self._picking = threading.Lock()
 
     def _default(self, kind: models.FolderKind) -> Path | None:
-        # Downloads go where the user decides. Only the temporary cache has a default.
-        return self._settings.data_dir / "download-cache" if kind == "download_cache" else None
+        # Works go where the user decides. Archives follow them unless told otherwise.
+        if kind != "download_cache":
+            return None
+        library = self._chosen("library")
+        return library / _DEFAULT_ARCHIVES if library else None
 
     def _chosen(self, kind: models.FolderKind) -> Path | None:
         with self._engine.connect() as connection:
@@ -71,21 +74,8 @@ class FolderService:
     def describe_library(self) -> models.FolderOut:
         return self._describe("library")
 
-    def describe_extract(self) -> models.FolderOut:
-        return self._describe("extract")
-
-    def extract_root(self) -> Path:
-        chosen = self._chosen("extract")
-        if chosen is None:
-            raise AtlasError("folder_not_set", "请先选择解压文件夹。", status=409)
-        if not chosen.is_dir():
-            raise AtlasError(
-                "folder_missing", "解压文件夹现在不存在，可能是硬盘没有连接。", status=409
-            )
-        return chosen
-
-    def download_targets(self) -> tuple[Path, Path]:
-        """Where a new task will write: finished files and files in progress."""
+    def works_root(self) -> Path:
+        """Where works go once they are ready to use."""
         library = self._chosen("library")
         if library is None:
             raise AtlasError("folder_not_set", "请先选择作品文件夹。", status=409)
@@ -93,14 +83,25 @@ class FolderService:
             raise AtlasError(
                 "folder_missing", "作品文件夹现在不存在，可能是硬盘没有连接。", status=409
             )
+        return library
+
+    def download_targets(self) -> tuple[Path, Path]:
+        """The works folder, and where downloaded archives are kept: a folder of the user's
+        choosing, or by default inside the works folder, so they land on the same drive."""
+        library = self.works_root()
         chosen = self._chosen("download_cache")
         if chosen is not None and not chosen.is_dir():
             raise AtlasError(
-                "folder_missing", "下载缓存文件夹现在不存在，可能是硬盘没有连接。", status=409
+                "folder_missing", "压缩包文件夹现在不存在，可能是硬盘没有连接。", status=409
             )
-        cache = chosen or self._default("download_cache")
-        assert cache is not None  # The cache always has a default.
-        return library, cache
+        archives = chosen or library / _DEFAULT_ARCHIVES
+        try:
+            archives.mkdir(exist_ok=True)
+        except OSError:
+            raise AtlasError(
+                "write_failed", "无法写入作品文件夹，请检查权限。", status=409
+            ) from None
+        return library, archives
 
     def open_path(self, path: Path) -> None:
         """For a folder a finished task wrote to; callers never pass request data."""
@@ -129,7 +130,7 @@ class FolderService:
                 continue
             current = self._chosen(other)
             if current is not None and current.resolve() == resolved:
-                raise _invalid("作品、下载缓存和解压文件夹不能是同一个文件夹。")
+                raise _invalid("作品文件夹和压缩包文件夹不能是同一个文件夹。")
         try:
             with tempfile.TemporaryFile(dir=resolved):
                 pass

@@ -168,7 +168,7 @@
 | `POST /extractions/{id}/cancel` `retry` `open-folder` | 重试不会重新下载 |
 | `POST /extractions/clear` | 清除已取消和失败的记录，不动结果和下载 |
 
-`POST /downloads` 另接受 `extract`：全部文件完成后自动解压。方案响应另有 `extractFolder`。
+`POST /downloads` 另接受 `extract`：全部文件完成后自动解压。不是压缩包的文件也会放入作品文件夹，`format` 为 `file`。
 
 任务：`id,workId,title,state,format?,filesTotal?,bytesTotal?,bytesDone,code?,message?,canRetry,location?,resultMissing,cleanupFailed,createdAt,finishedAt?`。`state`：`queued` `checking` `extracting` `committing` `done` `not_needed` `failed` `cancelled` `interrupted`。`code`：`no_download` `missing_parts` `input_changed` `account_changed` `tool_missing` `unsupported_format` `encrypted` `name_encoding` `unsafe_path` `duplicate_path` `special_entry` `too_large` `damaged` `extract_failed` `output_mismatch` `disk_full` `write_failed` `folder_missing` `interrupted` `cancelled` `unexpected`。
 
@@ -179,7 +179,7 @@
 | `GET /works/{id}/gallery` | `{images:[{url,width?,height?}],intro?,unavailable}`。`url` 是 Atlas 地址 |
 | `GET /works/{id}/gallery/{index}` | 图片本身，按序号，不接受地址 |
 
-`GET /downloads` 另返回 `updates:[{workId,title}]`，任务另有 `bytesPerSecond?`。文件夹类型增加 `extract`。
+`GET /downloads` 另返回 `updates:[{workId,title}]`，任务另有 `bytesPerSecond?`。文件夹类型是 `library`（作品）和 `download_cache`（压缩包，默认在作品文件夹的 `Archives` 里）。
 
 ### 文件夹设置
 | 接口 | 说明 |

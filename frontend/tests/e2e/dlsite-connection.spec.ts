@@ -295,7 +295,7 @@ test('settings holds the account and the download folders', async ({ page }, inf
 
   // Typing a path, with a clear refusal for one that does not exist.
   const cache = settings.locator('[data-folder="download_cache"]');
-  await cache.getByLabel('下载缓存文件夹').fill(join(chosen, 'does-not-exist'));
+  await cache.getByLabel('压缩包文件夹').fill(join(chosen, 'does-not-exist'));
   await cache.getByRole('button', { name: '保存' }).click();
   await expect(cache.locator('.dlsite-message')).toContainText('不存在');
   await shot(page, 'settings-folder-error');

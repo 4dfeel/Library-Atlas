@@ -1,7 +1,7 @@
 """The download queue: state lives here and in the database, never in the page.
 
-A task's bytes go to `<cache>/<task id>.part`, which only this task owns, and move to
-`<library>/<work id>/<name>` only after the transfer is checked. An existing file is never
+A task's bytes go to `<archives>/.partial/<task id>.part`, which only this task owns, and move
+to `<archives>/<work id>/<name>` only after the transfer is checked. An existing file is never
 replaced: a taken name gets a number. A restart reports what it finds and sends nothing.
 
 The database and the file system cannot commit together, so the intended name and hash are
@@ -64,6 +64,7 @@ MAX_ATTEMPTS = 3
 PROGRESS_INTERVAL = 0.5
 _HASH_BYTES = 1024 * 1024
 _LIST_LIMIT = 200
+_PARTIAL = ".partial"  # Beside the finished archives, so finishing is only a rename.
 _WORKING = ("queued", "resolving", "downloading", "verifying")
 # One live task per file: held in `active_key`, which the database keeps unique.
 _HOLDS_KEY = (*_WORKING, "paused")
@@ -83,7 +84,7 @@ MESSAGES = {
     "size_mismatch": "下载的大小和服务器声明的不一致，没有标记为完成。",
     "response_changed": "DLsite 返回的内容和预期不同，已停止。",
     "platform_unavailable": "暂时连不上 DLsite，可以重试。已下载的部分会尽量保留。",
-    "folder_missing": "作品文件夹现在不存在，可能是硬盘没有连接。",
+    "folder_missing": "压缩包文件夹现在不存在，可能是硬盘没有连接。",
     "folder_invalid": "目标位置不在你选择的文件夹内，已停止。",
     "disk_full": "磁盘空间不足，下载已停止。",
     "write_failed": "无法写入文件，请检查文件夹权限。",
@@ -368,7 +369,6 @@ class DownloadQueue:
             parts=[file.number for file in plan.files if file.number is not None],
             total_bytes=row.download_size,
             folder=self._folders.describe_library(),
-            extract_folder=self._folders.describe_extract(),
             free_bytes=self._free_bytes(),
         )
 
@@ -385,9 +385,7 @@ class DownloadQueue:
         with self._engine.connect() as connection:
             work = self._downloadable_work(connection, body.work_id)
             account = accounts.get_account(connection)
-        library, cache = self._folders.download_targets()
-        if body.extract:
-            self._folders.extract_root()  # Better to ask now than after a long download.
+        _library, cache = self._folders.download_targets()
         plan = self._resolve_plan(work.source_work_id)
         if plan.kind == "serial":
             raise AtlasError(
@@ -402,7 +400,7 @@ class DownloadQueue:
         if not wanted:
             raise AtlasError("nothing_selected", "没有选择要下载的文件。", status=422)
         fingerprint = account.account_fingerprint if account else None
-        target = library / safe_file_name(work.source_work_id, "work")
+        target = cache / safe_file_name(work.source_work_id, "work")
         ids = [
             self._create_one(
                 work, file, len(plan.files), fingerprint, target, cache, again=body.again
@@ -476,7 +474,7 @@ class DownloadQueue:
                         state="queued",
                         active_key=key,
                         target_dir=str(target),
-                        cache_dir=str(cache),
+                        cache_dir=str(cache / _PARTIAL),
                         created_at=now,
                         updated_at=now,
                     )
@@ -584,7 +582,12 @@ class DownloadQueue:
             with self._engine.connect() as connection:
                 rows = connection.execute(
                     select(download_tasks)
-                    .where(download_tasks.c.state == "queued")
+                    # A worker only marks its task once it is running, so one just started still
+                    # reads as queued: without this it would be started a second time.
+                    .where(
+                        download_tasks.c.state == "queued",
+                        download_tasks.c.id.not_in(list(self._running)),
+                    )
                     .order_by(download_tasks.c.created_at, download_tasks.c.part_number)
                     .limit(room)
                 ).all()
@@ -676,8 +679,12 @@ class DownloadQueue:
         generation: int,
     ) -> None:
         cache = Path(row.cache_dir)
+        if not cache.parent.is_dir():
+            raise _Stop(
+                "failed", "folder_missing"
+            )  # Never recreated: it may be an unplugged drive.
         try:
-            cache.mkdir(parents=True, exist_ok=True)
+            cache.mkdir(exist_ok=True)
         except OSError:
             raise _Stop("failed", "write_failed") from None
         state = _Transfer(row)

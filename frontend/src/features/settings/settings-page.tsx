@@ -10,15 +10,11 @@ import { useFolderActions, useFolders, useWorkspace, type FolderInfo } from '@/l
 const folderText: Record<FolderInfo['kind'], { title: string; note: string }> = {
   library: {
     title: '作品文件夹',
-    note: '下载好的作品会保存在这里。',
+    note: '作品解压后放在这里，按“类型 / 制作方 / 作品名”分类。已有文件夹不会被覆盖。',
   },
   download_cache: {
-    title: '下载缓存文件夹',
-    note: '下载中的文件先放在这里，完成后移走。',
-  },
-  extract: {
-    title: '解压文件夹',
-    note: '解压后的作品放在这里，每部作品一个文件夹。已有文件夹不会被覆盖。',
+    title: '压缩包文件夹',
+    note: '下载的压缩包保存在这里。不单独选择时，放在作品文件夹的 Archives 里。',
   },
 };
 

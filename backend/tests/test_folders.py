@@ -37,10 +37,19 @@ def test_defaults_create_nothing_and_ask_for_a_download_folder(
         "isDefault": True,
         "status": "not_set",
     }
+    # Archives follow the works folder, so until there is one they have nowhere to go.
     cache = folder(api, "download_cache")
     assert cache["isDefault"] is True
-    assert cache["status"] == "ok"
-    assert not (settings.data_dir / "download-cache").exists()
+    assert cache["status"] == "not_set"
+    assert cache["path"] is None
+
+
+def test_archives_default_to_inside_the_works_folder(api: TestClient, tmp_path: Path) -> None:
+    assert api.put(f"{BASE}/library", json={"path": str(tmp_path)}).status_code == 200
+    cache = folder(api, "download_cache")
+    assert cache["isDefault"] is True
+    assert cache["path"] == str(tmp_path / "Archives")
+    assert not (tmp_path / "Archives").exists()  # Made when first needed.
 
 
 def test_chosen_folder_survives_restart(settings: Settings, tmp_path: Path) -> None:
@@ -108,8 +117,12 @@ def test_open_needs_a_set_folder_and_creates_only_the_default_cache(
     api: TestClient, settings: Settings
 ) -> None:
     assert api.post(f"{BASE}/library/open").json()["error"]["code"] == "folder_not_set"
+    assert api.post(f"{BASE}/download_cache/open").json()["error"]["code"] == "folder_not_set"
+    works = settings.data_dir.parent / "works"
+    works.mkdir()
+    assert api.put(f"{BASE}/library", json={"path": str(works)}).status_code == 200
     assert api.post(f"{BASE}/download_cache/open").status_code == 200
-    assert (settings.data_dir / "download-cache").is_dir()
+    assert (works / "Archives").is_dir()
 
 
 def test_picker_sets_the_choice_and_cancel_changes_nothing(

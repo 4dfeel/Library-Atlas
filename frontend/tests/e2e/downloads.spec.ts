@@ -124,7 +124,7 @@ test.describe('downloads', () => {
     await expect(page.getByText('已安装', { exact: true })).toHaveCount(0);
     await expect(action(page).getByRole('button', { name: '解压', exact: true })).toBeVisible();
     await shot(page, 'download-done');
-    const folder = join(library, work.sourceId);
+    const folder = join(library, 'Archives', work.sourceId);
     expect(await readdir(folder)).toEqual([`${work.sourceId}.zip`]);
     expect((await stat(join(folder, `${work.sourceId}.zip`))).size).toBe(24 * MB);
 
@@ -149,7 +149,7 @@ test.describe('downloads', () => {
     await plan.getByRole('button', { name: '开始下载' }).click();
     await expect(plan).toBeHidden();
     await expect(action(page).getByTestId('download-done')).toBeVisible({ timeout: 20_000 });
-    expect((await readdir(join(library, work.sourceId))).sort()).toEqual([
+    expect((await readdir(join(library, 'Archives', work.sourceId))).sort()).toEqual([
       `${work.sourceId}.part1.rar`,
       `${work.sourceId}.part3.rar`,
     ]);
@@ -174,7 +174,9 @@ test.describe('downloads', () => {
     await expect(plan.getByRole('button', { name: '开始下载' })).toBeEnabled();
     await plan.getByRole('button', { name: '开始下载' }).click();
     await expect(action(page).getByTestId('download-done')).toBeVisible({ timeout: 20_000 });
-    expect(await readdir(join(chosen, work.sourceId))).toEqual([`${work.sourceId}.zip`]);
+    expect(await readdir(join(chosen, 'Archives', work.sourceId))).toEqual([
+      `${work.sourceId}.zip`,
+    ]);
     await mkdir(library, { recursive: true });
   });
 
@@ -186,7 +188,9 @@ test.describe('downloads', () => {
     await expect(action(page)).toContainText('不是文件', { timeout: 15_000 });
     await shot(page, 'download-failed');
     await expect
-      .poll(async () => readdir(join(library, work.sourceId)).catch(() => [] as string[]))
+      .poll(async () =>
+        readdir(join(library, 'Archives', work.sourceId)).catch(() => [] as string[]),
+      )
       .toEqual([]);
     await behave({ size: MB });
     await action(page).getByRole('button', { name: '重新下载' }).click();
@@ -221,7 +225,9 @@ test.describe('downloads', () => {
     await dialog.getByRole('button', { name: '取消' }).first().click();
     await expect(dialog.getByText('已取消').first()).toBeVisible({ timeout: 10_000 });
     await expect
-      .poll(async () => readdir(join(library, work.sourceId)).catch(() => [] as string[]))
+      .poll(async () =>
+        readdir(join(library, 'Archives', work.sourceId)).catch(() => [] as string[]),
+      )
       .toEqual([]);
     await dialog.getByRole('button', { name: /清除/ }).click();
     await expect(dialog.getByText('已取消')).toHaveCount(0);
@@ -244,7 +250,9 @@ test.describe('downloads', () => {
       .getByRole('button', { name: /继续下载|重新下载/ })
       .click();
     await expect(action(page).getByTestId('download-done')).toBeVisible({ timeout: 30_000 });
-    expect((await stat(join(library, work.sourceId, `${work.sourceId}.zip`))).size).toBe(16 * MB);
+    expect(
+      (await stat(join(library, 'Archives', work.sourceId, `${work.sourceId}.zip`))).size,
+    ).toBe(16 * MB);
   });
 
   test('progress does not disturb a note being written or the list', async ({ page }) => {

@@ -13,7 +13,8 @@ from sqlalchemy import select, update
 
 from app.adapters.system.archives import ArchiveProblem, find_seven_zip
 from app.core.config import Settings
-from app.db.schema import extract_tasks, personal_records
+from app.db.schema import extract_tasks, personal_records, works
+from app.repositories import app_settings
 from app.services import extractions as extractions_module
 from tests import archive_samples as samples
 from tests.conftest import client_for, write_headers
@@ -38,18 +39,14 @@ def rig(settings: Settings, tmp_path: Path) -> Rig:
 
 
 @pytest.fixture
-def unpack_root(tmp_path: Path) -> Path:
-    folder = tmp_path / "解压 フォルダ"
-    folder.mkdir()
-    return folder
+def unpack_root(rig: Rig) -> Path:
+    return rig.works
 
 
 @pytest.fixture
 def api(settings: Settings, rig: Rig, unpack_root: Path) -> Iterator[TestClient]:
     with client_for(settings) as client:
         prepare(client, rig)
-        response = client.put("/api/v1/settings/folders/extract", json={"path": str(unpack_root)})
-        assert response.status_code == 200
         yield client
 
 
@@ -118,13 +115,14 @@ def test_one_click_downloads_then_unpacks(
     assert done["format"] == "zip"
     assert done["filesTotal"] == 2
     assert done["bytesTotal"] == 1001
-    result = unpack_root / work["sourceId"]
-    assert done["location"] == str(result)
+    # Filed as the user files works: type, then maker, then title.
+    result = Path(done["location"])
+    assert result.relative_to(unpack_root).parts[1:] == ("虚构社团", work["title"])
     assert tree(result) == ["说明.txt".replace("说", "説"), "音声/01 はじめに.wav"]
     assert (result / "音声" / "01 はじめに.wav").read_bytes() == b"a" * 1000
     # The download stays, and nothing was left behind.
     assert len(final_files(rig)) == 1
-    assert [path.name for path in unpack_root.iterdir()] == [work["sourceId"]]
+    assert len(list(unpack_root.iterdir())) == 1  # Nothing temporary was left beside it.
 
 
 def test_a_download_alone_never_starts_unpacking(
@@ -144,8 +142,9 @@ def test_a_finished_download_can_be_unpacked_later(
     serve(rig, samples.zip_with(archives / "a.zip", {"a.txt": b"x"}))
     work = first_work(api)
     download_only(api, work["id"])
-    assert unpack(api, work["id"])["state"] == "done"
-    assert (unpack_root / work["sourceId"] / "a.txt").read_bytes() == b"x"
+    done = unpack(api, work["id"])
+    assert done["state"] == "done"
+    assert (Path(done["location"]) / "a.txt").read_bytes() == b"x"
 
 
 def test_one_click_on_a_finished_download_does_not_download_again(
@@ -173,9 +172,9 @@ def test_split_rar_goes_through_with_every_part(
     tasks = start(api, work["id"], extract=True)
     assert len(tasks) == 3
     done = settled(api, work["id"])
-    assert done["state"] == "done", done
+    assert done["state"] == "done", done["code"]
     assert done["format"] == "rar"
-    assert (unpack_root / work["sourceId"] / "movie.bin").read_bytes() == data
+    assert (Path(done["location"]) / "movie.bin").read_bytes() == data
 
 
 def test_unpacking_waits_for_every_part(api: TestClient, rig: Rig, archives: Path) -> None:
@@ -192,20 +191,23 @@ def test_unpacking_waits_for_every_part(api: TestClient, rig: Rig, archives: Pat
     assert response.json()["error"]["code"] == "missing_parts"
 
 
-def test_a_file_that_is_not_an_archive_skips_unpacking(
+def test_a_file_that_is_not_an_archive_is_filed_the_same_way(
     api: TestClient, rig: Rig, unpack_root: Path
 ) -> None:
     rig.behave(size=2000)  # Made-up bytes with no archive signature.
     work = first_work(api)
     start(api, work["id"], extract=True)
     done = settled(api, work["id"])
-    assert done["state"] == "not_needed"
-    assert done["location"] is None
-    assert list(unpack_root.iterdir()) == []
+    assert done["state"] == "done"
+    assert done["format"] == "file"
+    result = Path(done["location"])
+    assert result.relative_to(unpack_root).parts[1:] == ("虚构社团", work["title"])
+    assert (result / f"{work['sourceId']}.zip").stat().st_size == 2000
+    assert len(final_files(rig)) == 1  # A copy: the download stays.
 
 
-def test_a_plain_program_skips_unpacking_and_is_never_run(
-    api: TestClient, rig: Rig, unpack_root: Path, archives: Path
+def test_a_plain_program_is_filed_and_never_run(
+    api: TestClient, rig: Rig, archives: Path, tmp_path: Path
 ) -> None:
     tool = find_seven_zip()
     if tool is None:
@@ -215,8 +217,9 @@ def test_a_plain_program_skips_unpacking_and_is_never_run(
     serve(rig, program)
     work = first_work(api)
     start(api, work["id"], extract=True)
-    assert settled(api, work["id"])["state"] == "not_needed"
-    assert list(unpack_root.iterdir()) == []
+    done = settled(api, work["id"])
+    assert done["format"] == "file"
+    assert Path(done["location"]).is_dir()
 
 
 # --- what must not happen ---
@@ -256,22 +259,58 @@ def test_hostile_archives_write_nothing(
 
 
 def test_existing_folders_are_never_merged_or_replaced(
-    api: TestClient, rig: Rig, archives: Path, unpack_root: Path
+    api: TestClient, rig: Rig, archives: Path
 ) -> None:
-    work = first_work(api)
-    existing = unpack_root / work["sourceId"]
-    existing.mkdir()
-    save = existing / "セーブ.dat"
-    save.write_bytes(b"the user's save")
     serve(rig, samples.zip_with(archives / "a.zip", {"セーブ.dat": b"from the archive"}))
+    work = first_work(api)
     download_only(api, work["id"])
-    done = unpack(api, work["id"])
+    first = Path(unpack(api, work["id"])["location"])
+    save = first / "セーブ.dat"
+    save.write_bytes(b"the user's save")
+    response = api.post(BASE, json={"workId": work["id"], "again": True})
+    assert response.status_code == 202
+    done = settled(api, work["id"])
     assert done["state"] == "done"
     assert save.read_bytes() == b"the user's save"
-    assert tree(existing) == ["セーブ.dat"]
-    second = unpack_root / f"{work['sourceId']} (2)"
-    assert done["location"] == str(second)
+    second = Path(done["location"])
+    assert second == first.with_name(f"{first.name} (2)")
     assert (second / "セーブ.dat").read_bytes() == b"from the archive"
+
+
+def test_a_link_along_the_way_cannot_lead_the_result_outside(
+    api: TestClient, rig: Rig, archives: Path, unpack_root: Path, tmp_path: Path
+) -> None:
+    winapi = pytest.importorskip("_winapi")
+    serve(rig, samples.zip_with(archives / "a.zip", {"a.txt": b"x"}))
+    work = first_work(api)
+    download_only(api, work["id"])
+    first = Path(unpack(api, work["id"])["location"])
+    kind = first.relative_to(unpack_root).parts[0]
+    shutil.rmtree(unpack_root / kind)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    winapi.CreateJunction(str(outside), str(unpack_root / kind))
+    assert api.post(BASE, json={"workId": work["id"], "again": True}).status_code == 202
+    done = settled(api, work["id"])
+    assert done["state"] == "failed"
+    assert done["code"] == "folder_invalid"
+    assert not any(path.is_file() for path in outside.rglob("*"))
+
+
+def test_two_works_with_the_same_title_do_not_mix(
+    api: TestClient, rig: Rig, archives: Path
+) -> None:
+    serve(rig, samples.zip_with(archives / "a.zip", {"a.txt": b"x"}))
+    one, two = work_ids(api)[:2]
+    with engine_of(api).begin() as connection:
+        connection.execute(update(works).values(title="同名作品", kind="game"))
+    download_only(api, one["id"])
+    download_only(api, two["id"])
+    first = Path(unpack(api, one["id"])["location"])
+    second = Path(unpack(api, two["id"])["location"])
+    assert first != second
+    assert first.name == "同名作品"
+    assert second.name == "同名作品 (2)"
 
 
 def test_asking_again_makes_a_new_folder(
@@ -284,11 +323,14 @@ def test_asking_again_makes_a_new_folder(
     # Asking without saying "again" is the same request.
     api.post(BASE, json={"workId": work["id"]})
     assert settled(api, work["id"])["id"] == first["id"]
-    assert len(list(unpack_root.iterdir())) == 1
+    assert Path(first["location"]).is_dir()
     response = api.post(BASE, json={"workId": work["id"], "again": True})
     assert response.status_code == 202
-    assert settled(api, work["id"])["id"] != first["id"]
-    assert len(list(unpack_root.iterdir())) == 2
+    second = settled(api, work["id"])
+    assert second["id"] != first["id"]
+    assert second["location"] != first["location"]
+    assert Path(first["location"]).is_dir()
+    assert Path(second["location"]).is_dir()
 
 
 def test_requests_cannot_name_a_file_or_folder(api: TestClient, tmp_path: Path) -> None:
@@ -309,6 +351,8 @@ def test_no_folder_is_refused_before_a_long_download(
     with client_for(settings) as client:
         prepare(client, rig)
         serve(rig, samples.zip_with(archives / "a.zip", {"a.txt": b"x"}))
+        with engine_of(client).begin() as connection:
+            app_settings.put(connection, "folder.library", "")
         work = first_work(client)
         response = client.post("/api/v1/downloads", json={"workId": work["id"], "extract": True})
         assert response.status_code == 409
@@ -447,7 +491,7 @@ def test_cancelling_something_finished_leaves_it_finished(
     download_only(api, work["id"])
     done = unpack(api, work["id"])
     assert api.post(f"{BASE}/{done['id']}/cancel").json()["state"] == "done"
-    assert len(list(unpack_root.iterdir())) == 1
+    assert Path(done["location"]).is_dir()
 
 
 def test_a_late_attempt_cannot_change_a_newer_one(
@@ -469,7 +513,7 @@ def test_a_removed_result_is_reported(
     work = first_work(api)
     download_only(api, work["id"])
     done = unpack(api, work["id"])
-    shutil.rmtree(unpack_root / work["sourceId"])
+    shutil.rmtree(done["location"])
     after = extraction_of(api, work["id"])
     assert after is not None
     assert after["state"] == "done"
@@ -514,7 +558,6 @@ def _crash(client: TestClient, task_id: str, **values: Any) -> None:
 
 def _prepared(client: TestClient, rig: Rig, archives: Path, unpack_root: Path) -> dict[str, Any]:
     prepare(client, rig)
-    client.put("/api/v1/settings/folders/extract", json={"path": str(unpack_root)})
     serve(rig, samples.zip_with(archives / "a.zip", {"a.txt": b"content"}))
     work = first_work(client)
     download_only(client, work["id"])
@@ -595,14 +638,13 @@ def test_answers_hold_no_input_paths_and_no_tool_details(
     assert "evil.txt" not in text
 
 
-def test_every_work_gets_its_own_folder(
-    api: TestClient, rig: Rig, archives: Path, unpack_root: Path
-) -> None:
+def test_every_work_gets_its_own_folder(api: TestClient, rig: Rig, archives: Path) -> None:
     serve(rig, samples.zip_with(archives / "a.zip", {"a.txt": b"x"}))
-    works = work_ids(api)[:2]
-    for work in works:
+    locations = set()
+    for work in work_ids(api)[:2]:
         download_only(api, work["id"])
-        assert unpack(api, work["id"])["state"] == "done"
-    assert sorted(path.name for path in unpack_root.iterdir()) == sorted(
-        work["sourceId"] for work in works
-    )
+        done = unpack(api, work["id"])
+        assert done["state"] == "done"
+        assert Path(done["location"]).name == work["title"]
+        locations.add(done["location"])
+    assert len(locations) == 2

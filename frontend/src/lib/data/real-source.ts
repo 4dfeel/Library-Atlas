@@ -79,7 +79,7 @@ export interface DlsiteConnection {
 }
 
 export interface FolderInfo {
-  kind: 'library' | 'download_cache' | 'extract';
+  kind: 'library' | 'download_cache';
   path: string | null;
   isDefault: boolean;
   status: 'ok' | 'not_set' | 'missing';
@@ -197,7 +197,6 @@ export interface DownloadPlan {
   parts: number[];
   totalBytes: number | null;
   folder: FolderInfo;
-  extractFolder: FolderInfo;
   freeBytes: number | null;
 }
 

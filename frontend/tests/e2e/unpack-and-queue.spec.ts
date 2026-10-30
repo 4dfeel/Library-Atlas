@@ -14,7 +14,6 @@ const MB = 1024 * 1024;
 
 let service: RealService;
 let library: string;
-let unpacked: string;
 let archive: string;
 let token: string;
 let controlValues: Record<string, unknown> = {};
@@ -61,6 +60,13 @@ async function sync() {
 interface Work {
   id: string;
   sourceId: string;
+  title: string;
+}
+
+async function locationOf(work: Work): Promise<string | null> {
+  const { tasks } = await (await call('/extractions')).json();
+  const task = tasks.find((entry: { workId: string }) => entry.workId === work.id);
+  return task?.location ?? null;
 }
 
 let nextWork = 0;
@@ -120,12 +126,9 @@ test.describe('unpacking and the queue', () => {
     await service.start();
     const root = join(service.dataDir, '..');
     library = join(root, '作品 フォルダ');
-    unpacked = join(root, '解压 フォルダ');
     archive = join(root, 'sample.zip');
     await rm(library, { recursive: true, force: true });
-    await rm(unpacked, { recursive: true, force: true });
     await mkdir(library, { recursive: true });
-    await mkdir(unpacked, { recursive: true });
     await writeFile(archive, zipBytes('音声/はじめに.txt', Buffer.alloc(MB, 7)));
     token = (await (await fetch(`${service.origin}/api/v1/session`)).json()).csrfToken;
     await control({ size: 40, download: {} });
@@ -140,7 +143,6 @@ test.describe('unpacking and the queue', () => {
   test.beforeEach(async ({ page }) => {
     await enterRealMode(page);
     expect((await call('/settings/folders/library', 'PUT', { path: library })).status).toBe(200);
-    expect((await call('/settings/folders/extract', 'PUT', { path: unpacked })).status).toBe(200);
     await control({ download: { payload: archive }, gallery: null, upgrade: null });
   });
 
@@ -153,8 +155,13 @@ test.describe('unpacking and the queue', () => {
     await expect(action(page)).toContainText('已解压不代表已安装');
     await expect(page.getByText('已安装', { exact: true })).toHaveCount(0);
     await shot(page, 'unpacked');
-    expect(await readdir(join(unpacked, work.sourceId, '音声'))).toEqual(['はじめに.txt']);
-    expect(await readdir(join(library, work.sourceId))).toEqual([`${work.sourceId}.zip`]);
+    // Filed by type, maker and title, as the user files works by hand.
+    const location = await locationOf(work);
+    expect(location!.endsWith(join('虚构社团', work.title))).toBe(true);
+    expect(await readdir(join(location!, '音声'))).toEqual(['はじめに.txt']);
+    expect(await readdir(join(library, 'Archives', work.sourceId))).toEqual([
+      `${work.sourceId}.zip`,
+    ]);
     await expect(page.getByTestId('download-bar')).toContainText('项已完成');
     await noHorizontalScroll(page);
   });
@@ -165,9 +172,7 @@ test.describe('unpacking and the queue', () => {
     await action(page).getByRole('button', { name: '仅下载' }).click();
     await expect(action(page).getByTestId('download-done')).toBeVisible({ timeout: 20_000 });
     await expect(action(page).getByRole('button', { name: '解压', exact: true })).toBeVisible();
-    await expect
-      .poll(async () => readdir(join(unpacked, work.sourceId)).catch(() => [] as string[]))
-      .toEqual([]);
+    expect(await locationOf(work)).toBeNull();
     await action(page).getByRole('button', { name: '解压', exact: true }).click();
     await expect(action(page).getByTestId('extract-done')).toBeVisible({ timeout: 20_000 });
   });
@@ -183,10 +188,11 @@ test.describe('unpacking and the queue', () => {
     await shot(page, 'unpack-refused');
     await expect(action(page).getByTestId('download-done')).toBeVisible();
     await expect(action(page).getByRole('button', { name: '重新解压' })).toBeVisible();
-    expect(await readdir(join(library, work.sourceId))).toEqual([`${work.sourceId}.zip`]);
-    await expect
-      .poll(async () => readdir(unpacked).then((names) => names.includes(work.sourceId)))
-      .toBe(false);
+    expect(await readdir(join(library, 'Archives', work.sourceId))).toEqual([
+      `${work.sourceId}.zip`,
+    ]);
+    expect(await locationOf(work)).toBeNull();
+    expect(await readdir(join(library, '..'))).not.toContain('outside.txt');
   });
 
   test('the bar opens the queue page, with speed and sections', async ({ page }) => {
@@ -226,10 +232,12 @@ test.describe('unpacking and the queue', () => {
     await expect(row).toBeVisible();
     await expect(page.getByTestId('auto-check').getByRole('checkbox')).toBeChecked();
     await shot(page, 'update-available');
-    expect(await readdir(join(library, work.sourceId))).toHaveLength(1);
+    expect(await readdir(join(library, 'Archives', work.sourceId))).toHaveLength(1);
     await row.getByRole('button', { name: '下载更新' }).click();
     await expect(row).toHaveCount(0, { timeout: 20_000 });
-    await expect.poll(async () => (await readdir(join(library, work.sourceId))).length).toBe(2);
+    await expect
+      .poll(async () => (await readdir(join(library, 'Archives', work.sourceId))).length)
+      .toBe(2);
   });
 
   test('the store images: arrows, thumbnails, count, keyboard', async ({ page }) => {

@@ -127,8 +127,7 @@ function PlanDialog({
   starting: boolean;
 }) {
   const [chosen, setChosen] = useState<Set<number>>(() => new Set(plan.parts));
-  const folderReady =
-    plan.folder.status === 'ok' && (!extract || plan.extractFolder.status === 'ok');
+  const folderReady = plan.folder.status === 'ok';
   const tooBig =
     plan.totalBytes !== null && plan.freeBytes !== null && plan.totalBytes > plan.freeBytes;
   const split = plan.kind === 'split';
@@ -142,20 +141,11 @@ function PlanDialog({
       <div className="download-plan" data-testid="download-plan">
         <FolderChoice
           kind="library"
-          title="压缩包保存到"
+          title="作品文件夹"
           folder={plan.folder}
-          emptyNote="还没有选择作品文件夹。文件会放在里面以作品编号命名的子文件夹中。"
+          emptyNote="还没有选择作品文件夹。作品会按“类型 / 制作方 / 作品名”放在里面，压缩包在 Archives 里。"
           onChanged={onReplan}
         />
-        {extract && (
-          <FolderChoice
-            kind="extract"
-            title="解压到"
-            folder={plan.extractFolder}
-            emptyNote="还没有选择解压文件夹。每部作品会解压到里面单独的文件夹，已有文件夹不会被覆盖。"
-            onChanged={onReplan}
-          />
-        )}
         {split && (
           <section>
             <h3>文件</h3>
@@ -258,7 +248,7 @@ function ExtractRow({
       <span className="download-extract" data-testid="extract-state">
         <span className="download-state is-done" data-testid="extract-done">
           <CircleCheck size={14} />
-          已解压
+          {task.format === 'file' ? '已放入作品文件夹' : '已解压'}
         </span>
         <Button
           variant="ghost"
@@ -266,7 +256,7 @@ function ExtractRow({
           onClick={() => void unpacking.act(task.id, 'open-folder').catch(() => undefined)}
         >
           <FolderOpen size={14} />
-          打开解压文件夹
+          打开作品文件夹
         </Button>
         <span className="download-note">{UNPACKED_NOTE}</span>
       </span>
@@ -343,11 +333,7 @@ export function RealDownloadAction({ game }: { game: GameDetail }) {
       const next = await actions.plan(game.id);
       if (next.kind === 'serial') {
         setError('这部作品需要序列号，暂不支持在 Atlas 内下载。');
-      } else if (
-        next.kind === 'direct' &&
-        next.folder.status === 'ok' &&
-        (!extract || next.extractFolder.status === 'ok')
-      ) {
+      } else if (next.kind === 'direct' && next.folder.status === 'ok') {
         await actions.create(game.id, null, again, extract);
       } else {
         setPlan(next);
@@ -414,7 +400,7 @@ export function RealDownloadAction({ game }: { game: GameDetail }) {
             onClick={() => void actions.act(finished[0]!.id, 'open-folder').catch(() => undefined)}
           >
             <FolderOpen size={14} />
-            打开文件夹
+            打开压缩包位置
           </Button>
           <Button variant="ghost" size="sm" disabled={busy} onClick={() => void begin(false, true)}>
             <RotateCcw size={14} />

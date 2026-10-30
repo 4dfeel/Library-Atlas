@@ -3,8 +3,8 @@ done: no request can name a path, and each file is checked against its recorded 
 before use, because a file on disk can change after it was downloaded.
 
 Each attempt writes to its own `<folder>/.atlas-extract-<task id>`, and the result is compared
-with the archive's listing. Only then is that folder renamed to its final name, which is free
-by construction: existing folders are never merged into or replaced. Failing, cancelling or
+with the archive's listing. Only then is that folder renamed to `<type>/<maker>/<title>`, a name
+checked to be free: existing folders are never merged into or replaced. Failing, cancelling or
 restarting removes the attempt's folder and leaves the download alone, so a retry never
 downloads again. Nothing inside an archive is run, and unpacked never means installed.
 """
@@ -26,7 +26,9 @@ from sqlalchemy import Connection, Engine, Row, delete, select, update
 from sqlalchemy.exc import IntegrityError
 
 from app.adapters.system.archives import (
+    CHUNK_BYTES,
     ArchiveProblem,
+    Entry,
     Limits,
     Listing,
     Progress,
@@ -42,7 +44,7 @@ from app.api import models
 from app.core.errors import AtlasError
 from app.db.engine import writing
 from app.db.schema import download_tasks, extract_tasks, personal_records, works
-from app.domain.download_names import numbered, safe_file_name
+from app.domain.download_names import safe_file_name, work_folder
 from app.repositories import accounts
 from app.repositories.works import ORDINARY, get_ordinary_work
 from app.services.downloads import _hash_file
@@ -72,8 +74,9 @@ MESSAGES = {
     "extract_failed": "解压工具报告失败，原因未知。下载的文件已保留。",
     "output_mismatch": "解压结果和压缩包内容不一致，没有采用这次结果。",
     "disk_full": "磁盘空间不足，解压已停止。",
-    "write_failed": "无法写入解压文件夹，请检查权限，或路径是否过长。",
-    "folder_missing": "解压文件夹现在不存在，可能是硬盘没有连接。",
+    "write_failed": "无法写入作品文件夹，请检查权限，或路径是否过长。",
+    "folder_missing": "作品文件夹现在不存在，可能是硬盘没有连接。",
+    "folder_invalid": "目标位置不在作品文件夹内，已停止。",
     "interrupted": "解压被中断了（服务关闭或异常退出），可以重新解压。",
     "cancelled": "已取消解压，下载的文件不受影响。",
     "unexpected": "解压时发生意外错误。下载的文件已保留。",
@@ -101,6 +104,24 @@ class _Control:
         if self.reason != "cancel":
             self.reason = reason
         self.event.set()
+
+
+def _as_files(paths: list[Path]) -> Listing:
+    return Listing("file", tuple(Entry(path.name, path.stat().st_size, False) for path in paths))
+
+
+def _copy_files(
+    sources: list[Path], folder: Path, progress: Progress, check: Callable[[], None]
+) -> None:
+    """A copy: the download stays where it is, and nothing is run."""
+    done = 0
+    for source in sources:
+        with open(source, "rb") as reader, open(folder / source.name, "xb") as writer:
+            while chunk := reader.read(CHUNK_BYTES):
+                check()
+                writer.write(chunk)
+                done += len(chunk)
+                progress(done)
 
 
 def _staging(row: Row[Any]) -> Path:
@@ -245,7 +266,7 @@ class ExtractionService:
             account = accounts.get_account(connection)
             fingerprint = account.account_fingerprint if account else None
             sources = self._sources(connection, work_id, fingerprint)
-        root = self._folders.extract_root()
+        root = self._folders.works_root()
         with self._lock, writing(self._engine).begin() as connection:
             latest = connection.execute(
                 select(extract_tasks)
@@ -365,7 +386,12 @@ class ExtractionService:
             with self._engine.connect() as connection:
                 rows = connection.execute(
                     select(extract_tasks)
-                    .where(extract_tasks.c.state == "queued")
+                    # A worker only marks its task once it is running, so one just started still
+                    # reads as queued: without this it would be started a second time.
+                    .where(
+                        extract_tasks.c.state == "queued",
+                        extract_tasks.c.id.not_in(list(self._running)),
+                    )
                     .order_by(extract_tasks.c.created_at)
                     .limit(room)
                 ).all()
@@ -493,10 +519,8 @@ class ExtractionService:
             raise _Stop("failed", "folder_missing")
         try:
             read = self._read(inputs[0])
-            if read is None:
-                self._write(row.id, row.attempt, state="not_needed", ended=True)
-                return
-            listing, engine = read
+            # Not an archive: the file itself is the work, and it goes to the same place.
+            listing, engine = read if read is not None else (_as_files(inputs), "file")
             self._write(
                 row.id,
                 row.attempt,
@@ -510,7 +534,7 @@ class ExtractionService:
             staging = _staging(row)
             staging.mkdir()
             self._write(row.id, row.attempt, state="extracting")
-            self._unpack(row, control, inputs[0], staging, listing, engine)
+            self._unpack(row, control, inputs, staging, listing, engine)
             self._check(control)
             verify_output(staging, listing)
         except ArchiveProblem as problem:
@@ -527,7 +551,7 @@ class ExtractionService:
         self,
         row: Row[Any],
         control: _Control,
-        source: Path,
+        sources: list[Path],
         staging: Path,
         listing: Listing,
         engine: str,
@@ -544,30 +568,53 @@ class ExtractionService:
                 raise Stopped
 
         progress: Progress = report
-        if engine == "zip":
-            extract_zip(source, staging, self._limits, progress, check)
+        if engine == "file":
+            _copy_files(sources, staging, progress, check)
+        elif engine == "zip":
+            extract_zip(sources[0], staging, self._limits, progress, check)
         else:
             tool = self._find_tool()
             if tool is None:
                 raise ArchiveProblem("tool_missing")
-            tool.extract(source, staging, self._limits, progress, check)
+            tool.extract(sources[0], staging, self._limits, progress, check)
         self._write(row.id, row.attempt, bytes_done=listing.total_bytes)
 
     def _commit(self, row: Row[Any], control: _Control, listing: Listing) -> None:
         """The commit point. A cancel that arrives first wins; after this the result is final.
         The name is recorded before the rename, for `recover`."""
         root = Path(row.root_dir)
-        base = safe_file_name(row.source_work_id, "work")
+        with self._engine.connect() as connection:
+            work = connection.execute(
+                select(works.c.kind, works.c.raw_kind, works.c.maker, works.c.title).where(
+                    works.c.id == row.work_id
+                )
+            ).one()
+        kind, maker, title = work_folder(
+            work.kind,
+            work.raw_kind,
+            work.maker,
+            work.title,
+            safe_file_name(row.source_work_id, "work"),
+        )
+        parent = root / kind / maker
+        try:
+            parent.mkdir(parents=True, exist_ok=True)
+            # A link somewhere along the way must not lead the result out of the chosen folder.
+            if not parent.resolve().is_relative_to(root.resolve()):
+                raise _Stop("failed", "folder_invalid")
+        except OSError:
+            raise _Stop("failed", "write_failed") from None
         with self._lock:
             self._check(control)
             for number in range(1, 1000):
-                name = base if number == 1 else numbered(base, number)
-                final = root / name
-                if os.path.lexists(final):
+                name = title if number == 1 else f"{title} ({number})"
+                if os.path.lexists(parent / name):
                     continue
-                self._write(row.id, row.attempt, state="committing", final_name=name)
+                self._write(
+                    row.id, row.attempt, state="committing", final_name=f"{kind}/{maker}/{name}"
+                )
                 try:
-                    os.rename(_staging(row), final)
+                    os.rename(_staging(row), parent / name)
                 except FileExistsError:
                     continue
                 except OSError:
