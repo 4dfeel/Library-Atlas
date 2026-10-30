@@ -1,4 +1,5 @@
 import { CircleAlert, CircleCheck, Download, RotateCcw, X } from 'lucide-react';
+import { RealTasksDialog } from '@/features/downloads/real-downloads';
 import { AppLink } from '@/components/app-link';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
@@ -104,20 +105,7 @@ export function TasksDialog({
   demoEnabled: boolean;
 }) {
   const tasks = useDemoTasks();
-  if (!demoEnabled)
-    return (
-      <Dialog
-        open={open}
-        onOpenChange={onOpenChange}
-        title="下载与解压"
-        description="演示模式已关闭，不显示任何演示任务。"
-      >
-        <p className="service-unavailable">
-          <Download size={16} />
-          真实下载与解压尚未接入。
-        </p>
-      </Dialog>
-    );
+  if (!demoEnabled) return <RealTasksDialog open={open} onOpenChange={onOpenChange} size={size} />;
   return (
     <Dialog
       open={open}

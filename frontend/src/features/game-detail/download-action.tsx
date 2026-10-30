@@ -10,6 +10,7 @@ import {
 import { useShell } from '@/app/shell-context';
 import { Button } from '@/components/ui/button';
 import { TaskProgress } from '@/features/demo-services/tasks-dialog';
+import { RealDownloadAction } from '@/features/downloads/real-downloads';
 import { taskSummary } from '@/features/demo-services/labels';
 import {
   demoTasks,
@@ -37,15 +38,12 @@ export function DownloadAction({ game, size }: { game: GameDetail; size: DemoSiz
         仅限 DLsite 官方阅读器查看 · Atlas 不提供下载，也不绕过授权
       </p>
     );
+  // A real work's capability can be unknown: the platform decides when asked, not Atlas.
+  if (!isDemo) {
+    if (game.platform !== 'dlsite' || game.capabilities.download === false) return null;
+    return <RealDownloadAction game={game} />;
+  }
   if (!game.capabilities.download) return null;
-  // Real downloads are a later checkpoint; never run the demo flow on a real work.
-  if (!isDemo)
-    return (
-      <p className="hero-download is-note" data-testid="download-action">
-        <Download size={14} />
-        下载将在后续版本开放
-      </p>
-    );
   const size_ = game.file?.sizeBytes;
   const sizeText = size_ === null || size_ === undefined ? '大小未知' : formatBytes(size_);
   const label = game.capabilities.extract ? '演示下载并解压' : '演示下载';

@@ -29,9 +29,11 @@ from app.services.dlsite_auth import DlsiteAuth
 from app.services.dlsite_factory import (
     build_dlsite_auth,
     build_dlsite_sync,
+    build_download_queue,
     build_folder_service,
 )
 from app.services.dlsite_sync import DlsiteSync
+from app.services.downloads import DownloadQueue
 from app.services.folders import FolderService
 
 logger = logging.getLogger("atlas")
@@ -58,6 +60,7 @@ class ServiceState:
     folders: FolderService | None = None
     sync: DlsiteSync | None = None
     covers: CoverCache | None = None
+    downloads: DownloadQueue | None = None
 
 
 def _error_body(
@@ -116,6 +119,18 @@ def _sync(request: Request, _engine: EngineDep) -> DlsiteSync:
 
 
 SyncDep = Annotated[DlsiteSync, Depends(_sync)]
+
+
+def _downloads(request: Request, _engine: EngineDep) -> DownloadQueue:
+    queue = _state(request).downloads
+    if queue is None:
+        raise AtlasError(
+            "credential_store_unavailable", "系统凭据存储不可用，无法下载。", status=503
+        )
+    return queue
+
+
+DownloadsDep = Annotated[DownloadQueue, Depends(_downloads)]
 
 
 def _folders(request: Request, _engine: EngineDep) -> FolderService:
@@ -255,6 +270,39 @@ def _build_api() -> APIRouter:
             path, media_type=content_type, headers={"Cache-Control": "private, max-age=604800"}
         )
 
+    # POST, though it changes nothing here: it spends the user's session on the platform.
+    @api.post("/works/{work_id}/download-plan")
+    def download_plan(queue: DownloadsDep, work_id: str) -> models.DownloadPlanOut:
+        return queue.plan(work_id)
+
+    @api.get("/downloads")
+    def list_downloads(queue: DownloadsDep, work_id: str | None = None) -> models.DownloadsOut:
+        return queue.tasks(work_id)
+
+    @api.post("/downloads", status_code=202)
+    def create_download(queue: DownloadsDep, body: models.DownloadCreate) -> models.DownloadsOut:
+        return queue.create(body)
+
+    @api.post("/downloads/clear")
+    def clear_downloads(queue: DownloadsDep) -> models.DownloadsOut:
+        return queue.clear_finished()
+
+    @api.post("/downloads/{task_id}/cancel")
+    def cancel_download(queue: DownloadsDep, task_id: str) -> models.DownloadTaskOut:
+        return queue.cancel(task_id)
+
+    @api.post("/downloads/{task_id}/pause")
+    def pause_download(queue: DownloadsDep, task_id: str) -> models.DownloadTaskOut:
+        return queue.pause(task_id)
+
+    @api.post("/downloads/{task_id}/retry")
+    def retry_download(queue: DownloadsDep, task_id: str) -> models.DownloadTaskOut:
+        return queue.retry(task_id)
+
+    @api.post("/downloads/{task_id}/open-folder")
+    def open_download_folder(queue: DownloadsDep, task_id: str) -> models.DownloadTaskOut:
+        return queue.open_folder(task_id)
+
     @api.get("/settings/folders")
     def get_folders(service: FoldersDep) -> models.FoldersOut:
         return service.folders()
@@ -324,11 +372,18 @@ def create_app(
                 if state.dlsite is not None:
                     state.sync = dlsite_sync_factory(settings, opened.engine, state.dlsite)
                     state.sync.recover()
+                    assert state.folders is not None  # Built just above.
+                    state.downloads = build_download_queue(
+                        settings, opened.engine, state.dlsite, state.folders
+                    )
+                    state.downloads.recover()
                     state.dlsite.restore()
             except DatabaseNotReady as error:
                 state.not_ready_reason = error.reason
                 logger.error("database not ready: %s", error.reason)
         yield
+        if state.downloads is not None:
+            state.downloads.shutdown()
         if state.sync is not None:
             state.sync.shutdown()
         if state.dlsite is not None:

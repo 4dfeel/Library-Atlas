@@ -1,6 +1,6 @@
-"""Where downloads will go. Only records and checks folders the user chose: it does not scan
+"""Where downloads go. Only records and checks folders the user chose: it does not scan
 disks or move files, and a chosen folder that has gone missing is reported, never recreated
-(it may be an unplugged drive). Nothing downloads yet; checkpoint 4 uses these settings.
+(it may be an unplugged drive).
 """
 
 import os
@@ -65,6 +65,36 @@ class FolderService:
 
     def folders(self) -> models.FoldersOut:
         return models.FoldersOut(folders=[self._describe(kind) for kind in _KEYS])
+
+    def describe_library(self) -> models.FolderOut:
+        return self._describe("library")
+
+    def download_targets(self) -> tuple[Path, Path]:
+        """Where a new task will write: finished files and files in progress."""
+        library = self._chosen("library")
+        if library is None:
+            raise AtlasError("folder_not_set", "请先选择作品文件夹。", status=409)
+        if not library.is_dir():
+            raise AtlasError(
+                "folder_missing", "作品文件夹现在不存在，可能是硬盘没有连接。", status=409
+            )
+        chosen = self._chosen("download_cache")
+        if chosen is not None and not chosen.is_dir():
+            raise AtlasError(
+                "folder_missing", "下载缓存文件夹现在不存在，可能是硬盘没有连接。", status=409
+            )
+        cache = chosen or self._default("download_cache")
+        assert cache is not None  # The cache always has a default.
+        return library, cache
+
+    def open_path(self, path: Path) -> None:
+        """For a folder a finished task wrote to; callers never pass request data."""
+        if not path.is_dir():
+            raise AtlasError("folder_missing", "这个文件夹现在不存在。", status=409)
+        try:
+            self._opener.open(path)
+        except OSError:
+            raise AtlasError("folder_open_failed", "无法打开这个文件夹。", status=500) from None
 
     def _validate(self, kind: models.FolderKind, raw: str) -> Path:
         path = Path(raw.strip())

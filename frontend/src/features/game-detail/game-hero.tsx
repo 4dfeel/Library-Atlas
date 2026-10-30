@@ -187,15 +187,20 @@ export function GameHero({
                 <Star size={16} fill={isFavorite ? 'currentColor' : 'none'} />
                 {isFavorite ? '已收藏' : '收藏'}
               </Button>
-              <Button variant="ghost" disabled aria-describedby="launch-unavailable">
-                <Play size={16} />
-                {openActionLabels[game.kind]}
-              </Button>
-              <span id="launch-unavailable" className="unavailable-note">
-                {isDemo
-                  ? `暂不可用 · 演示模式未接入 ${platformLabels[game.platform]}`
-                  : '暂不可用 · 打开本地作品将在后续版本开放'}
-              </span>
+              {/* For a real work the download row below is where its folder opens. */}
+              {(isDemo || openActionLabels[game.kind] !== '打开文件夹') && (
+                <>
+                  <Button variant="ghost" disabled aria-describedby="launch-unavailable">
+                    <Play size={16} />
+                    {openActionLabels[game.kind]}
+                  </Button>
+                  <span id="launch-unavailable" className="unavailable-note">
+                    {isDemo
+                      ? `暂不可用 · 演示模式未接入 ${platformLabels[game.platform]}`
+                      : '暂不可用 · 打开本地作品将在后续版本开放'}
+                  </span>
+                </>
+              )}
             </div>
             <DownloadAction game={game} size={size} />
             <dl className="hero-facts">

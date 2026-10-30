@@ -1,6 +1,6 @@
 # Library Atlas 本地 API 契约
 
-状态：Phase 2 检查点 1–3 已实现。这是 Atlas 自有接口，不是 Steam 或 DLsite 的接口。实现见 `backend/app/api/`，端到端验证见 `frontend/tests/e2e/real-mode.spec.ts`。
+状态：Phase 2 检查点 1–4 已实现。这是 Atlas 自有接口，不是 Steam 或 DLsite 的接口。实现见 `backend/app/api/`，端到端验证见 `frontend/tests/e2e/real-mode.spec.ts`。
 
 ## 约定
 - 基址 `http://127.0.0.1:<port>/api/v1`，默认端口 8765，只绑定回环地址。开发期由 Vite 代理 `/api`，浏览器只看到一个来源。
@@ -145,6 +145,20 @@
 | `GET /works/{id}/cover` | 封面图片，普通可见性之后才返回；无封面或取不到时 404 |
 
 `job`：`id,state,total?,processed,added,updated,skipped,missing,code?,message?,startedAt,finishedAt?`。`total` 在拿到作品列表前为 `null`。`state`：`preparing` `reading` `saving` `succeeded` `partial` `failed` `cancelled` `reauth_required` `interrupted`。`code`：`session_expired` `session_changed` `platform_unavailable` `response_changed` `some_unreadable` `interrupted` `cancelled`。
+
+### 下载
+| 接口 | 说明 |
+| --- | --- |
+| `POST /works/{id}/download-plan` | 向平台询问交付方式，不创建任务。`{kind:"direct"\|"split"\|"serial",parts,totalBytes?,folder,freeBytes?}` |
+| `GET /downloads` | `{tasks,activeCount}`，只含普通可见作品的任务，最近 200 条 |
+| `POST /downloads` | `{workId,parts?,again?}`，返回 202。同一文件重复请求返回原任务；请求不能指定路径 |
+| `POST /downloads/{id}/cancel` `pause` `retry` | 可重复调用；`retry` 能续传时续传，否则从头开始 |
+| `POST /downloads/{id}/open-folder` | 只打开这个已完成任务写入的文件夹 |
+| `POST /downloads/clear` | 清除已取消和失败的记录及其半成品，已完成的文件不动 |
+
+任务：`id,workId,title,part?,partCount?,state,bytesDone,bytesTotal?,fileName?,code?,message?,canRetry,canResume,integrity?,location?,fileMissing,createdAt,finishedAt?`。不包含下载地址。`bytesTotal` 为 `null` 表示服务器没有说明。`integrity`：`length` 长度一致；`stream_end` 只确认传输结束。`location` 只在完成后提供。
+
+`state`：`queued` `resolving` `downloading` `verifying` `paused` `done` `failed` `cancelled` `reauth_required` `interrupted`。`code`：`session_expired` `session_changed` `account_changed` `login_required` `challenged` `no_permission` `file_gone` `file_changed` `unexpected_host` `not_a_file` `empty_file` `size_mismatch` `response_changed` `platform_unavailable` `folder_missing` `folder_invalid` `disk_full` `write_failed` `interrupted` `cancelled` `unexpected`。创建时另有 `folder_not_set` `download_serial` `download_unsupported`。
 
 ### 文件夹设置
 | 接口 | 说明 |

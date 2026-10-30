@@ -166,3 +166,12 @@ ROADMAP 现有 Phase 2 行（含后端骨架与“能力调查”）与 Phase 6 
 - 观测表仍未建立，来源字段直接写在 `works`。
 
 后续检查点须遵守：同步只经 `upsert_source_metadata(keep_missing=True)`；不解析来源编号；类型映射集中在 `domain/dlsite_works.py`。
+
+## 13. 检查点 4 实际落地
+见[检查点 4 报告](PHASE2_CHECKPOINT4_REPORT.md)。与 §7 的差异：
+- 状态比草案多了 `reauth_required` 和 `interrupted`。`paused` 已实现，真实平台的续传待验证。
+- 没有写 `work_files`：分卷信息在请求时读取，不提前为全库取下载地址。任务记录在 `download_tasks`。
+- 没有 `local_paths` 表：沿用检查点 2 的文件夹设置，任务创建时把路径固定下来。
+- API 路径是 `/api/v1/downloads`，不是通用的 `/tasks`：解压的形态等检查点 5 再定。
+
+后续检查点须遵守：下载地址不持久化；完成不等于已安装；解压不能改动 `download_tasks` 的完成语义。

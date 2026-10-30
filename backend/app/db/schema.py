@@ -167,6 +167,42 @@ sync_jobs = Table(
     Index("ix_sync_jobs_started", "started_at"),
 )
 
+download_tasks = Table(
+    "download_tasks",
+    metadata,
+    Column("id", String, primary_key=True),
+    Column("work_id", String, ForeignKey("works.id"), nullable=False),
+    # 0 for a work delivered as one file; otherwise the platform's part number.
+    Column("part_number", Integer, nullable=False, server_default=text("0")),
+    Column("part_count", Integer, nullable=True),
+    Column("account_fingerprint", String, nullable=True),
+    Column("state", String, nullable=False),
+    Column("attempt", Integer, nullable=False, server_default=text("1")),
+    # Set while a task is live, so the database refuses a second one for the same file.
+    Column("active_key", String, nullable=True, unique=True),
+    # Fixed when the task is created: changing a folder later does not move this task.
+    Column("target_dir", String, nullable=False),
+    Column("cache_dir", String, nullable=False),
+    Column("file_name", String, nullable=True),
+    Column("bytes_done", Integer, nullable=False, server_default=text("0")),
+    Column("bytes_total", Integer, nullable=True),
+    Column("etag", String, nullable=True),
+    Column("last_modified", String, nullable=True),
+    Column("sha256", String, nullable=True),
+    Column("integrity", String, nullable=True),
+    Column("error_code", String, nullable=True),
+    Column("created_at", String, nullable=False),
+    Column("updated_at", String, nullable=False),
+    Column("finished_at", String, nullable=True),
+    CheckConstraint(
+        "state IN ('queued', 'resolving', 'downloading', 'verifying', 'paused', 'done', "
+        "'failed', 'cancelled', 'reauth_required', 'interrupted')",
+        name="ck_download_tasks_state",
+    ),
+    Index("ix_download_tasks_work", "work_id", "part_number"),
+    Index("ix_download_tasks_state", "state", "created_at"),
+)
+
 library_entries = Table(
     "library_entries",
     metadata,

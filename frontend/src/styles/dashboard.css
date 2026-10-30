@@ -1103,3 +1103,48 @@
   flex: none;
   margin-top: 3px;
 }
+
+.download-plan {
+  display: grid;
+  gap: 16px;
+}
+
+.download-plan section {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+}
+
+.download-plan h3 {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.download-path {
+  max-width: 100%;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.download-parts {
+  display: grid;
+  width: 100%;
+  max-height: 240px;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.download-parts label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}

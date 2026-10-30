@@ -26,6 +26,7 @@ import {
   getDemoEditCount,
   isActiveTask,
   useDemoTasks,
+  useDownloads,
   useDemoTaskSync,
   useModeCacheIsolation,
   useResetDemoEdits,
@@ -159,7 +160,9 @@ export function App() {
     () => ({ notify, openSources, openTasks }),
     [notify, openSources, openTasks],
   );
-  const runningTasks = useDemoTasks().filter(isActiveTask).length;
+  const demoRunning = useDemoTasks().filter(isActiveTask).length;
+  const realDownloads = useDownloads();
+  const runningTasks = isDemo ? demoRunning : realDownloads.activeCount;
   useDemoTaskSync();
   useModeCacheIsolation();
   const editCount = aboutOpen ? getDemoEditCount(size) : 0;
@@ -320,7 +323,7 @@ export function App() {
                   </button>
                   {!isDemo && <AccountMenu />}
                   <span className="topbar-divider" />
-                  <Tooltip content={isDemo ? '下载与解压任务（演示）' : '下载与解压（尚未接入）'}>
+                  <Tooltip content={isDemo ? '下载与解压任务（演示）' : '下载任务'}>
                     <Button
                       size="icon"
                       variant="ghost"

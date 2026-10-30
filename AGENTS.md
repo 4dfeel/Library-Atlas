@@ -3,7 +3,7 @@
 ## 范围与决策
 - 产品需求见 `docs/PRODUCT.md`，视觉规范见 `docs/DESIGN.md`，架构见 `docs/ARCHITECTURE.md`，阶段门禁见 `docs/ROADMAP.md`。
 - 按已批准 Phase 工作。Phase 0 仅文档与初始化检查；必须等待用户审核本文件、DESIGN 和 ARCHITECTURE 后进入 Phase 1。
-- Phase 0、Phase 1 已获用户确认（2026-10-30），见 [Phase 1 验收报告](docs/PHASE1_ACCEPTANCE_REPORT.md)。Phase 2 检查点 0、1 已交付；[检查点 2](docs/PHASE2_CHECKPOINT2_REPORT.md)（DLsite 登录与会话）已实现并经用户确认；[检查点 3](docs/PHASE2_CHECKPOINT3_REPORT.md)（作品同步）已实现，待用户确认；检查点 4 起（下载解压、Steam）须逐点另行授权。
+- Phase 0、Phase 1 已获用户确认（2026-10-30），见 [Phase 1 验收报告](docs/PHASE1_ACCEPTANCE_REPORT.md)。Phase 2 检查点 0、1 已交付；[检查点 2](docs/PHASE2_CHECKPOINT2_REPORT.md)（DLsite 登录与会话）已实现并经用户确认；[检查点 3](docs/PHASE2_CHECKPOINT3_REPORT.md)（作品同步）已实现，待用户确认；[检查点 4](docs/PHASE2_CHECKPOINT4_REPORT.md)（下载）已实现，待真实下载验证；检查点 5 起（解压、Steam）须逐点另行授权。
 - 更换技术栈、大规模重构、删除已有功能或破坏性文件操作前必须征询用户；普通实现细节自主决定。
 
 ## 架构与编码

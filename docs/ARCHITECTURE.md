@@ -196,3 +196,17 @@ frontend/src/features/workspace/dlsite-sync.tsx
 - 封面路由 `GET /api/v1/works/{id}/cover` 先走普通可见性，缓存在数据目录 `cache/covers`，文件名是地址的哈希。
 - 作品库滚动时收起介绍、工具栏和顶栏（前端状态 + `:has()`）。
 - **未落地**：下载、解压、Steam、缓存清理。
+
+## 13. Phase 2 检查点 4 实际落地（2026-10-31）
+```text
+backend/app/
+  adapters/dlsite/downloads.py   下载方案与文件流：逐跳校验主机，地址不出模块
+  domain/download_names.py       文件名清理（纯函数）
+  services/downloads.py          持久化队列：有限并发、尝试号、提交边界、崩溃恢复
+  testing/fake_download_server.py 回环上的真实 HTTP 服务，只用于测试配置
+frontend/src/features/downloads/real-downloads.tsx
+```
+- 迁移 `0006`：`download_tasks`。`active_key` 唯一，保证一个文件只有一个进行中任务。
+- 文件先写 `<缓存>/<任务号>.part`，校验后移动到 `<作品文件夹>/<作品编号>/`，不覆盖。
+- 前端只轮询任务列表；进度变化不触碰作品库查询，只有完成时才刷新。
+- **未落地**：解压、安装、运行、Steam。

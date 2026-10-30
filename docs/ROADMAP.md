@@ -39,12 +39,12 @@
 | 1 | 本地服务、持久化与真实模式基础 | 工程检查完成，CI 通过，待用户确认。见 [报告](PHASE2_CHECKPOINT1_REPORT.md)、[API](LOCAL_API.md)、[运行说明](LOCAL_DEVELOPMENT.md) |
 | 2 | DLsite 认证与会话保持 | 实现完成，真实登录与跨重启恢复已验证，用户已确认。见 [报告](PHASE2_CHECKPOINT2_REPORT.md) |
 | 3 | DLsite 已购作品同步与分类 | 实现完成，首次真实同步通过，待用户确认分类。见 [报告](PHASE2_CHECKPOINT3_REPORT.md) |
-| 4 | 真实下载队列 | 未开始 |
+| 4 | 真实下载队列 | 实现完成，待人工真实下载验证。见 [报告](PHASE2_CHECKPOINT4_REPORT.md) |
 | 5 | 解压与一键下载并解压 | 未开始 |
 | 6 | Steam 真实接入 | 未开始 |
 | 7 | 全链路验收 | 未开始 |
 
-下载、解压、Steam 接入均未实现。
+解压、Steam 接入均未实现；真实下载待用户验证。
 
 ## Phase 0 初始化检查记录
 - 工作区 `H:\VSC workspacce\Library Atlas` 初始为空，无既有代码和 AGENTS；本轮仅创建文档、`.gitignore` 并初始化本地 Git。

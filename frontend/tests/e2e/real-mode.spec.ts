@@ -60,7 +60,7 @@ test.describe('empty real library', () => {
     await expect(page.getByTestId('game-unavailable')).toBeVisible();
 
     await page.getByRole('button', { name: '下载任务' }).click();
-    await expect(page.getByRole('dialog', { name: '下载与解压' })).toContainText('尚未接入');
+    await expect(page.getByRole('dialog', { name: '下载' })).toContainText('还没有下载任务');
   });
 });
 
@@ -107,7 +107,7 @@ test.describe('isolated test library', () => {
     const files = page.getByTestId('work-files');
     await expect(files.locator('li')).toHaveCount(3);
     await expect(files).toContainText('大小未知');
-    await expect(page.getByTestId('download-action')).toContainText('后续版本');
+    await expect(page.getByTestId('download-action')).toContainText('下载');
     await expect(page.locator('body')).not.toContainText('DEMO');
     await noHorizontalScroll(page);
     await shot(page, 'test-library-detail');
@@ -192,7 +192,7 @@ test.describe('isolated test library', () => {
       'data-cover-kind',
       'missing',
     );
-    await expect(page.getByTestId('download-action')).toHaveCount(0);
+    await expect(page.getByTestId('download-action')).toContainText('大小未知');
     await page.goto(`${service.origin}/library/syn-long-title`);
     await noHorizontalScroll(page);
     await shot(page, 'test-library-long-title');

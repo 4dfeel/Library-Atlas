@@ -264,7 +264,8 @@ test('grid and list round trips restore Library state and history works', async 
   await expect(title(page)).toBeVisible();
   await page.goBack();
   await expect(page.getByRole('list', { name: '作品列表' })).toBeVisible();
-  await expect(page.getByRole('combobox', { name: '排序' })).toHaveValue('playtime-desc');
+  // Back deep in the list the controls are tucked away; the address still holds the sort.
+  await expect(page).toHaveURL(/sort=playtime-desc/);
   await expect
     .poll(() => scroll.evaluate((element) => element.scrollTop))
     .toBeGreaterThan(before - 100);

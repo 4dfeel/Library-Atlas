@@ -162,7 +162,9 @@ export function SettingsPage({ onDemoSettings }: { onDemoSettings: () => void })
             <p className="settings-note">演示下载不会写入任何文件，所以这里没有文件夹设置。</p>
           ) : (
             <>
-              <p className="settings-note">下载功能开放前可以先选好，开放后直接使用这里的设置。</p>
+              <p className="settings-note">
+                更改文件夹只影响之后的下载，已有任务和文件不会被移动。
+              </p>
               <Folders />
             </>
           )}

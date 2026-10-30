@@ -294,6 +294,64 @@ class FoldersOut(ApiModel):
     folders: list[FolderOut]
 
 
+DownloadState = Literal[
+    "queued",
+    "resolving",
+    "downloading",
+    "verifying",
+    "paused",
+    "done",
+    "failed",
+    "cancelled",
+    "reauth_required",
+    "interrupted",
+]
+
+
+class DownloadTaskOut(ApiModel):
+    """Never holds a download address. `location` is set only once a task is done."""
+
+    id: str
+    work_id: str
+    title: str
+    part: int | None
+    part_count: int | None
+    state: DownloadState
+    bytes_done: int
+    bytes_total: int | None  # None when the server does not say: never shown as 0.
+    file_name: str | None
+    code: str | None
+    message: str | None
+    can_retry: bool
+    can_resume: bool
+    integrity: str | None
+    location: str | None
+    file_missing: bool
+    created_at: str
+    finished_at: str | None
+
+
+class DownloadsOut(ApiModel):
+    tasks: list[DownloadTaskOut]
+    active_count: int
+
+
+class DownloadPlanOut(ApiModel):
+    kind: Literal["direct", "split", "serial"]
+    parts: list[int]
+    total_bytes: int | None
+    folder: FolderOut
+    free_bytes: int | None
+
+
+class DownloadCreate(ApiModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, extra="forbid")
+
+    work_id: Annotated[str, StringConstraints(min_length=1, max_length=128)]
+    parts: Annotated[list[int], Field(max_length=500)] | None = None
+    again: bool = False
+
+
 class FolderUpdate(ApiModel):
     model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, extra="forbid")
 

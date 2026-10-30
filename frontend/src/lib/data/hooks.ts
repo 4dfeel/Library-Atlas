@@ -5,7 +5,7 @@ import {
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query';
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { ApiError } from './api-client';
 import type { DashboardResult, DashboardScope } from './dashboard';
 import type { Connections } from './demo-connections';
@@ -20,6 +20,9 @@ import {
   type FolderInfo,
   type LibrarySummary,
   type SyncJob,
+  type DownloadAction,
+  type DownloadState,
+  type DownloadTask,
   type SyncStatus,
 } from './real-source';
 import type { DemoScenario, DemoSize, Game, GameDetail, GameUpdate, LibraryFilters } from './types';
@@ -476,4 +479,69 @@ export function isAccountMismatch(error: unknown): boolean {
 
 export function isConflict(error: unknown): boolean {
   return error instanceof ApiError && error.code === 'version_conflict';
+}
+
+const downloadsActive = new Set<DownloadState>([
+  'queued',
+  'resolving',
+  'downloading',
+  'verifying',
+  'paused',
+]);
+
+export function isDownloadActive(task: Pick<DownloadTask, 'state'>) {
+  return downloadsActive.has(task.state);
+}
+
+const downloadsKey = [...realRoot, 'downloads'];
+
+/**
+ * The service's queue, in real mode only. It is read here and never computed here, so it
+ * is the same on every page and after a reload. Progress refreshes this query alone; only
+ * a finished download touches the library's own data, so lists keep their place.
+ */
+export function useDownloads() {
+  const isReal = useWorkspaceMode() === 'real';
+  const queryClient = useQueryClient();
+  const query = useQuery({
+    queryKey: downloadsKey,
+    queryFn: ({ signal }) => realSource.downloads(signal),
+    enabled: isReal,
+    retry: false,
+    refetchInterval: (current) => (current.state.data?.activeCount ? 1_000 : 15_000),
+  });
+  const tasks = useMemo(() => query.data?.tasks ?? [], [query.data]);
+  const finished = tasks.filter((task) => task.state === 'done' && !task.fileMissing).length;
+  const lastFinished = useRef<number | null>(null);
+  useEffect(() => {
+    if (lastFinished.current !== null && lastFinished.current !== finished)
+      for (const part of ['works', 'dashboard', 'detail'])
+        void queryClient.invalidateQueries({ queryKey: [...realRoot, part] });
+    lastFinished.current = finished;
+  }, [finished, queryClient]);
+  return {
+    tasks,
+    activeCount: query.data?.activeCount ?? 0,
+    failed: query.isError,
+  };
+}
+
+export function useDownloadActions() {
+  const queryClient = useQueryClient();
+  const refresh = () => queryClient.invalidateQueries({ queryKey: downloadsKey });
+  return {
+    plan: (workId: string) => realSource.downloadPlan(workId),
+    create: async (workId: string, parts: number[] | null, again: boolean) => {
+      await realSource.createDownload(workId, parts, again);
+      await refresh();
+    },
+    act: async (id: string, action: DownloadAction) => {
+      await realSource.downloadAction(id, action);
+      await refresh();
+    },
+    clear: async () => {
+      await realSource.clearDownloads();
+      await refresh();
+    },
+  };
 }

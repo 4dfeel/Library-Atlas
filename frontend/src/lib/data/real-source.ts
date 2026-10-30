@@ -127,6 +127,56 @@ export interface SyncStatus {
   job: SyncJob | null;
 }
 
+export type DownloadState =
+  | 'queued'
+  | 'resolving'
+  | 'downloading'
+  | 'verifying'
+  | 'paused'
+  | 'done'
+  | 'failed'
+  | 'cancelled'
+  | 'reauth_required'
+  | 'interrupted';
+
+/** The service's record of one file. It never carries a download address. */
+export interface DownloadTask {
+  id: string;
+  workId: string;
+  title: string;
+  part: number | null;
+  partCount: number | null;
+  state: DownloadState;
+  bytesDone: number;
+  /** `null` when the server does not say. Never shown as 0. */
+  bytesTotal: number | null;
+  fileName: string | null;
+  code: string | null;
+  message: string | null;
+  canRetry: boolean;
+  canResume: boolean;
+  integrity: string | null;
+  location: string | null;
+  fileMissing: boolean;
+  createdAt: string;
+  finishedAt: string | null;
+}
+
+export interface DownloadList {
+  tasks: DownloadTask[];
+  activeCount: number;
+}
+
+export interface DownloadPlan {
+  kind: 'direct' | 'split' | 'serial';
+  parts: number[];
+  totalBytes: number | null;
+  folder: FolderInfo;
+  freeBytes: number | null;
+}
+
+export type DownloadAction = 'cancel' | 'pause' | 'retry' | 'open-folder';
+
 export interface ServiceReady {
   status: 'ready' | 'not_ready';
   profile: 'real' | 'test';
@@ -250,6 +300,27 @@ export class RealLibrarySource implements LibrarySource {
   async folderAction(kind: FolderInfo['kind'], action: 'pick' | 'open'): Promise<FolderInfo[]> {
     return (await apiWrite<{ folders: FolderInfo[] }>('POST', `${folderPath}/${kind}/${action}`))
       .folders;
+  }
+
+  downloads(signal?: AbortSignal): Promise<DownloadList> {
+    return apiGet<DownloadList>('/api/v1/downloads', undefined, signal);
+  }
+
+  /** Spends the session on the platform, so only ever on the user's click. */
+  downloadPlan(workId: string): Promise<DownloadPlan> {
+    return apiWrite<DownloadPlan>('POST', `${workPath(workId)}/download-plan`);
+  }
+
+  createDownload(workId: string, parts: number[] | null, again: boolean): Promise<DownloadList> {
+    return apiWrite<DownloadList>('POST', '/api/v1/downloads', { workId, parts, again });
+  }
+
+  downloadAction(id: string, action: DownloadAction): Promise<DownloadTask> {
+    return apiWrite<DownloadTask>('POST', `/api/v1/downloads/${encodeURIComponent(id)}/${action}`);
+  }
+
+  clearDownloads(): Promise<DownloadList> {
+    return apiWrite<DownloadList>('POST', '/api/v1/downloads/clear');
   }
 
   syncStatus(signal?: AbortSignal): Promise<SyncStatus> {
