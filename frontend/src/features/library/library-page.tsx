@@ -108,7 +108,7 @@ function useCollapsingHeader() {
   const reveal = useCallback(() => {
     flushSync(() => change(false));
   }, [change]);
-  return { collapsed, onScrollChange, reveal, scroller };
+  return { collapsed, onScrollChange, reveal, expand: change, scroller };
 }
 
 export function LibraryPage({
@@ -138,12 +138,17 @@ export function LibraryPage({
   const searchRef = useRef<HTMLInputElement>(null);
   const reduceMotion = useReducedMotion();
   const header = useCollapsingHeader();
-  const { reveal } = header;
+  const { reveal, expand } = header;
   const { isDemo, isTestLibrary } = useWorkspace();
   const collection = useLibraryCollection(filters, { size, scenario: retryScenario });
   const favorite = useToggleFavorite(size);
   const data = collection.summary;
 
+  // New results start from the top, and a short list could never scroll the header back.
+  const firstFilters = useRef(filters);
+  useEffect(() => {
+    if (filters !== firstFilters.current) expand(false);
+  }, [filters, expand]);
   useEffect(() => {
     const timeout = window.setTimeout(
       () => setFilters((current) => (current.search === search ? current : { ...current, search })),
@@ -501,12 +506,13 @@ export function LibraryPage({
         <button
           className="scroll-to-top"
           data-testid="scroll-to-top"
-          onClick={() =>
+          onClick={() => {
+            reveal();
             header.scroller.current?.scrollTo({
               top: 0,
               behavior: reduceMotion ? 'auto' : 'smooth',
-            })
-          }
+            });
+          }}
         >
           <ArrowUp size={14} />
           回到顶部

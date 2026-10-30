@@ -389,6 +389,29 @@ test('scrolling down gives the list the window, scrolling up brings the controls
   await expect(page.getByTestId('scroll-to-top')).toHaveCount(0);
 });
 
+test('a narrower result brings the header back even if the list cannot scroll', async ({
+  page,
+}) => {
+  await page.goto('/library?view=grid');
+  const scroller = page.getByTestId('library-scroll');
+  await scroller.hover();
+  await page.mouse.wheel(0, 800);
+  await expect(page.locator('.library-page')).toHaveAttribute('data-collapsed', 'true');
+  // Not Ctrl+K, which opens the header by itself: results narrow while it is tucked away.
+  await page.evaluate(() => {
+    const input = document.querySelector<HTMLInputElement>('input[aria-label="搜索作品"]')!;
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(
+      input,
+      '没有这样的作品-zzz',
+    );
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await expect(page.getByTestId('library-results')).toHaveAttribute('data-count', '0');
+  await expect(page.locator('.library-page')).toHaveAttribute('data-collapsed', 'false');
+  await page.getByLabel('搜索作品').fill('');
+  await expect(page.locator('.library-page')).toHaveAttribute('data-collapsed', 'false');
+});
+
 test('a short list keeps its controls in place', async ({ page }, info) => {
   test.skip(info.project.name !== '1080p', 'Behavior, not layout tiers.');
   await page.goto('/library?q=%E6%98%9F%E7%A9%B9');
