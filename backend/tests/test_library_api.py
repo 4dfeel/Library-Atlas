@@ -307,7 +307,7 @@ def test_metadata_refresh_cannot_unhide_a_private_work(settings: Settings) -> No
 
 
 def test_new_work_starts_quarantined(settings: Settings) -> None:
-    seed_library(settings, 5)
+    seed_library(settings, 6)
     opened = open_database(settings.database_path, settings.backup_dir, "test")
     with opened.engine.begin() as connection:
         identifier = upsert_source_metadata(
@@ -316,7 +316,7 @@ def test_new_work_starts_quarantined(settings: Settings) -> None:
     opened.engine.dispose()
     with client_for(settings) as client:
         assert client.get(f"/api/v1/works/{identifier}").status_code == 404
-        assert works(client)["totalVisible"] == 5
+        assert works(client)["totalVisible"] == 6
 
 
 def test_failed_transaction_leaves_nothing_behind(settings: Settings) -> None:
