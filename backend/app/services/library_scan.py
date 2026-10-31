@@ -25,10 +25,10 @@ from sqlalchemy import Engine, Row, delete, func, select, update
 
 from app.adapters.system.volumes import Volume, list_volumes
 from app.api import models
-from app.core.errors import AtlasError
+from app.core.errors import AtlasError, WorkUnavailable
 from app.db.engine import writing
 from app.db.schema import local_copies, personal_records, scan_items, scan_jobs, scan_roots, works
-from app.repositories.works import ORDINARY
+from app.repositories.works import ORDINARY, get_ordinary_work
 from app.services.local_copies import LocalCopies
 
 logger = logging.getLogger("atlas")
@@ -668,11 +668,19 @@ class LibraryScanner:
         return models.ScanImportOut(batch_id=batch_id, linked=linked, skipped=skipped)
 
     def link_item(self, item_id: str, work_id: str) -> models.ScanItemsOut:
+        """The user's own word: any work in ordinary views, offered by a scan or not."""
         row = self._item(item_id)
-        if work_id not in json.loads(row.candidates or "[]"):
-            raise AtlasError("scan_invalid", "这部作品不是这个文件夹的候选。", status=422)
+        try:
+            with self._engine.connect() as connection:
+                get_ordinary_work(connection, work_id)
+        except WorkUnavailable:
+            raise AtlasError("scan_invalid", "找不到这部作品。", status=422) from None
         if not self._link(row, work_id, uuid.uuid4().hex):
             raise AtlasError("scan_unavailable", "这个文件夹现在不可用。", status=409)
+        with writing(self._engine).begin() as connection:
+            connection.execute(
+                update(scan_items).where(scan_items.c.id == item_id).values(reason="你手动关联")
+            )
         return self.items(None, 0, 1)
 
     def ignore_item(self, item_id: str) -> models.ScanItemsOut:

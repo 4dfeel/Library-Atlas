@@ -398,6 +398,48 @@ test.describe('unpacking and the queue', () => {
     await expect(page.getByTestId('intro-lightbox')).toHaveCount(0);
   });
 
+  test('the store page video plays here, and nothing is asked of its host until play', async ({
+    page,
+  }) => {
+    await control({
+      intro: null,
+      trailer: [
+        {
+          file_type: 'video',
+          embed_url: 'https://chobit.cc/embed/synthetic/player?dlsite=1',
+          thumb: 'https://file.chobit.cc/contents/synthetic_thumb.jpg?w=560&h=420',
+          embed_width: 560,
+          embed_height: 347,
+        },
+      ],
+    });
+    const asked: string[] = [];
+    await page.route('https://chobit.cc/**', (route) => {
+      asked.push(route.request().url());
+      return route.fulfill({
+        contentType: 'text/html',
+        body: '<!doctype html><video data-testid="synthetic-player"></video>',
+      });
+    });
+    const work = await freshWork();
+    await openWork(page, work);
+    const intro = page.getByTestId('official-intro');
+    await intro.scrollIntoViewIfNeeded();
+    const player = intro.getByTestId('intro-player');
+    await expect(player.locator('img')).toHaveJSProperty('complete', true);
+    await expect
+      .poll(() => player.locator('img').evaluate((node: HTMLImageElement) => node.naturalWidth))
+      .toBeGreaterThan(0);
+    expect(asked).toEqual([]);
+    await shot(page, 'intro-player');
+    await noHorizontalScroll(page);
+    await player.getByRole('button', { name: '播放预览视频' }).click();
+    const frame = page.frameLocator('[data-testid="intro-player"] iframe');
+    await expect(frame.getByTestId('synthetic-player')).toBeAttached();
+    expect(asked).toEqual(['https://chobit.cc/embed/synthetic/player?dlsite=1']);
+    await control({ trailer: null });
+  });
+
   test('without a readable page the rest of the work still stands', async ({ page }) => {
     await control({ intro: 'changed' });
     const work = await freshWork();

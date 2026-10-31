@@ -226,6 +226,9 @@
 ### 本机作品库的自动关联
 `POST /library-scan/start` 接受 `autoLink`。任务结果里有 `autoLinked` 和 `batchId`，`batchId` 传给 `undo` 可撤销。
 
+### 手动关联与预览视频
+`POST /library-scan/items/{id}/link` 的 `workId` 可以是任何普通可见作品，不限于候选。介绍的 `video` 块有播放器时带 `embed`、`poster`、`media`、`width`、`height`。
+
 ### 卸载、快捷方式、收藏夹
 | 接口 | 说明 |
 | --- | --- |

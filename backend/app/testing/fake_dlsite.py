@@ -21,6 +21,7 @@ from app.adapters.dlsite.login_host import LoginEvent, LoginProcess, LoginReques
 from app.adapters.dlsite.product import Product, ProductImage
 from app.adapters.dlsite.session import SessionCheck, SessionCookie
 from app.adapters.dlsite.store_page import StorePageGone
+from app.adapters.dlsite.trailers import parse_trailers
 from app.core.credentials import CredentialStoreError
 
 CONTROL_FILE = "fake-platform.json"
@@ -235,6 +236,16 @@ class FakeStorePage:
         if behavior == "none":
             return '<html><body><div class="work_parts_container"></div></body></html>'
         return _FAKE_PAGE.replace("{id}", source_work_id)
+
+
+class FakeTrailers:
+    """The preview host's answer. The control file's `trailer`: the list of works it reports."""
+
+    def __init__(self, control: FakeControl) -> None:
+        self._control = control
+
+    def find(self, source_work_id: str) -> list[dict[str, Any]]:
+        return parse_trailers({"works": self._control.read().get("trailer") or []})
 
 
 _FAKE_TYPES = ("RPG", "ADV", "MNG", "ICG", "SOU", "MUS", "MOV", "ET3", "ZZZ")

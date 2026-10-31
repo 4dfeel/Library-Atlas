@@ -10,6 +10,7 @@ from app.adapters.dlsite.login_host import BrowserLoginHost
 from app.adapters.dlsite.product import PublicProductClient
 from app.adapters.dlsite.session import PlaySessionChecker
 from app.adapters.dlsite.store_page import PublicStorePage
+from app.adapters.dlsite.trailers import PublicTrailers
 from app.adapters.system.archives import find_seven_zip
 from app.adapters.system.folder_dialog import DialogFolderPicker, ExplorerFolderOpener
 from app.adapters.system.launcher import ProcessLauncher
@@ -88,14 +89,16 @@ def build_introductions(
         from app.testing.fake_dlsite import (
             FakeControl,
             FakeStorePage,
+            FakeTrailers,
             synthetic_image_transport,
         )
 
         cache = CoverCache(
             settings.data_dir / "cache" / "gallery", transport=synthetic_image_transport
         )
-        return WorkIntroductions(engine, FakeStorePage(FakeControl(settings.data_dir)), cache)
-    return WorkIntroductions(engine, PublicStorePage(), images)
+        control = FakeControl(settings.data_dir)
+        return WorkIntroductions(engine, FakeStorePage(control), cache, FakeTrailers(control))
+    return WorkIntroductions(engine, PublicStorePage(), images, PublicTrailers())
 
 
 def build_local_copies(settings: Settings, engine: Engine, folders: FolderService) -> LocalCopies:

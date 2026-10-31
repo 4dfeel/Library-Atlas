@@ -48,6 +48,37 @@ function IntroImage({
   );
 }
 
+type VideoBlock = Extract<IntroBlock, { type: 'video' }>;
+
+/**
+ * The store's own preview player. Nothing is asked of its host until the user presses play: until
+ * then the picture comes from Atlas. It runs in a sandbox and cannot touch this page.
+ */
+function IntroPlayer({ block }: { block: VideoBlock }) {
+  const [playing, setPlaying] = useState(false);
+  const label = block.media === 'audio' ? '播放预览音频' : '播放预览视频';
+  const shape = block.width && block.height ? `${block.width} / ${block.height}` : '16 / 10';
+  return (
+    <div className="intro-player" data-testid="intro-player" style={{ aspectRatio: shape }}>
+      {playing ? (
+        <iframe
+          src={block.embed}
+          title={label}
+          sandbox="allow-scripts allow-same-origin allow-presentation"
+          allow="autoplay; fullscreen"
+          allowFullScreen
+          referrerPolicy="no-referrer"
+        />
+      ) : (
+        <button type="button" aria-label={label} onClick={() => setPlaying(true)}>
+          {block.poster && <img src={block.poster} alt="" loading="lazy" decoding="async" />}
+          <PlayCircle size={56} strokeWidth={1.25} />
+        </button>
+      )}
+    </div>
+  );
+}
+
 function Block({
   block,
   sourceUrl,
@@ -101,6 +132,7 @@ function Block({
     case 'image':
       return <IntroImage block={block} onOpen={onOpen} />;
     case 'video':
+      if (block.embed) return <IntroPlayer block={block} />;
       return (
         <p className="intro-video" data-testid="intro-video">
           <PlayCircle size={18} />

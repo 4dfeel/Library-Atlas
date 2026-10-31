@@ -370,6 +370,9 @@ export function LocalCopyPanel({ game }: { game: GameDetail }) {
             <Pencil size={14} />
             编辑关联
           </Button>
+          <span className="local-copy-path" data-testid="copy-path" title={current.root}>
+            {current.root}
+          </span>
           {current.status === 'no_entry' || current.status === 'ok' ? null : (
             <span className="download-state is-error" data-testid="copy-status">
               <CircleAlert size={14} />

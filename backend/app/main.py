@@ -65,7 +65,8 @@ SECURITY_HEADERS = {
     "Referrer-Policy": "no-referrer",
     "Content-Security-Policy": (
         "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; "
-        "font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'"
+        "font-src 'self' data:; connect-src 'self'; frame-src https://chobit.cc; "
+        "frame-ancestors 'none'; base-uri 'none'"
     ),
 }
 

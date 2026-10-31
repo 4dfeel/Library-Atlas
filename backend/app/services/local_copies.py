@@ -339,12 +339,20 @@ class LocalCopies:
         """For a folder Atlas itself found or made. The program is chosen only when there is
         exactly one plausible candidate; otherwise the user chooses. Nothing is run."""
         candidates = entry_candidates(root)
+        # A release renames its folder: the copy that is found takes over from one that has gone.
+        with self._engine.connect() as connection:
+            default = connection.execute(
+                select(local_copies.c.root_path).where(
+                    local_copies.c.work_id == work_id, local_copies.c.is_default == 1
+                )
+            ).scalar()
         return self._insert(
             work_id,
             root,
             entry=single_entry(candidates),
             origin=origin,
-            make_default=origin == "unpacked",
+            make_default=origin == "unpacked"
+            or (default is not None and not Path(default).is_dir()),
             batch_id=batch_id,
         )
 

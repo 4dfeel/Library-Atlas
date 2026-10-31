@@ -44,7 +44,7 @@ WORK_TYPES: Mapping[str, tuple[str, str]] = {
     "ET3": ("other", "其他"),
 }
 _TITLE_LOCALES = ("zh_CN", "zh_TW", "ja_JP", "en_US", "ko_KR")
-_IMAGE_SUFFIXES = (".dlsite.jp", ".dlsite.com")
+_IMAGE_SUFFIXES = (".dlsite.jp", ".dlsite.com", ".chobit.cc")
 _SITE_ID = re.compile(r"[a-z0-9_-]{1,32}")
 
 

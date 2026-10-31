@@ -396,3 +396,68 @@ def test_other_platforms_ask_nothing(api: TestClient) -> None:
         "problem": None,
         "message": None,
     }
+
+
+def test_a_preview_player_is_kept_only_from_its_own_host() -> None:
+    from app.adapters.dlsite.trailers import parse_trailers
+
+    good = {
+        "file_type": "video",
+        "embed_url": "https://chobit.cc/embed/abc/def?dlsite=1",
+        "thumb": "https://file.chobit.cc/contents/a_thumb.jpg?w=560&h=420",
+        "embed_width": 560,
+        "embed_height": 347,
+    }
+    blocks = parse_trailers({"count": 1, "works": [good]})
+    assert blocks == [
+        {
+            "type": "video",
+            "host": "chobit.cc",
+            "media": "video",
+            "embed": good["embed_url"],
+            "ref": good["thumb"],
+            "width": 560,
+            "height": 347,
+        }
+    ]
+    for address in (
+        "http://chobit.cc/embed/a/b",
+        "https://evil.example/embed/a/b",
+        "https://chobit.cc.evil.example/embed/a/b",
+        "https://chobit.cc/other/a",
+        "javascript:alert(1)",
+        None,
+    ):
+        assert parse_trailers({"works": [{**good, "embed_url": address}]}) == []
+    assert parse_trailers({"works": [{**good, "file_type": "image"}]}) == []
+    assert parse_trailers({"works": "nope"}) == []
+    assert parse_trailers(None) == []
+    assert (
+        parse_trailers({"works": [{**good, "thumb": "https://evil.example/x.jpg"}]})[0]["ref"]
+        is None
+    )
+
+
+def test_trouble_with_the_preview_host_is_simply_no_player() -> None:
+    import httpx
+
+    from app.adapters.dlsite.trailers import PublicTrailers
+
+    def answering(handler: Any) -> PublicTrailers:
+        return PublicTrailers(transport=httpx.MockTransport(handler))
+
+    def refuse(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("offline")
+
+    assert answering(refuse).find("RJ1") == []
+    assert answering(lambda request: httpx.Response(500)).find("RJ1") == []
+    assert answering(lambda request: httpx.Response(200, text="not json")).find("RJ1") == []
+    seen: list[httpx.Request] = []
+
+    def record(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, json={"works": []})
+
+    assert answering(record).find("RJ123") == []
+    assert seen[0].url.params["workno"] == "RJ123"
+    assert "cookie" not in seen[0].headers

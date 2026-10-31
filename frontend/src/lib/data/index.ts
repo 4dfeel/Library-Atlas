@@ -66,6 +66,7 @@ export {
   useCollectionActions,
   useCollections,
   useUninstall,
+  useWorkSearch,
   useWorkActions,
   useBookPages,
   useBooks,

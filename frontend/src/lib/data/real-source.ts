@@ -374,7 +374,16 @@ export type IntroBlock =
   | { type: 'list'; items: string[] }
   | { type: 'table'; rows: string[][] }
   | IntroImageBlock
-  | { type: 'video'; host: string };
+  | {
+      type: 'video';
+      host: string;
+      /** A player to show. Without one, all that is known is that the store page has a video. */
+      embed?: string;
+      poster?: string;
+      media?: 'video' | 'audio';
+      width?: number | null;
+      height?: number | null;
+    };
 
 export interface IntroImageBlock {
   type: 'image';
@@ -701,6 +710,12 @@ export class RealLibrarySource implements LibrarySource {
 
   scanUndo(batchId: string) {
     return apiWrite('POST', `/api/v1/library-scan/undo/${encodeURIComponent(batchId)}`);
+  }
+
+  async searchWorks(search: string, signal?: AbortSignal) {
+    const params = new URLSearchParams({ platform: 'dlsite', limit: '20', sort: 'name-asc' });
+    if (search.trim()) params.set('search', search.trim());
+    return (await apiGet<ApiWorkPage>('/api/v1/works', params, signal)).items;
   }
 
   scanLink(itemId: string, workId: string) {

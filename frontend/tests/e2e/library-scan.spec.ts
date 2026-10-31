@@ -87,6 +87,19 @@ test.describe('finding works on this computer', () => {
     await shot(page, 'scan-results');
     await noHorizontalScroll(page);
 
+    // A folder the scan could not place can be given its work by hand, here in settings.
+    const other = (
+      await (await call('/works?limit=5&search=' + encodeURIComponent('合成作品'))).json()
+    ).items.find((item: { id: string }) => !works.some((w: { id: string }) => w.id === item.id));
+    const row = panel.locator('[data-scan-item]').filter({ hasText: '作品库里没有的作品' });
+    await row.getByRole('button', { name: '手动选择作品' }).click();
+    await row.getByLabel('搜索作品').fill(other.title);
+    await shot(page, 'scan-pick');
+    await row.getByTestId('scan-pick').getByRole('button', { name: other.title }).click();
+    await expect(panel.getByRole('tab', { name: /没有匹配/ })).toContainText('(0)');
+    const picked = (await (await call(`/works/${other.id}/local-copies`)).json()).copies;
+    expect(picked[0].root).toContain('作品库里没有的作品');
+
     const copies = (await (await call(`/works/${works[0].id}/local-copies`)).json()).copies;
     expect(copies[0].origin).toBe('scanned');
     expect(copies[0].entry).toBe('Game.exe');
@@ -96,7 +109,7 @@ test.describe('finding works on this computer', () => {
     expect((await (await call(`/works/${works[0].id}/local-copies`)).json()).copies).toEqual([]);
     // Taken back stays taken back: scanning again does not link them behind the user's back.
     await panel.getByRole('button', { name: '重新扫描并关联' }).click();
-    await expect(panel.getByTestId('scan-linked')).toContainText('已关联 0 部', {
+    await expect(panel.getByTestId('scan-linked')).toContainText('已关联 1 部', {
       timeout: 20_000,
     });
     expect((await (await call(`/works/${works[0].id}/local-copies`)).json()).copies).toEqual([]);

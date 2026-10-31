@@ -1013,3 +1013,15 @@ export function useUninstall(copyId: string) {
     },
   };
 }
+
+/** For choosing a work by hand. Goes through the same ordinary list as everything else. */
+export function useWorkSearch(search: string) {
+  const query = useQuery({
+    queryKey: [...realRoot, 'work-search', search],
+    queryFn: ({ signal }) => realSource.searchWorks(search, signal),
+    enabled: useWorkspaceMode() === 'real',
+    retry: false,
+    placeholderData: (previous) => previous,
+  });
+  return { works: query.data ?? [], loading: query.isPending };
+}

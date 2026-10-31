@@ -653,3 +653,66 @@ def test_5000_folders_stay_quick_and_bounded(api: TestClient, tmp_path: Path) ->
         from sqlalchemy import func, select
 
         assert connection.execute(select(func.count()).select_from(local_copies)).scalar_one() == 0
+
+
+def test_any_folder_can_be_linked_by_hand_and_stays_linked(api: TestClient, tmp_path: Path) -> None:
+    work = work_ids(api)[0]
+    root = make_library(tmp_path / "Library", {("Game", "别的社团", "完全不一样的名字"): True})
+    assert scan(api, root)["counts"]["unmatched"] == 1
+    item = listed(api, "unmatched")[0]
+    assert api.post(f"{BASE}/items/{item['id']}/link", json={"workId": "nope"}).status_code == 422
+    response = api.post(f"{BASE}/items/{item['id']}/link", json={"workId": work["id"]})
+    assert response.status_code == 200
+    assert listed(api, "linked")[0]["reason"] == "你手动关联"
+    assert len(api.get(f"/api/v1/works/{work['id']}/local-copies").json()["copies"]) == 1
+    assert scan(api, root)["counts"]["linked"] == 1
+    assert len(api.get(f"/api/v1/works/{work['id']}/local-copies").json()["copies"]) == 1
+
+
+def test_a_hidden_work_cannot_be_linked_by_hand(api: TestClient, tmp_path: Path) -> None:
+    work = work_ids(api)[0]
+    root = make_library(tmp_path / "Library", {("Game", "别的社团", "完全不一样的名字"): True})
+    scan(api, root)
+    with engine_of(api).begin() as connection:
+        connection.execute(
+            update(personal_records)
+            .where(personal_records.c.work_id == work["id"])
+            .values(visibility="private")
+        )
+    item = listed(api, "unmatched")[0]
+    assert (
+        api.post(f"{BASE}/items/{item['id']}/link", json={"workId": work["id"]}).status_code == 422
+    )
+
+
+def test_a_matched_path_is_remembered_across_a_restart(
+    settings: Settings, rig: Rig, tmp_path: Path
+) -> None:
+    with client_for(settings) as client:
+        prepare(client, rig)
+        work = work_ids(client)[0]
+        root = make_library(tmp_path / "Library", work_folders([work]))
+        auto_scan(client, root)
+        before = client.get(f"/api/v1/works/{work['id']}/local-copies").json()["copies"]
+        assert len(before) == 1
+    with client_for(settings) as client:
+        after = client.get(f"/api/v1/works/{work['id']}/local-copies").json()["copies"]
+        assert after == before
+        assert client.get(f"/api/v1/works/{work['id']}").json()["copyId"] == before[0]["id"]
+
+
+def test_a_renamed_release_takes_over_from_the_folder_that_went(
+    api: TestClient, tmp_path: Path
+) -> None:
+    work = work_ids(api)[0]
+    folders = work_folders([work])
+    root = make_library(tmp_path / "Library", folders)
+    auto_scan(api, root)
+    first = api.get(f"/api/v1/works/{work['id']}/local-copies").json()["copies"][0]
+    Path(first["root"]).rename(Path(first["root"]).with_name(f"{work['title']} ver200"))
+    auto_scan(api, root)
+    copies = api.get(f"/api/v1/works/{work['id']}/local-copies").json()["copies"]
+    assert len(copies) == 2
+    assert copies[0]["root"].endswith("ver200")
+    assert copies[0]["isDefault"] is True
+    assert api.get(f"/api/v1/works/{work['id']}").json()["copyId"] == copies[0]["id"]

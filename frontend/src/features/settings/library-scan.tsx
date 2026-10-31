@@ -2,7 +2,13 @@ import { useState } from 'react';
 import { CircleAlert, CircleCheck, LoaderCircle, RotateCcw, Search, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { useLibraryScan, useLibraryScanItems, type ScanItem, type ScanItemState } from '@/lib/data';
+import {
+  useLibraryScan,
+  useLibraryScanItems,
+  useWorkSearch,
+  type ScanItem,
+  type ScanItemState,
+} from '@/lib/data';
 
 const PAGE = 50;
 
@@ -15,9 +21,37 @@ const stateLabels: Record<ScanItemState, string> = {
   ignored: '已忽略',
 };
 
+/** Any work in the library, for a folder the scan could not place. Starts at the folder's maker. */
+function PickWork({ item, onPick }: { item: ScanItem; onPick: (workId: string) => void }) {
+  const [search, setSearch] = useState(item.maker);
+  const { works, loading } = useWorkSearch(search);
+  return (
+    <div className="scan-pick" data-testid="scan-pick">
+      <Input
+        aria-label="搜索作品"
+        placeholder="搜索作品名或制作方"
+        autoFocus
+        value={search}
+        onChange={(event) => setSearch(event.target.value)}
+      />
+      {!loading && works.length === 0 && <p className="settings-note">没有找到，换个词试试。</p>}
+      <ul>
+        {works.map((work) => (
+          <li key={work.id}>
+            <button type="button" title={work.title} onClick={() => onPick(work.id)}>
+              {work.title}
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function ReviewRow({ item }: { item: ScanItem }) {
   const { link, ignore } = useLibraryScan();
   const [choice, setChoice] = useState(item.candidates[0]?.workId ?? '');
+  const [picking, setPicking] = useState(false);
   return (
     <li className="scan-item" data-scan-item={item.id}>
       <div className="scan-item-main">
@@ -46,11 +80,20 @@ function ReviewRow({ item }: { item: ScanItem }) {
               关联
             </Button>
           )}
+          <Button
+            variant="ghost"
+            size="sm"
+            aria-expanded={picking}
+            onClick={() => setPicking(!picking)}
+          >
+            手动选择作品
+          </Button>
           <Button variant="ghost" size="sm" onClick={() => ignore(item.id)}>
             忽略
           </Button>
         </div>
       )}
+      {picking && <PickWork item={item} onPick={(workId) => link(item.id, workId)} />}
     </li>
   );
 }
