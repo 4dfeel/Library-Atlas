@@ -1281,6 +1281,11 @@
   background: color-mix(in srgb, var(--sidebar) 70%, transparent);
 }
 
+/* The link takes no box of its own: the cover stays exactly where the layout put it. */
+.downloads-cover-link {
+  display: contents;
+}
+
 .queue-row-cover {
   width: 136px;
   height: 76px;

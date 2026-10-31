@@ -51,6 +51,14 @@ function show(tasks: DownloadTask[], extractions: ExtractTask[] = []) {
 describe('the download queue', () => {
   afterEach(() => vi.unstubAllGlobals());
 
+  it('opens the work from its cover', async () => {
+    show([task({ state: 'done', bytesDone: 10, fileName: 'a.zip' })]);
+    const title = await screen.findByText('合成作品');
+    const cover = title.closest('li')!.querySelector('.queue-row-cover')!;
+    expect(cover.closest('a')).toHaveAttribute('href', '/library/w1');
+    expect(cover.closest('a')).toHaveAttribute('tabindex', '-1');
+  });
+
   it('says the total is unknown and shows no made-up number', async () => {
     show([task({})]);
     const row = await screen.findByText('已下载 1 MB · 总大小未知');

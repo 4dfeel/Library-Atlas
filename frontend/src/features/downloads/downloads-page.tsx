@@ -42,23 +42,33 @@ function formatRemaining(seconds: number) {
   return `${Math.floor(minutes / 60)} 小时 ${minutes % 60} 分`;
 }
 
-/** The cover if there is one; a missing cover quietly becomes a plain tile. */
+/**
+ * The cover if there is one; a missing cover quietly becomes a plain tile. Either opens the work.
+ * The title beside it is the same link, so keyboards and screen readers meet it only once.
+ */
 function Cover({ workId, className }: { workId: string; className: string }) {
   const [failed, setFailed] = useState(false);
-  if (failed)
-    return (
-      <span className={`${className} is-empty`} aria-hidden="true">
-        <Download size={20} />
-      </span>
-    );
   return (
-    <img
-      className={className}
-      src={coverOf(workId)}
-      alt=""
-      loading="lazy"
-      onError={() => setFailed(true)}
-    />
+    <AppLink
+      to={gameHref(workId)}
+      className="downloads-cover-link"
+      tabIndex={-1}
+      aria-hidden="true"
+    >
+      {failed ? (
+        <span className={`${className} is-empty`}>
+          <Download size={20} />
+        </span>
+      ) : (
+        <img
+          className={className}
+          src={coverOf(workId)}
+          alt=""
+          loading="lazy"
+          onError={() => setFailed(true)}
+        />
+      )}
+    </AppLink>
   );
 }
 
