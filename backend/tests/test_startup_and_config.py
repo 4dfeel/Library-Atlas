@@ -8,6 +8,7 @@ import pytest
 from app.__main__ import EXIT_CONFIG, EXIT_DATABASE, EXIT_PORT, main
 from app.core.config import TEST_MARKER, ConfigError, Settings, load_settings
 from app.core.credentials import CredentialTooLarge, WindowsCredentialStore
+from app.main import _static_response
 from tests.conftest import HEAD_REVISION, client_for, make_settings, seed_library
 
 
@@ -194,6 +195,87 @@ def test_static_hosting_never_leaves_the_build(tmp_path: Path) -> None:
             .headers["content-type"]
             .startswith("application/json")
         )
+
+
+@pytest.fixture
+def paths_asked_about(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """What reached Windows. A network path stops here, so no test ever opens a connection."""
+    asked: list[str] = []
+    real_resolve = Path.resolve
+    real_is_file = Path.is_file
+
+    def resolve(self: Path, strict: bool = False) -> Path:
+        asked.append(str(self))
+        return self if str(self).startswith("\\\\") else real_resolve(self, strict)
+
+    def is_file(self: Path, *, follow_symlinks: bool = True) -> bool:
+        asked.append(str(self))
+        if str(self).startswith("\\\\"):
+            return False
+        return real_is_file(self, follow_symlinks=follow_symlinks)
+
+    monkeypatch.setattr(Path, "resolve", resolve)
+    monkeypatch.setattr(Path, "is_file", is_file)
+    return asked
+
+
+@pytest.mark.parametrize(
+    "address",
+    [
+        "\\\\attacker.example\\share\\x",
+        "//attacker.example/share/x",
+        "/\\attacker.example\\share",
+        "\\\\?\\UNC\\attacker.example\\share",
+        "\\\\.\\pipe\\x",
+        "C:\\Windows\\win.ini",
+        "C:/Windows/win.ini",
+        "C:win.ini",
+        "NUL",
+        "index.html::$DATA",
+        "x\x00y",
+    ],
+)
+def test_an_address_outside_the_build_is_never_asked_about(
+    tmp_path: Path, paths_asked_about: list[str], address: str
+) -> None:
+    # Merely asking Windows about \\host\share offers that host the user's Windows credentials.
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    (dist / "index.html").write_text("<title>Atlas shell</title>", encoding="utf-8")
+    root = dist.resolve()
+    paths_asked_about.clear()
+    response = _static_response(dist, address)
+    assert response.path == root / "index.html"  # type: ignore[attr-defined]
+    assert not [asked for asked in paths_asked_about if not Path(asked).is_relative_to(root.parent)]
+
+
+def test_a_web_page_cannot_send_the_service_to_a_network_path(
+    tmp_path: Path, paths_asked_about: list[str]
+) -> None:
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    (dist / "index.html").write_text("<title>Atlas shell</title>", encoding="utf-8")
+    settings = make_settings(tmp_path / "data")
+    settings = Settings(
+        profile="test", data_dir=settings.data_dir, port=settings.port, static_dir=dist
+    )
+    with client_for(settings) as client:
+        paths_asked_about.clear()
+        answer = client.get(
+            "/%5C%5Cattacker.example%5Cshare%5Cx",
+            headers={"Sec-Fetch-Site": "cross-site", "Sec-Fetch-Dest": "image"},
+        )
+        assert "Atlas shell" in answer.text
+    assert not [asked for asked in paths_asked_about if "attacker.example" in asked]
+
+
+def test_files_in_folders_of_the_build_are_still_served(tmp_path: Path) -> None:
+    dist = tmp_path / "dist"
+    (dist / "assets" / "cmaps").mkdir(parents=True)
+    (dist / "index.html").write_text("<title>Atlas shell</title>", encoding="utf-8")
+    (dist / "assets" / "cmaps" / "Adobe-Japan1-UCS2.bcmap").write_bytes(b"map")
+    response = _static_response(dist, "assets/cmaps/Adobe-Japan1-UCS2.bcmap")
+    assert Path(response.path).name == "Adobe-Japan1-UCS2.bcmap"  # type: ignore[attr-defined]
 
 
 @pytest.fixture
