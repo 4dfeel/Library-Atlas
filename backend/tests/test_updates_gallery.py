@@ -28,6 +28,10 @@ def api(settings: Settings, rig: Rig) -> Iterator[TestClient]:
         yield client
 
 
+# After any download a test makes, however the clock of the machine running it is set.
+LATER = (datetime.now(UTC) + timedelta(days=30)).isoformat()
+
+
 def resync(client: TestClient, rig: Rig, **control: Any) -> None:
     rig.control.update(control)
     rig.save_control()
@@ -57,10 +61,37 @@ def test_a_changed_work_is_noticed_and_not_downloaded(api: TestClient, rig: Rig)
     work = first_work(api)
     task = download(api, work["id"])
     assert updates(api) == []
-    resync(api, rig, upgrade="2026-10-30T00:00:00+09:00")
+    resync(api, rig, upgrade=LATER)
     assert updates(api) == [work["id"]]
     tasks = api.get("/api/v1/downloads").json()["tasks"]
     assert [item["id"] for item in tasks] == [task["id"]]  # Nothing started by itself.
+
+
+def test_a_date_learned_after_the_download_is_not_a_new_version(api: TestClient, rig: Rig) -> None:
+    rig.behave(size=1000)
+    work = first_work(api)
+    download(api, work["id"])
+    # No date was known when it was downloaded, and the platform's own is years older.
+    resync(api, rig, upgrade="2021-06-27T15:00:00.000000Z")
+    assert updates(api) == []
+
+
+def test_a_changed_date_counts_once_a_date_was_known(api: TestClient, rig: Rig) -> None:
+    rig.behave(size=1000)
+    work = first_work(api)
+    resync(api, rig, upgrade="2021-06-27T15:00:00.000000Z")
+    download(api, work["id"])
+    assert updates(api) == []
+    resync(api, rig, upgrade="2022-01-01T15:00:00.000000Z")
+    assert updates(api) == [work["id"]]
+
+
+def test_a_date_that_cannot_be_read_is_not_a_new_version(api: TestClient, rig: Rig) -> None:
+    rig.behave(size=1000)
+    work = first_work(api)
+    download(api, work["id"])
+    resync(api, rig, upgrade="不是日期")
+    assert updates(api) == []
 
 
 def test_downloading_the_update_settles_it_and_keeps_the_old_file(
@@ -69,14 +100,14 @@ def test_downloading_the_update_settles_it_and_keeps_the_old_file(
     rig.behave(size=1000)
     work = first_work(api)
     download(api, work["id"])
-    resync(api, rig, upgrade="2026-10-30T00:00:00+09:00")
+    resync(api, rig, upgrade=LATER)
     assert download(api, work["id"], again=True)["state"] == "done"
     assert updates(api) == []
     assert len(list((rig.library / work["sourceId"]).iterdir())) == 2
 
 
 def test_works_never_downloaded_have_no_update(api: TestClient, rig: Rig) -> None:
-    resync(api, rig, upgrade="2026-10-30T00:00:00+09:00")
+    resync(api, rig, upgrade=LATER)
     assert updates(api) == []
 
 
@@ -84,7 +115,7 @@ def test_an_update_is_not_offered_for_a_file_already_gone(api: TestClient, rig: 
     rig.behave(size=1000)
     work = first_work(api)
     download(api, work["id"])
-    resync(api, rig, upgrade="2026-10-30T00:00:00+09:00")
+    resync(api, rig, upgrade=LATER)
     for file in (rig.library / work["sourceId"]).iterdir():
         file.unlink()
     assert updates(api) == []
@@ -94,7 +125,7 @@ def test_a_hidden_work_is_not_listed_as_updated(api: TestClient, rig: Rig) -> No
     rig.behave(size=1000)
     work = first_work(api)
     download(api, work["id"])
-    resync(api, rig, upgrade="2026-10-30T00:00:00+09:00")
+    resync(api, rig, upgrade=LATER)
     with engine_of(api).begin() as connection:
         connection.execute(update(personal_records).values(visibility="private"))
     assert updates(api) == []

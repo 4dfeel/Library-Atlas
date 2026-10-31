@@ -4,6 +4,7 @@ files and the real 7-Zip. The archives are synthetic and the platform is pretend
 import shutil
 import time
 from collections.abc import Iterator
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -715,7 +716,7 @@ def test_an_update_is_still_noticed_after_clearing(
     start(api, work["id"], extract=True)
     settled(api, work["id"])
     api.post("/api/v1/downloads/clear")
-    rig.control["upgrade"] = "2026-10-30T00:00:00+09:00"
+    rig.control["upgrade"] = (datetime.now(UTC) + timedelta(days=30)).isoformat()
     rig.save_control()
     assert api.post("/api/v1/sources/dlsite/sync").status_code == 200
     deadline = time.monotonic() + 15
