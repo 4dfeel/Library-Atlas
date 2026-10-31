@@ -363,47 +363,40 @@ def test_a_launch_records_only_when_the_saves_are_not_settled(
     game = make_game(tmp_path)
     link(api, work["id"], game)
     service = api.app.state.service.discovery  # type: ignore[attr-defined]
-    service.watch_times = (0.0, 0.0, 0.0)
-    service._in_use = lambda path: False
     api.put(
         f"/api/v1/works/{work['id']}/save-config",
         json={"rules": [{"kind": "inside", "path": "save"}], "confirmedNone": False},
     )
-    service.game_started(work["id"], game / "Game.exe")
+    service.game_started(work["id"])
     assert suggest(api, work["id"])["session"]["state"] == "none"
     api.put(f"/api/v1/works/{work['id']}/save-config", json={"rules": [], "confirmedNone": False})
-    service.game_started(work["id"], game / "Game.exe")
+    service.game_started(work["id"])
     assert suggest(api, work["id"])["session"]["state"] == "recording"
 
 
-def test_the_scan_runs_by_itself_once_the_game_is_seen_to_close(
+def test_the_scan_runs_by_itself_once_the_game_has_ended(
     api: TestClient, settings: Settings, tmp_path: Path
 ) -> None:
     work = work_ids(api)[0]
     game = make_game(tmp_path)
     link(api, work["id"], game)
     service = api.app.state.service.discovery  # type: ignore[attr-defined]
-    service.watch_times = (0.1, 0.0, 0.0)
-    states = [True, True, False]
-    service._in_use = lambda path: states.pop(0) if states else False
-    service.game_started(work["id"], game / "Game.exe")
+    service.after_exit_seconds = 0.0
+    service.game_started(work["id"])
     (game / "save").mkdir()
     (game / "save" / "a.sav").write_bytes(b"x")
+    service.game_exited(work["id"], game / "Game.exe")
     data = wait_done(api, work["id"])
-    assert data["session"]["state"] == "done"
+    assert by_path(data, "save")["likely"] is True
 
 
-def test_a_launcher_never_seen_running_waits_for_the_user(
+def test_a_game_started_elsewhere_waits_for_the_user(
     api: TestClient, settings: Settings, tmp_path: Path
 ) -> None:
     work = work_ids(api)[0]
     game = make_game(tmp_path)
     link(api, work["id"], game)
-    service = api.app.state.service.discovery  # type: ignore[attr-defined]
-    service.watch_times = (0.0, 0.0, 0.0)
-    service._in_use = lambda path: False
-    service.game_started(work["id"], game / "Game.exe")
-    time.sleep(0.05)
+    api.post(f"/api/v1/works/{work['id']}/saves/session")
     assert suggest(api, work["id"])["session"]["state"] == "recording"
 
 

@@ -51,7 +51,7 @@ export function CloudPanel() {
               onChange={(event) => void actions.options(status.autoCheck, event.target.checked)}
             />
             从 Atlas
-            启动的游戏关闭后自动备份。通过启动器再打开游戏的作品无法判断何时结束，仍需手动备份。
+            启动的游戏关闭后自动备份。需要管理员权限运行的游戏无法判断何时结束，仍需手动备份。
           </label>
           <div className="dlsite-actions">
             <Button

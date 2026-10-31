@@ -511,6 +511,24 @@ save_discoveries = Table(
     Column("complete", Integer, nullable=False, server_default=text("1")),
 )
 
+play_sessions = Table(
+    "play_sessions",
+    metadata,
+    Column("id", String, primary_key=True),
+    Column("work_id", String, ForeignKey("works.id"), nullable=False),
+    Column("copy_id", String, nullable=True),
+    Column("source", String, nullable=False),  # atlas, and later whichever platform reports it.
+    Column("started_at", String, nullable=False),
+    Column("heartbeat_at", String, nullable=False),
+    Column("ended_at", String, nullable=True),
+    Column("ended_by", String, nullable=True),  # exit | unknown (it ended while Atlas was away)
+    Column("seconds", Float, nullable=False, server_default=text("0")),
+    Column("state", String, nullable=False),  # running | finished
+    Column("watch_name", String, nullable=True),
+    Index("ix_play_sessions_work", "work_id", "started_at"),
+    Index("ix_play_sessions_state", "state"),
+)
+
 library_entries = Table(
     "library_entries",
     metadata,

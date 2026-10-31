@@ -426,6 +426,47 @@ export interface CloudWork {
   queue: { count: number; uploading: boolean; failed: string | null };
 }
 
+export interface PlaySession {
+  id: string;
+  startedAt: string;
+  endedAt: string | null;
+  seconds: number;
+  source: string;
+  estimated: boolean;
+  running: boolean;
+}
+
+export interface PlayMonth {
+  month: string;
+  seconds: number;
+  sessions: number;
+  top: { workId: string; title: string; seconds: number }[];
+}
+
+export interface WorkPlay {
+  running: boolean;
+  runningSince: string | null;
+  totalSeconds: number;
+  totalMinutes: number | null;
+  lastPlayedAt: string | null;
+  recentSeconds: number;
+  sessions: PlaySession[];
+  months: PlayMonth[];
+}
+
+export interface PlayStats {
+  totalSeconds: number;
+  recentSeconds: number;
+  months: PlayMonth[];
+  recent: {
+    workId: string;
+    title: string;
+    platform: string;
+    lastPlayedAt: string;
+    running: boolean;
+  }[];
+}
+
 export type IntroBlock =
   | { type: 'heading'; text: string }
   | { type: 'paragraph'; spans: { text: string; href?: string }[] }
@@ -776,6 +817,14 @@ export class RealLibrarySource implements LibrarySource {
       'POST',
       `${workPath(workId)}/saves/session${finish ? '/finish' : ''}`,
     );
+  }
+
+  workPlay(workId: string, signal?: AbortSignal) {
+    return apiGet<WorkPlay>(`${workPath(workId)}/play`, undefined, signal);
+  }
+
+  playStats(signal?: AbortSignal) {
+    return apiGet<PlayStats>('/api/v1/play/stats', new URLSearchParams({ months: '12' }), signal);
   }
 
   launchLocalCopy(id: string) {

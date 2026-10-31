@@ -4,7 +4,7 @@ the HTTP level. Two libraries sharing one fake Drive stand for two computers. No
 import contextlib
 import dataclasses
 import json
-import threading
+import time
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
@@ -703,35 +703,20 @@ def test_after_play_backup_is_off_by_default_and_works_when_on(
     one: Device, drive_dir: Path
 ) -> None:
     cloud = one.client.app.state.service.cloud  # type: ignore[attr-defined]
-    cloud.watch_times = (0.05, 0.01, 0.01)
-    states = [True, True, False]
-    cloud._in_use = lambda path: states.pop(0) if states else False
-    cloud._sleep = lambda seconds: threading.Event().wait(seconds)
+    cloud.after_exit_seconds = 0.0
     program = one.folder / "Game.exe"
-    cloud.game_started(one.work["id"], program)
-    assert threading.active_count() >= 1
+    cloud.game_exited(one.work["id"], program)
+    time.sleep(0.05)
     assert one.status()["queue"]["count"] == 0
-    assert commits(drive_dir) == []
     assert (
         one.client.put(
             "/api/v1/cloud/options", json={"autoCheck": False, "autoBackup": True}
         ).status_code
         == 200
     )
-    cloud._watch(one.work["id"], program)
+    cloud._backup_when_calm(one.work["id"])
     one.flush()
     assert len(commits(drive_dir)) == 1
-
-
-def test_a_game_never_seen_running_gets_no_guess(one: Device, drive_dir: Path) -> None:
-    cloud = one.client.app.state.service.cloud  # type: ignore[attr-defined]
-    cloud.watch_times = (0.02, 0.01, 0.0)
-    cloud._in_use = lambda path: False
-    cloud._sleep = lambda seconds: threading.Event().wait(seconds)
-    one.client.put("/api/v1/cloud/options", json={"autoCheck": False, "autoBackup": True})
-    cloud._watch(one.work["id"], one.folder / "Game.exe")
-    one.flush()
-    assert commits(drive_dir) == []
 
 
 # --- the Drive client itself ---

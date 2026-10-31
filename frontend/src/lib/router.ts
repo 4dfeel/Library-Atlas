@@ -11,6 +11,7 @@ export type Route =
   | { name: 'settings' }
   | { name: 'downloads' }
   | { name: 'collections' }
+  | { name: 'activity' }
   | { name: 'not-found' };
 
 /** Entry state written by Atlas. Other keys in history.state are preserved. */
@@ -80,6 +81,7 @@ export function matchRoute(pathname: string): Route {
   if (path === '/settings') return { name: 'settings' };
   if (path === '/downloads') return { name: 'downloads' };
   if (path === '/collections') return { name: 'collections' };
+  if (path === '/activity') return { name: 'activity' };
   const match = /^\/library\/([^/]+)$/.exec(path);
   if (match) {
     try {

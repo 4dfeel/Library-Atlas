@@ -468,6 +468,7 @@ def upsert_source_metadata(
         # Facts this source does not report at all.
         for name in ("local_state", "subtitle"):
             changes.pop(name, None)
+        # Atlas's own record of play stands where the source reports none: see `play_tracker`.
     statement = insert(works).values(id=work_id or f"wk_{uuid.uuid4().hex}", **values)
     identifier = connection.execute(
         statement.on_conflict_do_update(

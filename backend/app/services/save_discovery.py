@@ -239,20 +239,18 @@ class SaveDiscovery:
         folders: KnownFolders,
         registry: Registry,
         *,
-        in_use: Callable[[Path], bool] | None = None,
         sleep: Callable[[float], None] = time.sleep,
     ) -> None:
         self._engine = engine
         self._updater = updater
         self._folders = folders
         self._registry = registry
-        self._in_use = in_use or updater.is_running
         self._sleep = sleep
         self._lock = threading.Lock()
         self._stop = threading.Event()
         self._threads: dict[str, threading.Thread] = {}
-        # Seconds to see the game start, between looks, and for it to finish writing afterwards.
-        self.watch_times = (30.0, 5.0, 10.0)
+        # A game may write a little more on its way out.
+        self.after_exit_seconds = 10.0
 
     def recover(self) -> None:
         """A scan cut off by a restart can simply be run again."""
@@ -403,33 +401,26 @@ class SaveDiscovery:
         )
         return self.suggestions(work_id)
 
-    def game_started(self, work_id: str, program: Path) -> None:
-        """Only for a game whose saves are not settled, and the scan runs once it has closed."""
+    def game_started(self, work_id: str) -> None:
+        """Only for a game whose saves are not settled."""
         config = self._updater.save_config(work_id)
-        if config.rules or config.confirmed_none:
+        if not config.rules and not config.confirmed_none:
+            self.start_session(work_id)
+
+    def game_exited(self, work_id: str, _program: Path | None) -> None:
+        row = self._row(work_id)
+        if row is None or row.state != "recording":
             return
-        self.start_session(work_id)
         thread = threading.Thread(
-            target=self._watch, args=(work_id, program), name="save-watch", daemon=True
+            target=self._finish_when_calm, args=(work_id,), name="save-after-play", daemon=True
         )
-        self._threads[f"watch-{work_id}"] = thread
+        self._threads[f"after-{work_id}"] = thread
         thread.start()
 
-    def _watch(self, work_id: str, program: Path) -> None:
-        see_start, between, calm = self.watch_times
-        waited = 0.0
-        # A launcher that hands over is never seen running: the user says when they are done.
-        while not self._in_use(program):
-            if waited >= see_start or self._stop.is_set():
-                return
-            self._sleep(between)
-            waited += between
-        while self._in_use(program):
-            if self._stop.is_set():
-                return
-            self._sleep(between)
-        self._sleep(calm)
-        self.finish_session(work_id)
+    def _finish_when_calm(self, work_id: str) -> None:
+        self._sleep(self.after_exit_seconds)
+        if not self._stop.is_set():
+            self.finish_session(work_id)
 
     def finish_session(self, work_id: str) -> models.SaveSuggestionsOut:
         _work, copy = self._copy(work_id)

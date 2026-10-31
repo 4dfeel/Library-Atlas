@@ -712,7 +712,11 @@ export function useLocalCopyActions(workId: string) {
     remove: (id: string) => then(realSource.removeLocalCopy(id)),
     setDefault: (id: string) => then(realSource.localCopyAction(id, 'default')),
     open: (id: string) => realSource.localCopyAction(id, 'open'),
-    launch: (id: string) => realSource.launchLocalCopy(id),
+    launch: (id: string) =>
+      realSource.launchLocalCopy(id).then(async (result) => {
+        await queryClient.invalidateQueries({ queryKey: [...realRoot, 'work-play', workId] });
+        return result;
+      }),
   };
 }
 
@@ -1130,4 +1134,39 @@ export function useSaveSuggestions(workId: string) {
     error,
     actions: { start: () => run(false), finish: () => run(true) },
   };
+}
+
+export function usePlayStats() {
+  const isReal = useWorkspaceMode() === 'real';
+  const query = useQuery({
+    queryKey: [...realRoot, 'play-stats'],
+    queryFn: ({ signal }) => realSource.playStats(signal),
+    enabled: isReal,
+    retry: false,
+  });
+  return {
+    stats: query.data,
+    loading: isReal && query.isPending,
+    error: query.error ? (query.error as Error).message : null,
+  };
+}
+
+export function useWorkPlay(workId: string) {
+  const queryClient = useQueryClient();
+  const query = useQuery({
+    queryKey: [...realRoot, 'work-play', workId],
+    queryFn: ({ signal }) => realSource.workPlay(workId, signal),
+    enabled: useWorkspaceMode() === 'real',
+    retry: false,
+    refetchInterval: (current) => (current.state.data?.running ? 3_000 : false),
+  });
+  // A game that just ended changed the totals shown all over the page.
+  const running = query.data?.running;
+  const wasRunning = useRef(false);
+  useEffect(() => {
+    if (wasRunning.current && running === false)
+      void queryClient.invalidateQueries({ queryKey: realRoot });
+    wasRunning.current = Boolean(running);
+  }, [queryClient, running]);
+  return { play: query.data };
 }

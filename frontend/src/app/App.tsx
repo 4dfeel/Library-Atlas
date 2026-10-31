@@ -15,6 +15,7 @@ import {
   LockKeyhole,
   Menu,
   RotateCcw,
+  ChartColumn,
   Settings2,
   ShieldCheck,
   Sparkles,
@@ -47,6 +48,7 @@ import {
 import { DashboardPage } from '@/features/dashboard/dashboard-page';
 import { SourcesDialog } from '@/features/demo-services/sources-dialog';
 import { MiniPlayer } from '@/features/audio/audio-panel';
+import { ActivityPage } from '@/features/activity/activity-page';
 import { CollectionsPage } from '@/features/collections/collections-page';
 import { DownloadBar, DownloadsPage } from '@/features/downloads/downloads-page';
 import { TasksDialog } from '@/features/demo-services/tasks-dialog';
@@ -236,6 +238,17 @@ export function App() {
                     {!collapsed && <span>收藏夹</span>}
                   </AppLink>
                 )}
+                {!isDemo && (
+                  <AppLink
+                    aria-label="游玩记录"
+                    to="/activity"
+                    className={`nav-item${route.name === 'activity' ? ' active' : ''}`}
+                    aria-current={route.name === 'activity' ? 'page' : undefined}
+                  >
+                    <ChartColumn size={19} />
+                    {!collapsed && <span>游玩记录</span>}
+                  </AppLink>
+                )}
                 <SoonItem
                   icon={Gamepad2}
                   label="游玩计划"
@@ -398,6 +411,8 @@ export function App() {
                     <DownloadsPage size={size} />
                   ) : route.name === 'collections' && !isDemo ? (
                     <CollectionsPage />
+                  ) : route.name === 'activity' && !isDemo ? (
+                    <ActivityPage />
                   ) : route.name === 'game' ? (
                     <GameDetailPage
                       key={`${mode}-${route.id}-${size}`}

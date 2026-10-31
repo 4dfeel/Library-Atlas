@@ -17,6 +17,7 @@ import { CloudSavePanel } from './cloud-save';
 import { DownloadAction } from './download-action';
 import { GameUpdatePanel } from './game-update';
 import { LocalCopyPanel } from './local-copy';
+import { PlayRecord } from './play-record';
 import {
   availabilityLabel,
   formatDate,
@@ -166,7 +167,7 @@ export function GameHero({
   const titleLength = Array.from(game.title).length;
   const titleClass = titleLength > 60 ? ' title-xlong' : titleLength > 28 ? ' title-long' : '';
   // Only Steam reports play time and achievements; other platforms show metadata.
-  const tracksPlay = game.platform === 'steam';
+  const tracksPlay = game.platform === 'steam' || (!isDemo && game.kind === 'game');
   const lastPlayed = formatDate(game.lastPlayedAt);
   const achievements = game.achievements;
   const percent =
@@ -269,12 +270,13 @@ export function GameHero({
             {!isDemo && <LocalCopyPanel game={game} />}
             {!isDemo && <GameUpdatePanel game={game} />}
             {!isDemo && <CloudSavePanel game={game} />}
+            {!isDemo && <PlayRecord game={game} />}
             <dl className="hero-facts">
               {tracksPlay ? (
                 <>
                   <Fact label="累计游玩">
                     {game.playtimeMinutes === null ? (
-                      <span className="fact-empty">暂无游玩数据</span>
+                      <span className="fact-empty">{isDemo ? '暂无游玩数据' : '还没有记录'}</span>
                     ) : game.playtimeMinutes === 0 ? (
                       <span className="fact-empty">尚未开始</span>
                     ) : (
@@ -291,20 +293,22 @@ export function GameHero({
                       <span className="fact-empty">暂无记录</span>
                     )}
                   </Fact>
-                  <Fact label={isDemo ? '成就进度 · 演示' : '成就进度'}>
-                    {achievements ? (
-                      <>
-                        <strong>{achievements.unlocked}</strong>
-                        <span className="fact-unit">/ {achievements.total}</span>
-                        <span className="fact-percent">
-                          <Trophy size={13} />
-                          {percent}%
-                        </span>
-                      </>
-                    ) : (
-                      <span className="fact-empty">未提供</span>
-                    )}
-                  </Fact>
+                  {game.platform === 'steam' && (
+                    <Fact label={isDemo ? '成就进度 · 演示' : '成就进度'}>
+                      {achievements ? (
+                        <>
+                          <strong>{achievements.unlocked}</strong>
+                          <span className="fact-unit">/ {achievements.total}</span>
+                          <span className="fact-percent">
+                            <Trophy size={13} />
+                            {percent}%
+                          </span>
+                        </>
+                      ) : (
+                        <span className="fact-empty">未提供</span>
+                      )}
+                    </Fact>
+                  )}
                 </>
               ) : (
                 // The platform reports no play history or achievements; show what it does.

@@ -2909,3 +2909,145 @@
   padding-block: 8px;
   background: var(--sidebar);
 }
+
+.activity-page {
+  display: grid;
+  align-content: start;
+  gap: 24px;
+  max-width: 980px;
+  padding: 32px 40px;
+}
+
+.activity-page h1 {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 500;
+}
+
+.activity-page h2 {
+  margin: 0 0 12px;
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.activity-empty {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-secondary);
+}
+
+.activity-totals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px 48px;
+  margin: 0;
+}
+
+.activity-totals dt {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.activity-totals dd {
+  margin: 4px 0 0;
+  font-size: 24px;
+  font-variant-numeric: tabular-nums;
+}
+
+.play-bars {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 6px;
+  height: 180px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+}
+
+.play-bar {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+
+.play-bar-track {
+  display: flex;
+  flex: 1;
+  align-items: flex-end;
+  justify-content: center;
+  min-height: 0;
+  border-radius: 4px;
+}
+
+.play-bar:hover .play-bar-track,
+.play-bar[aria-pressed='true'] .play-bar-track {
+  background: color-mix(in srgb, var(--text-primary) 7%, transparent);
+}
+
+.play-bar-fill {
+  display: block;
+  width: min(60%, 28px);
+  border-radius: 4px 4px 0 0;
+  background: var(--accent);
+}
+
+.play-bar-label {
+  padding-bottom: 6px;
+  color: var(--text-muted);
+  font-size: 12px;
+  text-align: center;
+}
+
+.play-bar[aria-pressed='true'] .play-bar-label {
+  color: var(--text-primary);
+}
+
+.activity-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  table-layout: fixed;
+}
+
+.activity-table td {
+  padding: 8px 4px;
+  overflow: hidden;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 35%, transparent);
+  color: var(--text-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.activity-table td:last-child {
+  width: 40%;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.activity-table a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.activity-table a:hover {
+  color: var(--text-primary);
+  text-decoration: underline;
+}
+
+.play-record {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  margin-top: 8px;
+}
+
+.activity-page,
+.collections-page {
+  flex: 1 0 auto;
+}

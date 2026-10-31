@@ -37,6 +37,7 @@ from app.services.gallery import WorkGallery
 from app.services.game_updates import GameUpdater
 from app.services.introductions import WorkIntroductions
 from app.services.local_copies import LocalCopies
+from app.services.play_tracker import PlayTracker
 from app.services.save_discovery import SaveDiscovery
 from app.services.update_checks import UpdateChecker
 from app.testing.fake_shell import FakeShell
@@ -143,6 +144,13 @@ def build_save_discovery(
     else:
         folders = user_folders()
     return SaveDiscovery(engine, updater, folders, registry)
+
+
+def build_play_tracker(settings: Settings, engine: Engine) -> PlayTracker:
+    # A test library's programs run for a moment, not for an evening.
+    if settings.profile == "test":
+        return PlayTracker(engine, poll_seconds=0.5, min_seconds=1.0)
+    return PlayTracker(engine)
 
 
 def build_cloud_saves(settings: Settings, engine: Engine, updater: GameUpdater) -> CloudSaves:

@@ -294,3 +294,9 @@
 | `POST /works/{id}/saves/session/finish` | 查找记录期间变化的文件，后台进行 |
 
 存档规则的 `kind` 增加 `registry`，路径只能是 `HKCU\\Software\\公司\\游戏`。`inside` 的最后一段可以用一个通配符，比如 `Save*.dat`。
+
+### 游玩记录
+| 接口 | 说明 |
+| --- | --- |
+| `GET /works/{id}/play` | `{running,runningSince,totalSeconds,totalMinutes,lastPlayedAt,recentSeconds,sessions,months}` |
+| `GET /play/stats?months=12` | `{totalSeconds,recentSeconds,months,recent}`，不含隐藏作品 |

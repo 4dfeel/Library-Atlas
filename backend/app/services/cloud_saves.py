@@ -174,7 +174,6 @@ class CloudSaves:
         *,
         transport: httpx.BaseTransport | None = None,
         browser: Callable[[str], Any] = webbrowser.open,
-        in_use: Callable[[Path], bool] | None = None,
         sleep: Callable[[float], None] = time.sleep,
         device_name: str | None = None,
     ) -> None:
@@ -183,7 +182,6 @@ class CloudSaves:
         self._store = store
         self._transport = transport
         self._browser = browser
-        self._in_use = in_use or updater.is_running
         self._sleep = sleep
         self._device_name = device_name or platform.node() or "这台电脑"
         self._outbox = settings.data_dir / "cloud-outbox"
@@ -201,8 +199,8 @@ class CloudSaves:
         self._queue_lock = threading.Lock()
         # Tests send the queue themselves, to put trouble at an exact point.
         self.send_in_background = True
-        # How the after-play backup waits: seconds to see the game start, between looks, of calm.
-        self.watch_times = (30.0, 5.0, 15.0)
+        # A game may write a little more on its way out.
+        self.after_exit_seconds = 15.0
 
     # --- start and stop ---
 
@@ -986,30 +984,17 @@ class CloudSaves:
 
     # --- after playing ---
 
-    def game_started(self, work_id: str, program: Path) -> None:
-        """If the user turned this on. Only adds a snapshot, so a wrong guess about the game having
-        ended costs a spare snapshot at worst, and the pack step refuses files still changing."""
+    def game_exited(self, work_id: str, _program: Path | None) -> None:
+        """If the user turned this on. Only adds a snapshot, so at worst there is a spare one, and
+        the pack step refuses files still changing."""
         if self._get(_K_AUTO_BACKUP) != "1" or not self._connected():
             return
         threading.Thread(
-            target=self._watch, args=(work_id, program), name="cloud-watch", daemon=True
+            target=self._backup_when_calm, args=(work_id,), name="cloud-after-play", daemon=True
         ).start()
 
-    def _watch(self, work_id: str, program: Path) -> None:
-        see_start, between, calm = self.watch_times
-        waited = 0.0
-        # A launcher that hands over to something else is never seen running. Then nothing can be
-        # said about when the game ended, so there is no backup, and manual stays the way.
-        while not self._in_use(program):
-            if waited >= see_start or self._stop.is_set():
-                return
-            self._sleep(between)
-            waited += between
-        while self._in_use(program):
-            if self._stop.is_set():
-                return
-            self._sleep(between)
-        self._sleep(calm)
+    def _backup_when_calm(self, work_id: str) -> None:
+        self._sleep(self.after_exit_seconds)
         try:
             self.backup(work_id)
         except AtlasError as error:

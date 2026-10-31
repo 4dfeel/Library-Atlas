@@ -20,6 +20,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app import __version__
 from app.adapters.dlsite.covers import CoverCache, CoverUnavailable
+from app.adapters.system.process_job import RunningGame
 from app.api import models
 from app.core.config import Settings
 from app.core.errors import NOT_READY_MESSAGES, AtlasError
@@ -39,6 +40,7 @@ from app.services.dlsite_factory import (
     build_gallery,
     build_introductions,
     build_local_copies,
+    build_play_tracker,
     build_registry,
     build_save_discovery,
     build_update_checker,
@@ -53,6 +55,7 @@ from app.services.introductions import WorkIntroductions
 from app.services.library_scan import LibraryScanner
 from app.services.local_copies import LocalCopies
 from app.services.local_media import AUDIO_TYPES, LocalMedia
+from app.services.play_tracker import PlayTracker
 from app.services.reader import Reader
 from app.services.save_discovery import SaveDiscovery
 from app.services.update_checks import UpdateChecker
@@ -97,6 +100,7 @@ class ServiceState:
     collections: Collections | None = None
     cloud: CloudSaves | None = None
     discovery: SaveDiscovery | None = None
+    play: PlayTracker | None = None
     reader: Reader | None = None
     updates_game: GameUpdater | None = None
     updates: UpdateChecker | None = None
@@ -260,6 +264,15 @@ def _discovery(request: Request, _engine: EngineDep) -> SaveDiscovery:
 
 
 DiscoveryDep = Annotated[SaveDiscovery, Depends(_discovery)]
+
+
+def _play(request: Request, _engine: EngineDep) -> PlayTracker:
+    service = _state(request).play
+    assert service is not None  # Built whenever the engine is.
+    return service
+
+
+PlayDep = Annotated[PlayTracker, Depends(_play)]
 
 
 def _reader(request: Request, _engine: EngineDep) -> Reader:
@@ -546,6 +559,16 @@ def _build_api() -> APIRouter:
     @api.post("/works/{work_id}/saves/session/finish")
     def save_session_finish(service: DiscoveryDep, work_id: str) -> models.SaveSuggestionsOut:
         return service.finish_session(work_id)
+
+    @api.get("/works/{work_id}/play")
+    def work_play(service: PlayDep, work_id: str) -> models.WorkPlayOut:
+        return service.work(work_id)
+
+    @api.get("/play/stats")
+    def play_stats(
+        service: PlayDep, months: Annotated[int, Query(ge=1, le=36)] = 12
+    ) -> models.PlayStatsOut:
+        return service.stats(months)
 
     @api.get("/cloud")
     def cloud_status(service: CloudDep) -> models.CloudStatus:
@@ -937,21 +960,36 @@ def create_app(
                 )
                 state.discovery.recover()
                 cloud, discovery = state.cloud, state.discovery
+                state.play = build_play_tracker(settings, opened.engine)
+                play = state.play
 
-                def launched(work_id: str, program: Path) -> None:
-                    # The game has already been handed over: nothing here may fail that.
-                    for listener in (cloud.game_started, discovery.game_started):
+                def exited(work_id: str, program: Path | None) -> None:
+                    for listener in (cloud.game_exited, discovery.game_exited):
                         try:
                             listener(work_id, program)
                         except Exception as error:  # noqa: BLE001 - type only, no paths.
-                            logger.error("after launch: %s", type(error).__name__)
+                            logger.error("after exit: %s", type(error).__name__)
 
+                def launched(
+                    work_id: str, copy_id: str, running: RunningGame | None, program: Path
+                ) -> None:
+                    # The game has already been handed over: nothing here may fail that.
+                    try:
+                        discovery.game_started(work_id)
+                        play.started(work_id, copy_id, running, program)
+                    except Exception as error:  # noqa: BLE001 - type only, no paths.
+                        logger.error("after launch: %s", type(error).__name__)
+
+                play.on_exit = exited
+                play.recover()
                 state.local_copies.on_launched = launched
                 state.scanner.scan_automatically()
             except DatabaseNotReady as error:
                 state.not_ready_reason = error.reason
                 logger.error("database not ready: %s", error.reason)
         yield
+        if state.play is not None:
+            state.play.shutdown()
         if state.discovery is not None:
             state.discovery.shutdown()
         if state.cloud is not None:

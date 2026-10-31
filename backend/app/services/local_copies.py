@@ -19,6 +19,7 @@ from typing import Any, Protocol, cast
 from sqlalchemy import Connection, Engine, Row, delete, select, update
 
 from app.adapters.system.archives import ArchiveProblem, safe_parts
+from app.adapters.system.process_job import RunningGame
 from app.api import models
 from app.core.config import Settings
 from app.core.errors import AtlasError
@@ -48,7 +49,7 @@ MESSAGES = {
 
 
 class Launcher(Protocol):
-    def launch(self, program: Path, arguments: list[str], working: Path) -> None: ...
+    def launch(self, program: Path, arguments: list[str], working: Path) -> RunningGame | None: ...
 
 
 class Shell(Protocol):
@@ -155,7 +156,7 @@ class LocalCopies:
         self._launcher = launcher
         self._shell = shell
         # Told after a game is handed to Windows. It must not be able to fail the launch.
-        self.on_launched: Callable[[str, Path], None] | None = None
+        self.on_launched: Callable[[str, str, RunningGame | None, Path], None] | None = None
         self._clock = clock
         self._lock = threading.Lock()
         self._last_launch: dict[str, float] = {}
@@ -577,9 +578,9 @@ class LocalCopies:
                 return models.LaunchOut(submitted=False, repeated=True)
             self._last_launch[copy_id] = now
         try:
-            self._launcher.launch(program, list(row.arguments or []), working)
+            running = self._launcher.launch(program, list(row.arguments or []), working)
             if self.on_launched is not None:
-                self.on_launched(row.work_id, program)
+                self.on_launched(row.work_id, row.id, running, program)
         except OSError as error:
             denied = isinstance(error, PermissionError) or getattr(error, "winerror", 0) in (
                 5,

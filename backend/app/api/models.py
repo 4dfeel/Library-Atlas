@@ -623,6 +623,55 @@ class SaveSuggestionsOut(ApiModel):
     session: SaveSessionOut
 
 
+class PlaySessionOut(ApiModel):
+    id: str
+    started_at: str
+    ended_at: str | None
+    seconds: float
+    source: str
+    estimated: bool
+    running: bool
+
+
+class PlayWorkShare(ApiModel):
+    work_id: str
+    title: str
+    seconds: float
+
+
+class PlayMonthOut(ApiModel):
+    month: str
+    seconds: float
+    sessions: int
+    top: list[PlayWorkShare]
+
+
+class WorkPlayOut(ApiModel):
+    running: bool
+    running_since: str | None
+    total_seconds: float
+    total_minutes: int | None
+    last_played_at: str | None
+    recent_seconds: float
+    sessions: list[PlaySessionOut]
+    months: list[PlayMonthOut]
+
+
+class PlayRecentOut(ApiModel):
+    work_id: str
+    title: str
+    platform: str
+    last_played_at: str
+    running: bool
+
+
+class PlayStatsOut(ApiModel):
+    total_seconds: float
+    recent_seconds: float
+    months: list[PlayMonthOut]
+    recent: list[PlayRecentOut]
+
+
 class CloudStatus(ApiModel):
     configured: bool
     connected: bool
