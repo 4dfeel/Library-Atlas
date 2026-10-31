@@ -21,7 +21,6 @@ import {
   useExtractionActions,
   useExtractions,
   useUpdateSettings,
-  type DemoSize,
   type DownloadTask,
   type ExtractTask,
 } from '@/lib/data';
@@ -67,11 +66,9 @@ function Cover({ workId, className }: { workId: string; className: string }) {
 function Current({
   task,
   extraction,
-  size,
 }: {
   task: DownloadTask | undefined;
   extraction: ExtractTask | undefined;
-  size: DemoSize;
 }) {
   const actions = useDownloadActions();
   const unpacking = useExtractionActions();
@@ -97,7 +94,7 @@ function Current({
     <section className="downloads-current" data-testid="downloads-current">
       <Cover workId={workId} className="downloads-current-cover" />
       <div className="downloads-current-title">
-        <AppLink to={gameHref(workId, size)} title={title}>
+        <AppLink to={gameHref(workId)} title={title}>
           {title}
         </AppLink>
         {task?.part !== null && task?.part !== undefined && (
@@ -200,7 +197,6 @@ function Row({
   error,
   progress,
   actions,
-  size,
   testId,
 }: {
   workId: string;
@@ -211,14 +207,13 @@ function Row({
   error?: string | null;
   progress?: ReactNode;
   actions: ReactNode;
-  size: DemoSize;
   testId: Record<string, string>;
 }) {
   return (
     <li className="queue-row" {...testId}>
       <Cover workId={workId} className="queue-row-cover" />
       <div className="queue-row-main">
-        <AppLink to={gameHref(workId, size)} className="queue-row-title" title={title}>
+        <AppLink to={gameHref(workId)} className="queue-row-title" title={title}>
           {title}
         </AppLink>
         <span className="queue-row-detail">{detail}</span>
@@ -234,7 +229,7 @@ function Row({
   );
 }
 
-function DownloadRow({ task, size }: { task: DownloadTask; size: DemoSize }) {
+function DownloadRow({ task }: { task: DownloadTask }) {
   const actions = useDownloadActions();
   const [error, setError] = useState<string | null>(null);
   const act = (action: 'cancel' | 'pause' | 'retry' | 'open-folder') => () => {
@@ -247,7 +242,6 @@ function DownloadRow({ task, size }: { task: DownloadTask; size: DemoSize }) {
     <Row
       workId={task.workId}
       title={`${task.title}${task.part !== null ? ` · 第 ${task.part}/${task.partCount ?? '?'} 个文件` : ''}`}
-      size={size}
       testId={{ 'data-download-task': task.id }}
       status={stateLabels[task.state]}
       statusIcon={
@@ -313,7 +307,7 @@ function DownloadRow({ task, size }: { task: DownloadTask; size: DemoSize }) {
   );
 }
 
-function ExtractRow({ task, size }: { task: ExtractTask; size: DemoSize }) {
+function ExtractRow({ task }: { task: ExtractTask }) {
   const unpacking = useExtractionActions();
   const [error, setError] = useState<string | null>(null);
   const act = (action: 'cancel' | 'retry' | 'open-folder') => () => {
@@ -326,7 +320,6 @@ function ExtractRow({ task, size }: { task: ExtractTask; size: DemoSize }) {
     <Row
       workId={task.workId}
       title={task.title}
-      size={size}
       testId={{ 'data-extract-task': task.id }}
       status={done && task.format === 'file' ? '已放入作品文件夹' : extractLabels[task.state]}
       statusIcon={
@@ -432,12 +425,10 @@ function UpdateRow({
   workId,
   title,
   sizeBytes,
-  size,
 }: {
   workId: string;
   title: string;
   sizeBytes: number | null;
-  size: DemoSize;
 }) {
   const actions = useDownloadActions();
   const [error, setError] = useState<string | null>(null);
@@ -445,7 +436,6 @@ function UpdateRow({
     <Row
       workId={workId}
       title={title}
-      size={size}
       testId={{ 'data-update': workId }}
       status="有新版本"
       detail={sizeBytes ? formatBytes(sizeBytes) : '大小未知'}
@@ -471,7 +461,7 @@ function UpdateRow({
 }
 
 /** The full queue, kept by the service: leaving this page or the browser stops nothing. */
-export function DownloadsPage({ size }: { size: DemoSize }) {
+export function DownloadsPage() {
   const { tasks, updates, failed: unreachable } = useDownloads();
   const { tasks: extractions } = useExtractions();
   const actions = useDownloadActions();
@@ -510,7 +500,7 @@ export function DownloadsPage({ size }: { size: DemoSize }) {
   return (
     <main className="detail-page downloads-page" data-testid="downloads-page">
       <h1 className="sr-only">下载</h1>
-      <Current task={current} extraction={currentExtraction} size={size} />
+      <Current task={current} extraction={currentExtraction} />
       <div className="detail-frame downloads-frame">
         {unreachable && (
           <p className="service-unavailable" role="alert">
@@ -525,7 +515,6 @@ export function DownloadsPage({ size }: { size: DemoSize }) {
               key={update.workId}
               workId={update.workId}
               title={update.title}
-              size={size}
             />
           ))}
         </Section>
@@ -535,10 +524,10 @@ export function DownloadsPage({ size }: { size: DemoSize }) {
           empty="队列中没有任务。打开一部 DLsite 作品，点“下载并解压”。"
         >
           {waitingExtractions.map((task) => (
-            <ExtractRow key={task.id} task={task} size={size} />
+            <ExtractRow key={task.id} task={task} />
           ))}
           {waiting.map((task) => (
-            <DownloadRow key={task.id} task={task} size={size} />
+            <DownloadRow key={task.id} task={task} />
           ))}
         </Section>
         <Section
@@ -559,10 +548,10 @@ export function DownloadsPage({ size }: { size: DemoSize }) {
           }
         >
           {finishedExtractions.map((task) => (
-            <ExtractRow key={task.id} task={task} size={size} />
+            <ExtractRow key={task.id} task={task} />
           ))}
           {finished.map((task) => (
-            <DownloadRow key={task.id} task={task} size={size} />
+            <DownloadRow key={task.id} task={task} />
           ))}
         </Section>
       </div>

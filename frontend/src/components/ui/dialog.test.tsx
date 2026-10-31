@@ -9,18 +9,18 @@ it('returns keyboard focus to the initiating control after Escape closes a contr
     const [open, setOpen] = useState(false);
     return (
       <>
-        <button onClick={() => setOpen(true)}>关于演示</button>
-        <Dialog open={open} onOpenChange={setOpen} title="演示空间" description="独立合成数据">
-          <p>本地演示</p>
+        <button onClick={() => setOpen(true)}>资料库状态</button>
+        <Dialog open={open} onOpenChange={setOpen} title="我的资料库" description="独立合成数据">
+          <p>本地资料</p>
         </Dialog>
       </>
     );
   }
   const user = userEvent.setup();
   render(<Example />);
-  const trigger = screen.getByRole('button', { name: '关于演示' });
+  const trigger = screen.getByRole('button', { name: '资料库状态' });
   await user.click(trigger);
-  expect(screen.getByRole('dialog', { name: '演示空间' })).toBeVisible();
+  expect(screen.getByRole('dialog', { name: '我的资料库' })).toBeVisible();
   await user.keyboard('{Escape}');
   await waitFor(() => expect(trigger).toHaveFocus());
 });

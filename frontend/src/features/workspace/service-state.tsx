@@ -6,7 +6,7 @@ import { ApiError, ServiceUnavailableError, useRealSources } from '@/lib/data';
 /**
  * Real-mode read failure. An unreachable service, a database that is not ready and a
  * failed query each say what happened; none of them looks like an empty library, and
- * none falls back to demo data.
+ * none falls back to invented data.
  */
 export function ReadFailure({ error, onRetry }: { error: Error; onRetry: () => void }) {
   if (error instanceof ServiceUnavailableError)

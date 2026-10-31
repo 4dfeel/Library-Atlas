@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { resolve } from 'node:path';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { noHorizontalScroll, viewportTag, watchConsole } from './evidence';
-import { modeKey, RealService, enterRealMode } from './real-service';
+import { RealService } from './real-service';
 
 /** Real service, real database, production build. Synthetic data only; no platform accounts. */
 const evidenceDir = resolve('../artifacts/phase-2-checkpoint-1');
@@ -28,15 +28,13 @@ test.describe('empty real library', () => {
   });
   test.afterAll(async () => service?.dispose());
 
-  test('shows the truth: empty, not connected, no demo works', async ({ page }) => {
+  test('shows the truth: empty and not connected', async ({ page }) => {
     const console_ = watchConsole(page);
-    await enterRealMode(page);
     await page.goto(`${service.origin}/library`);
     await expect(indicator(page)).toHaveText('我的资料库');
     await expect(page.getByText('你的作品库还是空的')).toBeVisible();
     await expect(page.getByTestId('library-results')).toHaveAttribute('data-count', '0');
     await expect(page.locator('[data-game-card]')).toHaveCount(0);
-    await expect(page.locator('body')).not.toContainText('DEMO');
     await expect(page.locator('body')).not.toContainText('合成');
     await noHorizontalScroll(page);
     await shot(page, 'real-empty-library');
@@ -51,12 +49,11 @@ test.describe('empty real library', () => {
 
     await page.goto(`${service.origin}/`);
     await expect(page.getByTestId('dashboard-empty')).toContainText('你的作品库还是空的');
-    await expect(page.locator('body')).not.toContainText('DEMO');
     await shot(page, 'real-empty-dashboard');
     console_.assert();
 
-    // A demo ID means nothing here (the browser logs the expected 404).
-    await page.goto(`${service.origin}/library/demo-00001`);
+    // An unknown ID (the browser logs the expected 404).
+    await page.goto(`${service.origin}/library/syn-99999`);
     await expect(page.getByTestId('game-unavailable')).toBeVisible();
 
     await page.getByRole('button', { name: '下载任务' }).click();
@@ -77,14 +74,12 @@ test.describe('isolated test library', () => {
   test('browse, filter, edit, sync across pages and survive a restart', async ({ page }, info) => {
     const suffix = info.project.name;
     const note = `重启后仍在 ${suffix}`;
-    await enterRealMode(page);
     await page.goto(`${service.origin}/library`);
     await expect(indicator(page)).toHaveText('测试库 · 合成数据');
     // The toolbar note hides on narrow windows; the top bar label above never does.
     if (page.viewportSize()!.width > 1280)
       await expect(page.getByText('测试数据 · 合成样本，不是同步结果')).toBeVisible();
     await expect(page.getByTestId('library-results')).toHaveAttribute('data-count', '120');
-    await expect(page.locator('body')).not.toContainText('DEMO');
     await expect(page.locator('body')).not.toContainText(sentinel);
     await noHorizontalScroll(page);
     await shot(page, 'test-library-grid');
@@ -108,7 +103,6 @@ test.describe('isolated test library', () => {
     await expect(files.locator('li')).toHaveCount(3);
     await expect(files).toContainText('大小未知');
     await expect(page.getByTestId('download-action')).toContainText('下载');
-    await expect(page.locator('body')).not.toContainText('DEMO');
     await noHorizontalScroll(page);
     await shot(page, 'test-library-detail');
 
@@ -155,7 +149,6 @@ test.describe('isolated test library', () => {
   });
 
   test('deep link, refresh, back and forward work on the real library', async ({ page }) => {
-    await enterRealMode(page);
     await page.goto(`${service.origin}/library/syn-steam-1001`);
     await expect(page.getByTestId('detail-title')).toContainText('同名样本');
     await expect(page.getByText('未提供成就信息')).toHaveCount(0);
@@ -170,7 +163,6 @@ test.describe('isolated test library', () => {
   });
 
   test('private and absent IDs look the same', async ({ page }) => {
-    await enterRealMode(page);
     const texts: string[] = [];
     for (const id of ['syn-private', 'syn-hidden', 'syn-quarantined', 'no-such-work']) {
       await page.goto(`${service.origin}/library/${id}`);
@@ -183,7 +175,6 @@ test.describe('isolated test library', () => {
   });
 
   test('unknown fields read as unknown, not as zero or absent', async ({ page }) => {
-    await enterRealMode(page);
     await page.goto(`${service.origin}/library/syn-unknown`);
     await expect(page.getByTestId('detail-title')).toHaveText('未知字段样本');
     await expect(page.locator('.hero-install')).toHaveText('本机状态未知');
@@ -199,7 +190,6 @@ test.describe('isolated test library', () => {
   });
 
   test('a failed save keeps the note and says it was not saved', async ({ page }) => {
-    await enterRealMode(page);
     await page.goto(`${service.origin}/library/syn-dlsite-1001`);
     await expect(page.getByTestId('detail-title')).toContainText('同名样本');
     await page.getByRole('button', { name: /添加备注|编辑备注/ }).click();
@@ -226,7 +216,6 @@ test.describe('isolated test library', () => {
   });
 
   test('an edit from another tab is not silently overwritten', async ({ page, request }) => {
-    await enterRealMode(page);
     await page.goto(`${service.origin}/library/syn-steam-1001`);
     await page.getByRole('button', { name: /添加备注|编辑备注/ }).click();
     await page.locator('.note-input').fill('旧页面里的草稿');
@@ -253,8 +242,7 @@ test.describe('isolated test library', () => {
     await expect(page.locator('.note-empty')).toBeVisible();
   });
 
-  test('service outage shows an outage, never an empty library or demo data', async ({ page }) => {
-    await enterRealMode(page);
+  test('service outage shows an outage, never an empty library', async ({ page }) => {
     // Opening a detail first means its page module is already in memory.
     await page.goto(`${service.origin}/library/syn-steam-1001`);
     await expect(page.getByTestId('detail-title')).toContainText('同名样本');
@@ -270,7 +258,6 @@ test.describe('isolated test library', () => {
       window.dispatchEvent(new PopStateEvent('popstate'));
     });
     await expect(page.getByTestId('dashboard-failure')).toContainText('本地服务未连接');
-    await expect(page.locator('body')).not.toContainText('DEMO');
     await expect(page.locator('body')).not.toContainText('你的作品库还是空的');
     await page.evaluate(() => {
       window.history.pushState({}, '', '/library/syn-unknown');
@@ -288,7 +275,6 @@ test.describe('isolated test library', () => {
   });
 
   test('a page module lost with the service does not blank the app', async ({ page }) => {
-    await enterRealMode(page);
     await page.goto(`${service.origin}/library`);
     await expect(page.getByTestId('library-results')).toHaveAttribute('data-count', '120');
     await service.stop();
@@ -301,80 +287,6 @@ test.describe('isolated test library', () => {
     await service.start();
     await page.getByRole('button', { name: '重新加载页面' }).click();
     await expect(page.getByTestId('detail-title')).toHaveText('未知字段样本');
-  });
-
-  test('switching modes keeps the libraries apart in both directions', async ({ page }) => {
-    await page.goto(`${service.origin}/library`);
-    // First run in this browser: the demo workspace, clearly labelled.
-    await expect(indicator(page)).toHaveText('DEMO · 演示模式');
-    await expect(page.getByTestId('library-results')).toHaveAttribute('data-count', '1463');
-    const realCalls: string[] = [];
-    page.on('request', (request) => {
-      if (request.url().includes('/api/')) realCalls.push(request.url());
-    });
-    await page.locator('[data-game-card]').first().waitFor();
-    expect(realCalls).toEqual([]); // Demo needs no service.
-
-    await indicator(page).click();
-    await shot(page, 'workspace-switch');
-    await page.getByRole('button', { name: /我的资料库/ }).click();
-    await page.keyboard.press('Escape');
-    await expect(indicator(page)).toHaveText('测试库 · 合成数据');
-    await expect(page.getByTestId('library-results')).toHaveAttribute('data-count', '120');
-    await expect(page.locator('body')).not.toContainText('DEMO');
-    expect(realCalls.length).toBeGreaterThan(0);
-    await page.reload();
-    await expect(indicator(page)).toHaveText('测试库 · 合成数据');
-
-    // Editing the real library leaves demo storage untouched.
-    await page.goto(`${service.origin}/library/syn-dlsite-1001`);
-    await page.getByRole('radio', { name: /搁置/ }).click({ force: true });
-    await expect(page.getByTestId('detail-status')).toContainText('搁置');
-    const storageKeys = await page.evaluate(() => Object.keys(window.localStorage));
-    expect(storageKeys.filter((key) => key.includes('demo-edits'))).toEqual([]);
-
-    // On a real work's page, switching leaves the page rather than showing a stale record.
-    await indicator(page).click();
-    await page.getByRole('button', { name: /演示空间/ }).click();
-    await page.keyboard.press('Escape');
-    await expect(page).toHaveURL(/\/library$/);
-    await expect(page.getByTestId('library-results')).toHaveAttribute('data-count', '1463');
-    await expect(page.locator('body')).not.toContainText('syn-');
-    await expect(indicator(page)).toHaveText('DEMO · 演示模式');
-    // Demo edits stay in the demo.
-    await page.goto(`${service.origin}/library/demo-00001`);
-    await page.getByRole('radio', { name: /搁置/ }).click({ force: true });
-    await expect(page.getByTestId('detail-status')).toContainText('搁置');
-    const realWorks = await page.request.get(`${service.origin}/api/v1/works/demo-00001`);
-    expect(realWorks.status()).toBe(404);
-    const demoInReal = await page.request.get(`${service.origin}/api/v1/works`, {
-      params: { search: '赤沙行者' },
-    });
-    expect((await demoInReal.json()).filteredCount).toBe(0);
-  });
-
-  test('a late real response cannot repaint the demo', async ({ page }) => {
-    await enterRealMode(page);
-    let release = () => {};
-    const gate = new Promise<void>((done) => (release = done));
-    await page.route('**/api/v1/works?*', async (route) => {
-      await gate;
-      await route.continue().catch(() => undefined);
-    });
-    await page.goto(`${service.origin}/library`);
-    await expect(page.getByRole('status', { name: '正在读取本地作品库' })).toBeVisible();
-    await indicator(page).click();
-    await page.getByRole('button', { name: /演示空间/ }).click();
-    await page.keyboard.press('Escape');
-    await expect(page.getByTestId('library-results')).toHaveAttribute('data-count', '1463');
-    release();
-    await page.waitForTimeout(400);
-    await expect(page.getByTestId('library-results')).toHaveAttribute('data-count', '1463');
-    await expect(indicator(page)).toHaveText('DEMO · 演示模式');
-    await expect(page.locator('[data-game-card]').first()).toHaveAttribute(
-      'data-game-id',
-      /^demo-/,
-    );
   });
 });
 
@@ -400,7 +312,6 @@ test.describe('large synthetic libraries', () => {
             ms: request.timing().responseEnd,
           });
         });
-        await enterRealMode(page);
         const started = Date.now();
         await page.goto(`${service.origin}/library`);
         const results = page.getByTestId('library-results');
@@ -552,15 +463,10 @@ test.describe('large synthetic libraries', () => {
   }
 });
 
-test('demo mode stays the default and needs no service', async ({ page }, info) => {
+test('the first visit opens the library itself, with no sample works', async ({ page }, info) => {
   test.skip(info.project.name !== '1080p', 'one tier is enough');
-  const calls: string[] = [];
-  page.on('request', (request) => {
-    if (request.url().includes('/api/')) calls.push(request.url());
-  });
   await page.goto('/library');
-  await expect(indicator(page)).toHaveText('DEMO · 演示模式');
-  await expect(page.getByTestId('library-results')).toHaveAttribute('data-count', '1463');
-  expect(await page.evaluate((key) => window.localStorage.getItem(key), modeKey)).toBeNull();
-  expect(calls).toEqual([]);
+  await expect(indicator(page)).toHaveText('测试库 · 合成数据');
+  await expect(page.getByTestId('library-results')).toHaveAttribute('data-count', '1500');
+  expect(await page.evaluate(() => Object.keys(window.localStorage))).toEqual([]);
 });

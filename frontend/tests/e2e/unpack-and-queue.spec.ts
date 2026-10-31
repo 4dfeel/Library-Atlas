@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { mkdir, readdir, rm, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { noHorizontalScroll, viewportTag } from './evidence';
-import { enterRealMode, RealService } from './real-service';
+import { RealService } from './real-service';
 
 /**
  * The real service, queues and archive code, with real sockets and real files. Only the
@@ -140,8 +140,7 @@ test.describe('unpacking and the queue', () => {
     nextWork = 0;
   });
   test.afterAll(async () => service?.dispose());
-  test.beforeEach(async ({ page }) => {
-    await enterRealMode(page);
+  test.beforeEach(async () => {
     expect((await call('/settings/folders/library', 'PUT', { path: library })).status).toBe(200);
     await control({ download: { payload: archive }, gallery: null, intro: null, upgrade: null });
   });

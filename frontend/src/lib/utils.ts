@@ -50,23 +50,13 @@ export const kindLabels: Record<WorkKind, string> = {
 export const platformLabels: Record<Platform, string> = { steam: 'Steam', dlsite: 'DLsite' };
 
 /**
- * Steam games are installed; DLsite works (games included) are downloaded. A demo
- * download never makes a DLsite game "installed" or launchable.
+ * Steam games are installed; DLsite works (games included) are downloaded.
  */
 export function availabilityLabel(game: Pick<Game, 'platform' | 'installed'>): string {
   if (game.installed === null) return '本机状态未知';
   if (game.platform === 'steam') return game.installed ? '已安装' : '未安装';
   return game.installed ? '已下载' : '未下载';
 }
-
-/** Primary local action per kind. None is wired up yet in the demo. */
-export const openActionLabels: Record<WorkKind, string> = {
-  game: '启动游戏',
-  image: '浏览作品',
-  video: '播放作品',
-  audio: '播放作品',
-  other: '打开文件夹',
-};
 
 /** Card/list secondary line: play time for Steam games, otherwise kind and platform. */
 export function workMeta(game: Pick<Game, 'kind' | 'platform' | 'playtimeMinutes'>): string {

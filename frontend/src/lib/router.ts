@@ -95,21 +95,18 @@ export function matchRoute(pathname: string): Route {
 
 export const settingsHref = '/settings';
 
-export function gameHref(id: string, size: number): string {
-  return `/library/${encodeURIComponent(id)}${size === 5000 ? '?size=5000' : ''}`;
+export function gameHref(id: string): string {
+  return `/library/${encodeURIComponent(id)}`;
 }
 
 export function downloadsHref(): string {
   return '/downloads';
 }
 
-export function libraryHref(size: number): string {
-  return size === 5000 ? '/library?size=5000' : '/library';
+export function libraryHref(): string {
+  return '/library';
 }
 
-export function dashboardHref(size: number, scope = 'all'): string {
-  const params = new URLSearchParams();
-  if (scope !== 'all') params.set('scope', scope);
-  if (size === 5000) params.set('size', '5000');
-  return `/${params.size ? `?${params}` : ''}`;
+export function dashboardHref(scope = 'all'): string {
+  return scope === 'all' ? '/' : `/?${new URLSearchParams({ scope })}`;
 }

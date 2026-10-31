@@ -1,6 +1,5 @@
 """Dashboard aggregation over works that already passed the visibility policy.
 
-Same rules as the frontend's demo `selectDashboard`, so both modes count the same way.
 Pure: the caller supplies the already-filtered rows and the date seed.
 """
 

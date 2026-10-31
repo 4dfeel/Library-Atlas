@@ -4,7 +4,6 @@ import { useShell } from '@/app/shell-context';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { DlsiteConnectionPanel } from '@/features/workspace/dlsite-connection';
-import { WorkspaceSwitch } from '@/features/workspace/workspace-switch';
 import { CloudPanel } from './cloud-panel';
 import { LibraryScanPanel } from './library-scan';
 import { useFolderActions, useFolders, useWorkspace, type FolderInfo } from '@/lib/data';
@@ -125,8 +124,8 @@ function Folders() {
   );
 }
 
-export function SettingsPage({ onDemoSettings }: { onDemoSettings: () => void }) {
-  const { isDemo, isTestLibrary } = useWorkspace();
+export function SettingsPage() {
+  const { isTestLibrary } = useWorkspace();
   useEffect(() => {
     document.title = '设置 · Library Atlas';
   }, []);
@@ -140,62 +139,33 @@ export function SettingsPage({ onDemoSettings }: { onDemoSettings: () => void })
 
         <section className="settings-section" aria-labelledby="settings-account">
           <h2 id="settings-account">账号</h2>
-          {isDemo ? (
-            <p className="settings-note">
-              演示空间不连接真实账号。切换到“我的资料库”后可以登录 DLsite。
-            </p>
-          ) : (
-            <>
-              <div className="settings-account" data-source="dlsite">
-                <h3>DLsite</h3>
-                <DlsiteConnectionPanel />
-              </div>
-              <div className="settings-account">
-                <h3>Steam</h3>
-                <p className="settings-note">连接将在后续版本开放。</p>
-              </div>
-            </>
-          )}
+          <div className="settings-account" data-source="dlsite">
+            <h3>DLsite</h3>
+            <DlsiteConnectionPanel />
+          </div>
+          <div className="settings-account">
+            <h3>Steam</h3>
+            <p className="settings-note">连接将在后续版本开放。</p>
+          </div>
         </section>
 
         <section className="settings-section" aria-labelledby="settings-folders">
           <h2 id="settings-folders">文件夹</h2>
-          {isDemo ? (
-            <p className="settings-note">演示下载不会写入任何文件，所以这里没有文件夹设置。</p>
-          ) : (
-            <>
-              <p className="settings-note">
-                更改文件夹只影响之后的下载，已有任务和文件不会被移动。
-              </p>
-              <Folders />
-            </>
-          )}
+          <p className="settings-note">更改文件夹只影响之后的下载，已有任务和文件不会被移动。</p>
+          <Folders />
         </section>
 
-        {!isDemo && (
-          <section className="settings-section" aria-labelledby="settings-scan">
-            <h2 id="settings-scan">本机作品库</h2>
-            <LibraryScanPanel />
-          </section>
-        )}
-
-        {!isDemo && (
-          <section className="settings-section" aria-labelledby="settings-cloud">
-            <h2 id="settings-cloud">云存档</h2>
-            <CloudPanel />
-          </section>
-        )}
-
-        <section className="settings-section" aria-labelledby="settings-space">
-          <h2 id="settings-space">资料空间</h2>
-          <WorkspaceSwitch />
-          {isTestLibrary && <p className="settings-note">当前是隔离测试库，内容都是合成样本。</p>}
-          {isDemo && (
-            <Button variant="ghost" size="sm" onClick={onDemoSettings}>
-              演示规模与重置…
-            </Button>
-          )}
+        <section className="settings-section" aria-labelledby="settings-scan">
+          <h2 id="settings-scan">本机作品库</h2>
+          <LibraryScanPanel />
         </section>
+
+        <section className="settings-section" aria-labelledby="settings-cloud">
+          <h2 id="settings-cloud">云存档</h2>
+          <CloudPanel />
+        </section>
+
+        {isTestLibrary && <p className="settings-note">当前是隔离测试库，内容都是合成样本。</p>}
       </div>
     </main>
   );

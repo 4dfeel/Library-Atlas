@@ -8,8 +8,6 @@ export {
   workKinds,
 } from './types';
 export type {
-  DemoSize,
-  DemoScenario,
   Game,
   GameAchievements,
   GameDetail,
@@ -52,9 +50,7 @@ export type {
   SyncStatus,
   SourceStatus,
 } from './real-source';
-export { demoAvailable, setWorkspaceMode, useWorkspaceMode, type WorkspaceMode } from './workspace';
 export {
-  getDemoEditCount,
   isAccountMismatch,
   isDownloadActive,
   isExtractActive,
@@ -96,19 +92,14 @@ export {
   useFolders,
   useGameDetail,
   useLibraryCollection,
-  useModeCacheIsolation,
   useRealSources,
-  useResetDemoEdits,
   useServiceReady,
   useWorkspace,
-  useConnections,
   useDashboard,
-  useDemoTasks,
-  useDemoTaskSync,
   useToggleFavorite,
   useUpdateGame,
 } from './hooks';
-export { getBackdropSource, getCoverSource } from './covers';
+export { getCoverSource } from './covers';
 export {
   dashboardScopes,
   scopeLibraryFilters,
@@ -116,7 +107,4 @@ export {
   type DashboardScope,
   type Recommendation,
 } from './dashboard';
-export type { ConnectionState, SourceConnection } from './demo-connections';
-export { isActiveTask, type DemoTask, type TaskPhase } from './demo-tasks';
-export { demoConnections, demoTasks, startDemoDownload } from './demo-runtime';
 export { audioSession, useAudioSession, type SessionTrack } from './audio-session';

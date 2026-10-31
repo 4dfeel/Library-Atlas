@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { access, mkdir, readdir, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { noHorizontalScroll, viewportTag } from './evidence';
-import { enterRealMode, RealService } from './real-service';
+import { RealService } from './real-service';
 
 /**
  * Real right clicks on the real page, against the real API and real folders. The test library's
@@ -78,10 +78,6 @@ test.describe('right click on a work', () => {
     token = (await (await fetch(`${service.origin}/api/v1/session`)).json()).csrfToken;
   });
   test.afterAll(async () => service?.dispose());
-  test.beforeEach(async ({ page }) => {
-    await enterRealMode(page);
-  });
-
   test('without local files it offers to install, and that opens the install flow', async ({
     page,
   }) => {

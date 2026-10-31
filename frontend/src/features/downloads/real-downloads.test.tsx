@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, within } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { setWorkspaceMode, type DownloadTask, type ExtractTask } from '@/lib/data';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { DownloadTask, ExtractTask } from '@/lib/data';
 import { DownloadsPage } from './downloads-page';
 
 const task = (values: Partial<DownloadTask>): DownloadTask => ({
@@ -43,13 +43,12 @@ function show(tasks: DownloadTask[], extractions: ExtractTask[] = []) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={client}>
-      <DownloadsPage size={1500} />
+      <DownloadsPage />
     </QueryClientProvider>,
   );
 }
 
 describe('the download queue', () => {
-  beforeEach(() => setWorkspaceMode('real'));
   afterEach(() => vi.unstubAllGlobals());
 
   it('says the total is unknown and shows no made-up number', async () => {

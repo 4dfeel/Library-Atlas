@@ -1,14 +1,12 @@
 import { useState, type MouseEvent, type ReactNode, type Ref } from 'react';
-import { ExternalLink, ArrowLeft, Download, HardDrive, Play, Star, Trophy } from 'lucide-react';
+import { ExternalLink, ArrowLeft, Download, HardDrive, Star, Trophy } from 'lucide-react';
 import { GameCover } from '@/components/game-card';
 import { Button } from '@/components/ui/button';
 import {
-  getBackdropSource,
   getCoverSource,
   useUpdateGame,
   useWorkGallery,
   useWorkspace,
-  type DemoSize,
   type Game,
   type GameDetail,
 } from '@/lib/data';
@@ -22,7 +20,6 @@ import {
   availabilityLabel,
   formatDate,
   kindLabels,
-  openActionLabels,
   platformLabels,
   statusLabels,
   usageVerbs,
@@ -89,28 +86,12 @@ function StoreBackdrop({ workId }: { workId: string }) {
 }
 
 /**
- * Wide local art when present. Otherwise an ambient wash from the cover, or the
- * Atlas contour pattern when there is no cover either. Failed images fall back once.
+ * An ambient wash from the cover, or the Atlas contour pattern when there is no cover.
+ * A failed image falls back once.
  */
 export function HeroBackdrop({ game }: { game: Game }) {
-  const backdrop = getBackdropSource(game);
   const cover = getCoverSource(game);
-  const [backdropFailed, setBackdropFailed] = useState(false);
   const [coverFailed, setCoverFailed] = useState(false);
-  if (backdrop && !backdropFailed)
-    return (
-      <div className="hero-backdrop" data-backdrop="image" aria-hidden="true">
-        <img
-          src={backdrop}
-          alt=""
-          width={1440}
-          height={720}
-          decoding="async"
-          fetchPriority="high"
-          onError={() => setBackdropFailed(true)}
-        />
-      </div>
-    );
   const ambient = cover && !coverFailed;
   return (
     <div
@@ -143,7 +124,6 @@ function Fact({ label, children }: { label: string; children: ReactNode }) {
 
 export function GameHero({
   game,
-  size,
   notify,
   backHref,
   onBack,
@@ -151,23 +131,21 @@ export function GameHero({
   headingRef,
 }: {
   game: GameDetail;
-  size: DemoSize;
   notify: Notify;
   backHref: string;
   onBack: (event: MouseEvent<HTMLAnchorElement>) => void;
   backLabel: string;
   headingRef: Ref<HTMLHeadingElement>;
 }) {
-  const { isDemo, isTestLibrary } = useWorkspace();
-  const favorite = useUpdateGame(size, game.id);
-  const savedNote = isDemo ? ' · 演示修改保存在本机' : '';
+  const { isTestLibrary } = useWorkspace();
+  const favorite = useUpdateGame(game.id);
   const isFavorite = favorite.isPending
     ? (favorite.variables.favorite ?? game.favorite)
     : game.favorite;
   const titleLength = Array.from(game.title).length;
   const titleClass = titleLength > 60 ? ' title-xlong' : titleLength > 28 ? ' title-long' : '';
   // Only Steam reports play time and achievements; other platforms show metadata.
-  const tracksPlay = game.platform === 'steam' || (!isDemo && game.kind === 'game');
+  const tracksPlay = game.platform === 'steam' || game.kind === 'game';
   const lastPlayed = formatDate(game.lastPlayedAt);
   const achievements = game.achievements;
   const percent =
@@ -177,7 +155,7 @@ export function GameHero({
 
   return (
     <header className="detail-hero" aria-labelledby="detail-title">
-      {isDemo ? <HeroBackdrop game={game} /> : <StoreBackdrop workId={game.id} />}
+      <StoreBackdrop workId={game.id} />
       <div className="hero-scrim" aria-hidden="true" />
       <div className="detail-frame hero-inner">
         <AppLink to={backHref} className="back-link" onClick={onBack} data-testid="back-to-library">
@@ -190,8 +168,7 @@ export function GameHero({
           </div>
           <div className="hero-copy">
             <div className="hero-eyebrow">
-              {isDemo && <span className="demo-chip">DEMO · 合成资料</span>}
-              {isTestLibrary && <span className="demo-chip">测试数据 · 合成样本</span>}
+              {isTestLibrary && <span className="sample-chip">测试数据 · 合成样本</span>}
               <span className="platform-chip" data-platform={game.platform}>
                 {platformLabels[game.platform]}
               </span>
@@ -229,8 +206,7 @@ export function GameHero({
                   favorite.mutate(
                     { favorite: !isFavorite },
                     {
-                      onSuccess: () =>
-                        notify(`${isFavorite ? '已取消收藏' : '已加入收藏'}${savedNote}`),
+                      onSuccess: () => notify(isFavorite ? '已取消收藏' : '已加入收藏'),
                       onError: () => notify('未能更新收藏，请重试', 'error'),
                     },
                   )
@@ -251,32 +227,18 @@ export function GameHero({
                   官方商店
                 </a>
               )}
-              {/* A real work's own actions are in the rows below. */}
-              {isDemo && (
-                <>
-                  <Button variant="ghost" disabled aria-describedby="launch-unavailable">
-                    <Play size={16} />
-                    {openActionLabels[game.kind]}
-                  </Button>
-                  <span id="launch-unavailable" className="unavailable-note">
-                    {isDemo
-                      ? `暂不可用 · 演示模式未接入 ${platformLabels[game.platform]}`
-                      : '暂不可用 · 打开本地作品将在后续版本开放'}
-                  </span>
-                </>
-              )}
             </div>
-            <DownloadAction game={game} size={size} />
-            {!isDemo && <LocalCopyPanel game={game} />}
-            {!isDemo && <GameUpdatePanel game={game} />}
-            {!isDemo && <CloudSavePanel game={game} />}
-            {!isDemo && <PlayRecord game={game} />}
+            <DownloadAction game={game} />
+            <LocalCopyPanel game={game} />
+            <GameUpdatePanel game={game} />
+            <CloudSavePanel game={game} />
+            <PlayRecord game={game} />
             <dl className="hero-facts">
               {tracksPlay ? (
                 <>
                   <Fact label="累计游玩">
                     {game.playtimeMinutes === null ? (
-                      <span className="fact-empty">{isDemo ? '暂无游玩数据' : '还没有记录'}</span>
+                      <span className="fact-empty">还没有记录</span>
                     ) : game.playtimeMinutes === 0 ? (
                       <span className="fact-empty">尚未开始</span>
                     ) : (
@@ -294,7 +256,7 @@ export function GameHero({
                     )}
                   </Fact>
                   {game.platform === 'steam' && (
-                    <Fact label={isDemo ? '成就进度 · 演示' : '成就进度'}>
+                    <Fact label="成就进度">
                       {achievements ? (
                         <>
                           <strong>{achievements.unlocked}</strong>

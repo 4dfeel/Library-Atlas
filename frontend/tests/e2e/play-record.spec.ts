@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { copyFile, mkdir } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { noHorizontalScroll, viewportTag } from './evidence';
-import { enterRealMode, RealService } from './real-service';
+import { RealService } from './real-service';
 
 /**
  * A real launch of a real program, followed by a real job, through the real page. The program is a
@@ -40,10 +40,6 @@ test.describe('recording play', () => {
     token = (await (await fetch(`${service.origin}/api/v1/session`)).json()).csrfToken;
   });
   test.afterAll(async () => service?.dispose());
-  test.beforeEach(async ({ page }) => {
-    await enterRealMode(page);
-  });
-
   test('nothing yet says why, then a start is timed from launch to exit and shows everywhere', async ({
     page,
   }) => {

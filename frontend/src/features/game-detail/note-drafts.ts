@@ -1,7 +1,7 @@
 /**
  * Unsaved note drafts for this page session, keyed by game ID. Leaving a detail
  * (Back, Ctrl+K) keeps the draft and shows it as unsaved on return; a reload is
- * guarded by beforeunload. Drafts are never written to demo storage.
+ * guarded by beforeunload.
  */
 const drafts = new Map<string, string>();
 

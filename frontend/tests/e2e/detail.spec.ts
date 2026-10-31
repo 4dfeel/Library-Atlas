@@ -1,23 +1,23 @@
 import { expect, test, type Page } from '@playwright/test';
 import { noPrivateData, recordLayout, screenshot, writeEvidence } from './evidence';
+import { clearPersonal } from './real-service';
 
 const title = (page: Page) => page.getByTestId('detail-title');
 const libraryScroll = (page: Page) => page.locator('[data-library-scroll]');
 const searchBox = (page: Page) => page.getByRole('textbox', { name: '搜索作品' });
 
-/** Stable public samples; see docs/PHASE1_CHECKPOINT2_REPORT.md. */
+/** Named or fixed-seed samples of the isolated test library. */
 const samples = {
-  complete: 'demo-00001',
-  noAchievements: 'demo-00002',
-  noRecord: 'demo-00003',
-  unplayed: 'demo-00008',
-  noBackdrop: 'demo-00010',
-  noCover: 'demo-00036',
-  noArt: 'demo-00025',
-  longTitle: 'demo-00029',
-  privateId: 'demo-00098',
-  hiddenId: 'demo-00114',
-  absentId: 'demo-99999',
+  complete: 'syn-steam-1001',
+  noAchievements: 'syn-00001',
+  noRecord: 'syn-00000',
+  unplayed: 'syn-00004',
+  noCover: 'syn-00002',
+  longTitle: 'syn-long-title',
+  unbrokenTitle: 'syn-unbroken-title',
+  privateId: 'syn-private',
+  hiddenId: 'syn-hidden',
+  absentId: 'syn-99999',
 };
 
 async function openDetail(page: Page, id: string, query = '') {
@@ -83,18 +83,17 @@ test('complete detail across the viewport/DPR matrix', async ({ page }, info) =>
       external.push(request.url());
   });
   await openDetail(page, samples.complete);
-  await expect(page.locator('.detail-hero .demo-chip')).toHaveText('DEMO · 合成资料');
-  await expect(page.getByText('DEMO · 演示模式', { exact: true })).toBeVisible();
-  await expect(page.locator('[data-backdrop="image"] img')).toHaveJSProperty('naturalWidth', 1440);
+  await expect(page.locator('.detail-hero .sample-chip')).toHaveText('测试数据 · 合成样本');
+  await expect(page.getByText('测试库 · 合成数据', { exact: true })).toBeVisible();
   await expect(title(page)).toBeFocused();
-  expect(await page.title()).toBe('星穹观测站 · Library Atlas');
+  expect(await page.title()).toBe('同名样本：夜行灯塔 · Library Atlas');
   await detailLayout(page);
   await noPrivateData(page);
   await screenshot(page, info, 'detail-complete');
   await recordLayout(page, info, 'detail-complete', [
     'no horizontal scroll',
     'title/cover/actions/back inside viewport and not overlapping',
-    'cover 2:3; 1440px local backdrop',
+    'cover 2:3',
     'body measure <= 900px',
   ]);
   await page.locator('.detail-page').evaluate((element) => element.scrollTo({ top: 99999 }));
@@ -103,32 +102,19 @@ test('complete detail across the viewport/DPR matrix', async ({ page }, info) =>
 });
 
 test('missing art and long mixed titles across the viewport/DPR matrix', async ({ page }, info) => {
-  await openDetail(page, samples.noBackdrop);
-  await expect(page.locator('.detail-hero')).toHaveAttribute('aria-labelledby', 'detail-title');
-  await expect(page.locator('[data-backdrop="ambient"]')).toBeVisible();
-  await detailLayout(page);
-  await screenshot(page, info, 'detail-no-backdrop');
-
   await openDetail(page, samples.noCover);
+  await expect(page.locator('.detail-hero')).toHaveAttribute('aria-labelledby', 'detail-title');
   await expect(page.locator('.hero-cover [data-cover-kind="missing"]')).toBeVisible();
   await expect(page.locator('.hero-cover').getByRole('img', { name: '暂无封面' })).toBeVisible();
   await detailLayout(page);
   await screenshot(page, info, 'detail-no-cover');
 
-  await openDetail(page, samples.noArt);
-  await expect(page.locator('[data-backdrop="pattern"]')).toBeVisible();
-  await expect(page.locator('.hero-cover [data-cover-kind="missing"]')).toBeVisible();
-  await detailLayout(page);
-  await screenshot(page, info, 'detail-no-art');
-
   // Chinese, Japanese and English in one title; and one with no break opportunities.
   await openDetail(page, samples.longTitle);
-  await expect(title(page)).toHaveText(
-    '跨越星海的最后一封信：遠い銀河の向こうへ — A Journey Beyond the Infinite Horizon · 完整典藏纪念版',
-  );
+  await expect(title(page)).toContainText('The Very Long Journey');
   await detailLayout(page);
   await screenshot(page, info, 'detail-long-title');
-  await openDetail(page, 'demo-00030');
+  await openDetail(page, samples.unbrokenTitle);
   await detailLayout(page);
   await screenshot(page, info, 'detail-long-title-unbroken');
   await recordLayout(page, info, 'detail-art-and-titles', [
@@ -146,6 +132,9 @@ test('edge states render honest semantics without overflow', async ({ page }, in
     'Representative states: 1080P, 1280×720 and one high-DPR viewport.',
   );
   const facts = page.locator('.hero-facts');
+  await page.goto('/library');
+  await clearPersonal(page, samples.unplayed);
+  await clearPersonal(page, samples.noRecord);
   await openDetail(page, samples.unplayed);
   await expect(facts).toContainText('尚未开始');
   await expect(facts).toContainText('暂无记录');
@@ -176,7 +165,9 @@ test('loading, error, unavailable and private IDs', async ({ page }, info) => {
     !['1080p', 'narrow', '4k-200'].includes(info.project.name),
     'Feedback states at 1080P, 720P and DPR 2.',
   );
-  await page.goto(`/library/${samples.complete}?state=loading`);
+  const address = `**/api/v1/works/${samples.complete}`;
+  await page.route(address, () => undefined);
+  await page.goto(`/library/${samples.complete}`);
   await expect(page.getByRole('status', { name: '正在读取作品详情' })).toBeVisible();
   expect(
     await page.evaluate(
@@ -185,11 +176,16 @@ test('loading, error, unavailable and private IDs', async ({ page }, info) => {
   ).toBe(true);
   await screenshot(page, info, 'detail-loading');
 
-  await page.goto(`/library/${samples.complete}?state=error`);
-  await expect(page.getByRole('alert')).toContainText('暂时未能读取作品详情');
+  await page.unroute(address);
+  await page.route(address, (route) =>
+    route.fulfill({ status: 500, json: { error: { code: 'x', message: '读取没有成功。' } } }),
+  );
+  await page.goto(`/library/${samples.complete}`);
+  await expect(page.getByRole('heading', { name: '暂时未能读取资料' })).toBeVisible();
   await screenshot(page, info, 'detail-error');
+  await page.unroute(address);
   await page.getByRole('button', { name: '重新加载' }).click();
-  await expect(title(page)).toHaveText('星穹观测站');
+  await expect(title(page)).toHaveText('同名样本：夜行灯塔');
 
   const texts: string[] = [];
   for (const id of [samples.privateId, samples.hiddenId, samples.absentId]) {
@@ -215,20 +211,20 @@ test('a pending search never writes Library state onto another page URL', async 
   await page.goto('/library');
   await expect(page.locator('[data-game-card]').first()).toBeVisible();
   // History moves on while the search debounce is still pending, before React unmounts.
-  await searchBox(page).fill('观测');
-  await page.evaluate(() => window.history.pushState({}, '', '/library/demo-00001'));
+  await searchBox(page).fill('灯塔');
+  await page.evaluate(() => window.history.pushState({}, '', '/library/syn-00001'));
   await page.waitForTimeout(400);
-  await expect(page).toHaveURL(/\/library\/demo-00001$/);
+  await expect(page).toHaveURL(/\/library\/syn-00001$/);
 });
 
 test('grid and list round trips restore Library state and history works', async ({
   page,
 }, info) => {
   test.skip(!['1080p', 'narrow'].includes(info.project.name), 'Navigation smoke at 1080P/720P.');
-  await page.goto('/library?genre=%E6%8E%A2%E7%B4%A2&sort=name-asc');
-  await expect(page.getByRole('combobox', { name: '类型' })).toHaveValue('探索');
-  await searchBox(page).fill('观测');
-  await expect(page).toHaveURL(/q=%E8%A7%82%E6%B5%8B/);
+  await page.goto('/library?genre=RPG&sort=name-asc');
+  await expect(page.getByRole('combobox', { name: '类型' })).toHaveValue('RPG');
+  await searchBox(page).fill('灯塔');
+  await expect(page).toHaveURL(/q=%E7%81%AF%E5%A1%94/);
   const firstCard = page.locator('[data-game-card]').first();
   const openedId = await firstCard.getAttribute('data-game-id');
   const openedTitle = await firstCard.locator('.game-link').innerText();
@@ -236,8 +232,8 @@ test('grid and list round trips restore Library state and history works', async 
   await expect(title(page)).toHaveText(openedTitle);
   await expect(page).toHaveURL(new RegExp(`/library/${openedId}$`));
   await page.getByTestId('back-to-library').click();
-  await expect(searchBox(page)).toHaveValue('观测');
-  await expect(page.getByRole('combobox', { name: '类型' })).toHaveValue('探索');
+  await expect(searchBox(page)).toHaveValue('灯塔');
+  await expect(page.getByRole('combobox', { name: '类型' })).toHaveValue('RPG');
   await expect(page.getByRole('combobox', { name: '排序' })).toHaveValue('name-asc');
   await expect(page.locator(`[data-game-id="${openedId}"] .game-link`)).toBeFocused();
 
@@ -306,6 +302,8 @@ test('keyboard: Ctrl+K, note shortcuts, status and rating, reduced motion', asyn
   page,
 }, info) => {
   test.skip(!['1080p', 'narrow'].includes(info.project.name), 'Keyboard smoke at 1080P/720P.');
+  await page.goto('/library');
+  await clearPersonal(page, samples.noRecord);
   await openDetail(page, samples.noRecord);
   expect(await page.evaluate(() => matchMedia('(prefers-reduced-motion: reduce)').matches)).toBe(
     true,
@@ -321,7 +319,7 @@ test('keyboard: Ctrl+K, note shortcuts, status and rating, reduced motion', asyn
   await page.keyboard.press('Escape');
   await expect(note).toBeVisible(); // Esc never discards a dirty draft.
   await page.keyboard.press('Control+Enter');
-  await expect(page.getByText('已保存到本机演示存储').first()).toBeVisible();
+  await expect(page.getByText('已保存').first()).toBeVisible();
   await expect(page.getByRole('button', { name: '编辑备注' })).toBeFocused();
 
   const status = page.getByRole('group', { name: '进度状态' });
@@ -339,23 +337,24 @@ test('keyboard: Ctrl+K, note shortcuts, status and rating, reduced motion', asyn
   await expect(page).toHaveURL(/\/library$/);
 });
 
-test('demo edits sync with the Library, persist, fail visibly and reset', async ({
-  page,
-}, info) => {
+test('edits reach the Library, survive a reload and fail visibly', async ({ page }, info) => {
   test.skip(!['1080p', 'narrow'].includes(info.project.name), 'Edit flow at 1080P/720P.');
+  await page.goto('/library');
+  await clearPersonal(page, samples.complete);
+  await clearPersonal(page, samples.noRecord);
   await openDetail(page, samples.complete);
   const status = page.getByRole('group', { name: '进度状态' });
   await status.getByText('搁置').click();
-  await expect(status.getByText('已保存到本机演示存储')).toBeVisible();
+  await expect(status.getByText('已保存')).toBeVisible();
   await expect(page.getByTestId('detail-status')).toHaveText('搁置');
   const favorite = page.locator('.hero-actions').getByRole('button', { name: /收藏/ });
-  await expect(favorite).toHaveAttribute('aria-pressed', 'true');
-  await favorite.click();
   await expect(favorite).toHaveAttribute('aria-pressed', 'false');
+  await favorite.click();
+  await expect(favorite).toHaveAttribute('aria-pressed', 'true');
   const rating = page.getByRole('group', { name: /个人评分/ });
   await rating.getByRole('radio', { name: '3 星' }).click({ force: true });
   await expect(rating.getByText('3 / 5')).toBeVisible();
-  await expect(rating.getByText('已保存到本机演示存储')).toBeVisible();
+  await expect(rating.getByText('已保存')).toBeVisible();
   await expect(favorite).toBeEnabled();
 
   await page.reload();
@@ -363,61 +362,27 @@ test('demo edits sync with the Library, persist, fail visibly and reset', async 
   await expect(page.getByText('3 / 5')).toBeVisible();
   await page.getByTestId('back-to-library').click();
   await page.getByRole('combobox', { name: '游玩状态' }).selectOption('paused');
-  await searchBox(page).fill('星穹观测站');
-  const card = page.locator('[data-game-id="demo-00001"]');
+  await searchBox(page).fill('夜行灯塔');
+  const card = page.locator(`[data-game-id="${samples.complete}"]`);
   await expect(card).toContainText('搁置');
-  await expect(card.getByRole('button', { name: /收藏 星穹观测站/ })).toHaveAttribute(
-    'aria-pressed',
-    'false',
+  const toggle = card.getByRole('button', { name: /收藏 同名样本/ });
+  await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+
+  await openDetail(page, samples.noRecord);
+  await page.route(`**/api/v1/works/${samples.noRecord}/personal`, (route) =>
+    route.fulfill({ status: 500, json: { error: { code: 'x', message: '没有保存。' } } }),
   );
-  await card.getByRole('button', { name: /收藏 星穹观测站/ }).click();
-  await card.locator('.game-link').click();
-  await expect(page.locator('.hero-actions').getByRole('button', { name: '已收藏' })).toBeVisible();
-
-  await page.getByRole('button', { name: '关于演示', exact: true }).click();
-  await expect(page.getByText('已修改 1 部作品')).toBeVisible();
-  await page.getByRole('button', { name: '重置演示修改…' }).click();
-  await expect(page.getByRole('dialog').getByRole('alert')).toContainText('无法撤销');
-  await page.getByRole('button', { name: '确认重置' }).click();
-  await expect(page.getByText('已修改 0 部作品')).toBeVisible();
-  await page.keyboard.press('Escape');
-  await expect(page.getByTestId('detail-status')).toHaveText('已完成');
-
-  await openDetail(page, samples.noRecord, '?state=save-error');
   await page.getByRole('button', { name: '添加备注' }).click();
   await page.getByRole('textbox', { name: /个人备注/ }).fill('这条不会保存');
   await page.getByRole('button', { name: '保存备注' }).click();
-  await expect(page.locator('.note-field [role="alert"]')).toContainText('尚未保存');
+  await expect(page.locator('.note-field [role="alert"]')).toBeVisible();
   await expect(page.getByRole('textbox', { name: /个人备注/ })).toHaveValue('这条不会保存');
-  await expect(page.getByText('已保存到本机演示存储')).toHaveCount(0);
   await page
     .locator('.detail-side')
     .evaluate((element) => element.scrollIntoView({ block: 'center' }));
   await screenshot(page, info, 'detail-save-error');
-});
-
-test('failed images fall back once without broken icons or retries', async ({ page }, info) => {
-  test.skip(
-    !['1080p', 'narrow', '4k-200'].includes(info.project.name),
-    'Checked at 1080P, 720P and DPR 2.',
-  );
-  const attempts = new Map<string, number>();
-  await page.route(/\/demo\/(covers|backdrops)\//, (route) => {
-    const url = route.request().url();
-    attempts.set(url, (attempts.get(url) ?? 0) + 1);
-    return route.abort();
-  });
-  await openDetail(page, samples.complete);
-  await expect(page.locator('[data-backdrop="pattern"]')).toBeVisible();
-  await expect(page.locator('.hero-cover [data-cover-kind="missing"]')).toBeVisible();
-  expect(await page.locator('.detail-hero img').count()).toBe(0);
-  // The cover URL has two consumers (cover and ambient wash); each tries once.
-  const settledAttempts = [...attempts.values()];
-  await page.waitForTimeout(1000);
-  expect([...attempts.values()]).toEqual(settledAttempts);
-  expect(settledAttempts.every((count) => count <= 2)).toBe(true);
-  await detailLayout(page);
-  await screenshot(page, info, 'detail-image-failed');
 });
 
 test('Library and detail comparison captures', async ({ page }, info) => {
@@ -426,7 +391,7 @@ test('Library and detail comparison captures', async ({ page }, info) => {
   await expect(page.locator('[data-game-card]').first()).toBeVisible();
   await page.evaluate(() => document.fonts.ready);
   await screenshot(page, info, 'compare-library');
-  await page.locator('[data-game-id="demo-00006"] .game-link').click();
+  await page.locator('[data-game-card] .game-link').nth(5).click();
   await expect(title(page)).toBeVisible();
   await page.waitForFunction(() =>
     [...document.querySelectorAll<HTMLImageElement>('.detail-hero img')].every(
@@ -436,24 +401,21 @@ test('Library and detail comparison captures', async ({ page }, info) => {
   await screenshot(page, info, 'compare-detail');
 });
 
-test('detail open/return timing at 1500 and 5000 records', async ({ page, browser }, info) => {
+test('detail open/return timing at 1500 records', async ({ page, browser }, info) => {
   test.skip(info.project.name !== '1080p', 'Sampled once at the reference viewport.');
   const results = [];
-  for (const size of [1500, 5000] as const) {
-    const suffix = size === 5000 ? '?size=5000' : '';
-    await page.goto(`/library${suffix}`);
+  {
+    const size = 1500;
+    await page.goto('/library');
     await expect(page.locator('[data-game-card]').first()).toBeVisible();
     await page.evaluate(() => document.fonts.ready);
     const openSamples: number[] = [];
     const backSamples: number[] = [];
-    const coverRequests: number[] = [];
     for (let index = 0; index < 10; index++) {
-      const id = `demo-${String(1 + (index % 6)).padStart(5, '0')}`;
-      let requests = 0;
-      const onRequest = (request: { url(): string }) => {
-        if (/\/demo\/(covers|backdrops)\//.test(request.url())) requests++;
-      };
-      page.on('request', onRequest);
+      const id = await page
+        .locator('[data-game-card]')
+        .nth(index % 6)
+        .getAttribute('data-game-id');
       const open = await page.evaluate(async (gameId) => {
         const link = document.querySelector<HTMLAnchorElement>(
           `[data-game-id="${gameId}"] .game-link`,
@@ -472,8 +434,6 @@ test('detail open/return timing at 1500 and 5000 records', async ({ page, browse
       }, id);
       openSamples.push(open);
       await expect(title(page)).toBeVisible();
-      page.off('request', onRequest);
-      coverRequests.push(requests);
       const back = await page.evaluate(async () => {
         const start = performance.now();
         document.querySelector<HTMLAnchorElement>('[data-testid="back-to-library"]')!.click();
@@ -488,13 +448,6 @@ test('detail open/return timing at 1500 and 5000 records', async ({ page, browse
       backSamples.push(back);
       await expect(page.locator('[data-game-card]').first()).toBeVisible();
     }
-    // Edits remain usable at this scale.
-    await page.goto(`/library/demo-04000${suffix}`);
-    if (size === 5000) {
-      await expect(title(page)).toBeVisible();
-      await page.getByRole('group', { name: '进度状态' }).getByText('进行中').click();
-      await expect(page.getByTestId('detail-status')).toHaveText('进行中');
-    } else await expect(page.getByTestId('game-unavailable')).toBeVisible();
     const sorted = (values: number[]) => [...values].sort((a, b) => a - b);
     results.push({
       size,
@@ -503,7 +456,6 @@ test('detail open/return timing at 1500 and 5000 records', async ({ page, browse
       backToFirstCardMs: { median: sorted(backSamples)[5], max: Math.max(...backSamples) },
       openSamples,
       backSamples,
-      heroImageRequestsPerOpen: coverRequests,
       browser: browser.version(),
       viewport: page.viewportSize(),
     });
@@ -515,7 +467,6 @@ test('detail open/return timing at 1500 and 5000 records', async ({ page, browse
     expect(median(backSamples)).toBeLessThan(1000);
     const sampleLimit = process.env.CI ? 5000 : 1000;
     for (const value of [...openSamples, ...backSamples]) expect(value).toBeLessThan(sampleLimit);
-    expect(Math.max(...coverRequests)).toBeLessThanOrEqual(2);
   }
   await writeEvidence(info, 'detail.json', results);
 });
@@ -543,13 +494,11 @@ test('work-kind tabs, platform filter and a DLsite detail', async ({ page }, inf
   for (const meta of await page.locator('.game-card-meta > span:first-child').allTextContents())
     expect(meta).not.toContain('DLsite');
 
-  await openDetail(page, 'demo-00027');
+  await openDetail(page, 'syn-dlsite-1001');
   await expect(page.locator('.platform-chip')).toHaveText('DLsite');
   await expect(page.locator('.hero-facts')).toContainText('最近收听');
   await expect(page.locator('.hero-facts')).not.toContainText('累计游玩');
   await expect(page.getByRole('heading', { name: /成就进度/ })).toHaveCount(0);
-  await expect(page.locator('.hero-actions')).toContainText('播放作品');
-  await expect(page.locator('.hero-actions')).toContainText('未接入 DLsite');
   await detailLayout(page);
   await screenshot(page, info, 'detail-dlsite');
 });
@@ -560,38 +509,26 @@ test('every source and work kind shows only the fields that apply', async ({ pag
     'Representative states: 1080P, 1280×720 and one high-DPR viewport.',
   );
   const cases = [
-    { id: 'demo-00001', name: 'steam-game', kind: '游戏', usage: '最近游玩', action: '启动游戏' },
-    { id: 'demo-00033', name: 'dlsite-game', kind: '游戏', usage: '最近游玩', action: '启动游戏' },
-    {
-      id: 'demo-00042',
-      name: 'dlsite-image',
-      kind: '漫画/图像',
-      usage: '最近阅读',
-      action: '浏览作品',
-    },
-    { id: 'demo-00027', name: 'dlsite-audio', kind: '音声', usage: '最近收听', action: '播放作品' },
-    { id: 'demo-00048', name: 'dlsite-video', kind: '视频', usage: '最近观看', action: '播放作品' },
-    {
-      id: 'demo-00054',
-      name: 'dlsite-other',
-      kind: '其他',
-      usage: '最近打开',
-      action: '打开文件夹',
-    },
+    { id: 'syn-steam-1001', name: 'steam-game', kind: '游戏', usage: '最近游玩' },
+    { id: 'syn-multipart', name: 'dlsite-game', kind: '游戏', usage: '最近游玩' },
+    { id: 'syn-00005', name: 'dlsite-image', kind: '漫画/图像', usage: '最近阅读' },
+    { id: 'syn-00017', name: 'dlsite-audio', kind: '音声', usage: '最近收听' },
+    { id: 'syn-00011', name: 'dlsite-video', kind: '视频', usage: '最近观看' },
+    { id: 'syn-00023', name: 'dlsite-other', kind: '其他', usage: '最近打开' },
   ];
   for (const sample of cases) {
     await openDetail(page, sample.id);
     const steam = sample.name.startsWith('steam');
+    const game = sample.name.endsWith('game');
     await expect(page.locator('.platform-chip')).toHaveText(steam ? 'Steam' : 'DLsite');
     await expect(page.locator('.hero-eyebrow')).toContainText(`${sample.kind} · `);
     await expect(page.locator('.hero-facts')).toContainText(sample.usage);
-    await expect(page.locator('.hero-actions')).toContainText(sample.action);
-    // Game-only fields appear for Steam games only; nothing is filled with fake values.
-    await expect(page.locator('.hero-facts')).toContainText(steam ? '累计游玩' : '作品类型');
-    if (!steam) await expect(page.locator('.hero-facts')).not.toContainText('累计游玩');
+    // Play time belongs to games; nothing else is filled with fake values.
+    await expect(page.locator('.hero-facts')).toContainText(game ? '累计游玩' : '作品类型');
+    if (!game) await expect(page.locator('.hero-facts')).not.toContainText('累计游玩');
     await expect(page.getByTestId('achievements')).toHaveCount(steam ? 1 : 0);
     await expect(page.getByTestId('download-action')).toHaveCount(steam ? 0 : 1);
-    if (sample.id === 'demo-00048')
+    if (sample.id === 'syn-00005')
       await expect(page.getByTestId('download-action')).toContainText('仅限 DLsite 官方阅读器');
     await detailLayout(page);
     await noPrivateData(page);
@@ -599,7 +536,7 @@ test('every source and work kind shows only the fields that apply', async ({ pag
   }
   await recordLayout(page, info, 'detail-kinds', [
     'Steam/DLsite × game/image/audio/video/other',
-    'kind-specific usage label and open action',
+    'kind-specific usage label',
     'no play time/achievements/download where not applicable',
     'detail layout checks',
   ]);

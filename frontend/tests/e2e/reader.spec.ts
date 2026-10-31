@@ -3,7 +3,7 @@ import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { crc32, deflateSync } from 'node:zlib';
 import { noHorizontalScroll, viewportTag } from './evidence';
-import { enterRealMode, RealService } from './real-service';
+import { RealService } from './real-service';
 
 /** Real API, real files and real rendering, checked by what the page's pixels and sizes say. */
 const evidenceDir = resolve('../artifacts/phase-2-checkpoint-11');
@@ -171,10 +171,6 @@ test.describe('reading', () => {
     token = (await (await fetch(`${service.origin}/api/v1/session`)).json()).csrfToken;
   });
   test.afterAll(async () => service?.dispose());
-  test.beforeEach(async ({ page }) => {
-    await enterRealMode(page);
-  });
-
   test('volumes stay apart; pages turn in natural order by button, key and click', async ({
     page,
   }) => {

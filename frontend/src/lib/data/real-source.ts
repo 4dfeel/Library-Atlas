@@ -611,8 +611,6 @@ function saveError(error: unknown): unknown {
 }
 
 export class RealLibrarySource implements LibrarySource {
-  readonly mode = 'real' as const;
-
   async listPage(
     filters: LibraryFilters,
     offset: number,

@@ -43,18 +43,10 @@ function coverTitleLines(title: string): string[] {
   return lines;
 }
 
-/** Wide local backdrop for detail pages; null when absent or not ordinary. */
-export function getBackdropSource(game: Game): string | null {
-  if (game.visibility !== 'normal' || !game.background) return null;
-  return game.background.startsWith('/demo/backdrops/') ? game.background : null;
-}
-
-/** Called by mounted cards only; no eager creation or request for 5000 covers. */
+/** Called by mounted cards only. The drawn cover belongs to the isolated test library. */
 export function getCoverSource(game: Game): string | null {
   if (game.visibility !== 'normal' || game.cover.kind === 'missing') return null;
   if (game.cover.kind === 'remote') return game.cover.url ?? null;
-  if (game.cover.kind === 'art')
-    return `/demo/covers/cover-${String(game.cover.index).padStart(2, '0')}.svg`;
   const index = game.cover.index;
   // Offset by index/18 so works of one kind (a fixed index stride) still vary.
   const [dark, mid, light] =

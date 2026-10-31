@@ -67,6 +67,6 @@ export function watchConsole(page: Page, allowed: RegExp[] = []) {
 }
 
 export async function noPrivateData(page: Page) {
-  await expect(page.locator('body')).not.toContainText('PRIVATE_SENTINEL');
-  expect(await page.locator('body').ariaSnapshot()).not.toContain('PRIVATE_SENTINEL');
+  await expect(page.locator('body')).not.toContainText('SENTINEL');
+  expect(await page.locator('body').ariaSnapshot()).not.toContain('SENTINEL');
 }

@@ -29,8 +29,6 @@ import {
   useLibraryCollection,
   useToggleFavorite,
   useWorkspace,
-  type DemoScenario,
-  type DemoSize,
   type LibraryFilters,
   workKinds,
 } from '@/lib/data';
@@ -52,11 +50,6 @@ const kindIcons: Record<LibraryFilters['kind'], typeof LayoutGrid> = {
 };
 
 const tabKinds: LibraryFilters['kind'][] = ['all', 'game', 'non-game', ...workKinds.slice(1)];
-
-function scenarioFromUrl(): DemoScenario {
-  const value = new URLSearchParams(window.location.search).get('state');
-  return value === 'empty' || value === 'error' || value === 'loading' ? value : 'normal';
-}
 
 const DOWN_TO_COLLAPSE = 24;
 /** Long enough for the layout to settle: resizing the list can itself move its scroll. */
@@ -102,11 +95,9 @@ function useCollapsingHeader() {
 }
 
 export function LibraryPage({
-  size,
   onAbout,
   notify,
 }: {
-  size: DemoSize;
   onAbout: () => void;
   notify: (message: string, tone?: 'success' | 'error') => void;
 }) {
@@ -124,14 +115,13 @@ export function LibraryPage({
   const [search, setSearch] = useState(initial.filters.search);
   const [filters, setFilters] = useState<LibraryFilters>(initial.filters);
   const [view, setView] = useState<ViewMode>(initial.view);
-  const [retryScenario, setRetryScenario] = useState<DemoScenario>(scenarioFromUrl);
   const searchRef = useRef<HTMLInputElement>(null);
   const reduceMotion = useReducedMotion();
   const header = useCollapsingHeader();
   const { reveal, expand } = header;
-  const { isDemo, isTestLibrary } = useWorkspace();
-  const collection = useLibraryCollection(filters, { size, scenario: retryScenario });
-  const favorite = useToggleFavorite(size);
+  const { isTestLibrary } = useWorkspace();
+  const collection = useLibraryCollection(filters);
+  const favorite = useToggleFavorite();
   const data = collection.summary;
 
   // New results start from the top, and a short list could never scroll the header back.
@@ -183,13 +173,13 @@ export function LibraryPage({
   const toggleFavorite = useCallback(
     (id: string) => {
       favorite.mutate(id, {
-        onSuccess: () => notify(isDemo ? '收藏已更新 · 演示修改保存在本机' : '收藏已更新'),
+        onSuccess: () => notify('收藏已更新'),
         onError: () => notify('未能更新收藏，请重试', 'error'),
       });
     },
-    [favorite, isDemo, notify],
+    [favorite, notify],
   );
-  const detailHref = useCallback((id: string) => gameHref(id, size), [size]);
+  const detailHref = useCallback((id: string) => gameHref(id), []);
   const openGame = useCallback((id: string, anchor: number) => {
     // Saved on this Library entry, so Back (browser or in-app) lands where it left.
     patchHistoryState({ libraryAnchor: anchor, libraryFocusId: id, focusSearch: undefined });
@@ -232,7 +222,7 @@ export function LibraryPage({
               </div>
             </div>
             <div className="intro-art" aria-hidden="true">
-              <img src="/demo/covers/cover-01.svg" alt="" />
+              <img src="/brand/library-art.svg" alt="" />
               <div className="intro-art-shade" />
               <div className="intro-art-caption">
                 <span>CURATED WORLDS</span>
@@ -267,10 +257,8 @@ export function LibraryPage({
                 );
               })}
               <span className="tabs-spacer" />
-              {(isDemo || isTestLibrary) && (
-                <span className="demo-data-note">
-                  {isDemo ? '合成数据 · 非真实游玩记录' : '测试数据 · 合成样本，不是同步结果'}
-                </span>
+              {isTestLibrary && (
+                <span className="sample-note">测试数据 · 合成样本，不是同步结果</span>
               )}
             </div>
             <div className="filter-toolbar">
@@ -447,25 +435,9 @@ export function LibraryPage({
       </div>
 
       {collection.isPending ? (
-        <LoadingState
-          onRetry={() => {
-            setRetryScenario('normal');
-            collection.refetch();
-          }}
-        />
-      ) : collection.error && !isDemo ? (
-        <ReadFailure error={collection.error} onRetry={collection.refetch} />
+        <LoadingState onRetry={collection.refetch} />
       ) : collection.error ? (
-        <FeedbackState
-          kind="error"
-          title="暂时未能读取作品库"
-          description="你的演示收藏仍然安全。请重试，继续探索。"
-          action="重新加载"
-          onAction={() => {
-            setRetryScenario('normal');
-            collection.refetch();
-          }}
-        />
+        <ReadFailure error={collection.error} onRetry={collection.refetch} />
       ) : collection.count ? (
         <GameCollection
           count={collection.count}
@@ -476,27 +448,20 @@ export function LibraryPage({
           onSort={(sort) => update('sort', sort)}
           view={view}
           onFavorite={toggleFavorite}
-          filterKey={JSON.stringify(filters) + size}
+          filterKey={JSON.stringify(filters)}
           detailHref={detailHref}
           onOpenGame={openGame}
           restore={restore}
         />
-      ) : !isDemo && !hasFilters ? (
+      ) : !hasFilters ? (
         <RealLibraryEmpty />
       ) : (
         <FeedbackState
           kind="empty"
-          title={hasFilters ? '还没有找到这段冒险' : '收藏的故事，从这里开始'}
-          description={
-            hasFilters
-              ? '试试其他关键词，或放宽筛选条件。'
-              : '这里还没有作品。切换回完整演示，看看未来收藏的模样。'
-          }
-          action={hasFilters ? '清除筛选' : '浏览演示收藏'}
-          onAction={() => {
-            reset();
-            setRetryScenario('normal');
-          }}
+          title="还没有找到这段冒险"
+          description="试试其他关键词，或放宽筛选条件。"
+          action="清除筛选"
+          onAction={reset}
         />
       )}
 
@@ -519,14 +484,10 @@ export function LibraryPage({
       <footer className="library-footer">
         <span>
           <Monitor size={12} />
-          {isDemo
-            ? '本地演示 · 不连接 Steam / DLsite'
-            : isTestLibrary
-              ? '隔离测试库 · 不连接 Steam / DLsite'
-              : '本地资料库'}
+          {isTestLibrary ? '隔离测试库 · 不连接 Steam / DLsite' : '本地资料库'}
         </span>
         <button onClick={onAbout}>
-          {isDemo ? `${size.toLocaleString('zh-CN')} 款测试场景` : '资料库状态'}
+          资料库状态
           <ChevronDown size={12} />
         </button>
         <span>

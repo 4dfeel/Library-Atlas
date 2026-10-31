@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { mkdir, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { noHorizontalScroll, viewportTag } from './evidence';
-import { enterRealMode, RealService } from './real-service';
+import { RealService } from './real-service';
 
 /** Real API and database, real folders on disk. All names and works are made up. */
 const evidenceDir = resolve('../artifacts/phase-2-checkpoint-8');
@@ -57,7 +57,6 @@ test.describe('finding works on this computer', () => {
   test('a scan links what matches by itself, can be undone, and touches no file', async ({
     page,
   }) => {
-    await enterRealMode(page);
     const library = join(base, test.info().project.name, 'Library');
     const works = (
       await (await call('/works?limit=3&search=' + encodeURIComponent('合成作品'))).json()

@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { noHorizontalScroll, viewportTag } from './evidence';
-import { enterRealMode, RealService } from './real-service';
+import { RealService } from './real-service';
 
 /**
  * Finding saves through the real page and API, with real files in a made-up user folder. The test
@@ -66,10 +66,6 @@ test.describe('finding saves', () => {
     token = (await (await fetch(`${service.origin}/api/v1/session`)).json()).csrfToken;
   });
   test.afterAll(async () => service?.dispose());
-  test.beforeEach(async ({ page }) => {
-    await enterRealMode(page);
-  });
-
   test('a Unity game: the place follows from its own files, and is used only once ticked', async ({
     page,
   }) => {

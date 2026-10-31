@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { noHorizontalScroll, viewportTag } from './evidence';
-import { enterRealMode, RealService } from './real-service';
+import { RealService } from './real-service';
 
 /**
  * Two real services sharing one made-up Drive, as two computers do, with real files and the real
@@ -107,7 +107,6 @@ test.describe('cloud saves', () => {
     await two?.dispose();
   });
   test.beforeEach(async ({ page }) => {
-    await enterRealMode(page);
     page.on('request', (request) => {
       expect(request.url()).not.toMatch(/googleapis|accounts\.google/);
     });

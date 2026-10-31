@@ -1,14 +1,29 @@
 import { expect, test, type Page } from '@playwright/test';
-import { recordLayout, screenshot, writeEvidence, noHorizontalScroll } from './evidence';
+import {
+  noHorizontalScroll,
+  noPrivateData,
+  recordLayout,
+  screenshot,
+  writeEvidence,
+} from './evidence';
+import { clearPersonal, RealService, setPersonal } from './real-service';
 
 const cards = (page: Page) => page.locator('[data-game-card]');
 const scroll = (page: Page) => page.locator('[data-library-scroll]');
+const longTitleSearch = '星屑の図書館';
 
 async function ready(page: Page, url = '/library') {
   await page.goto(url);
   await expect(cards(page).first()).toBeVisible();
   await page.evaluate(() => document.fonts.ready);
 }
+
+/** A read that never finishes, so its loading state can be looked at. */
+async function holdReads(page: Page, pattern: string) {
+  await page.route(pattern, () => undefined);
+}
+
+const readFails = { status: 500, json: { error: { code: 'x', message: '读取没有成功。' } } };
 
 async function noOverflow(page: Page) {
   expect(
@@ -48,7 +63,7 @@ test('grid, missing covers and long titles across viewport/DPR matrix', async ({
       external.push(request.url());
   });
   await ready(page);
-  await expect(page.getByText('DEMO · 演示模式', { exact: true })).toBeVisible();
+  await expect(page.getByText('测试库 · 合成数据', { exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: '我的作品库' })).toBeVisible();
   const columns = Number(await scroll(page).getAttribute('data-columns'));
   const expectedColumns: Record<string, [number, number]> = {
@@ -76,20 +91,18 @@ test('grid, missing covers and long titles across viewport/DPR matrix', async ({
     expect(Math.abs(size.height / size.width - 1.5)).toBeLessThan(0.01);
   }
   await noOverflow(page);
-  await expect(page.locator('body')).not.toContainText('PRIVATE_SENTINEL');
-  expect(await page.locator('body').ariaSnapshot()).not.toContain('PRIVATE_SENTINEL');
+  await noPrivateData(page);
   await screenshot(page, info, 'library-grid');
 
-  await page.getByRole('textbox', { name: '搜索作品' }).fill('晨雾回廊');
-  await expect(cards(page).first()).toContainText('晨雾回廊');
+  await page.getByRole('textbox', { name: '搜索作品' }).fill(longTitleSearch);
+  await expect(cards(page).first()).toContainText(longTitleSearch);
   await expect(page.locator('[data-cover-kind="missing"]').first()).toBeVisible();
   await noOverflow(page);
   await screenshot(page, info, 'library-missing-cover');
 
-  await page.getByRole('textbox', { name: '搜索作品' }).fill('跨越星海');
   await expect(cards(page)).toHaveCount(1);
   const title = page.locator('.game-title');
-  await expect(title).toContainText('A Journey Beyond');
+  await expect(title).toContainText('The Very Long Journey');
   const clamp = await title.evaluate((node) => ({
     lines: getComputedStyle(node).webkitLineClamp,
     height: node.getBoundingClientRect().height,
@@ -112,17 +125,21 @@ test('grid, missing covers and long titles across viewport/DPR matrix', async ({
 
 test('list view, real filters, empty results and privacy', async ({ page }, info) => {
   await ready(page, '/library?view=list');
+  await clearPersonal(page, 'syn-steam-1001');
+  await setPersonal(page, 'syn-steam-1001', { status: 'playing' });
+  await page.reload();
+  await expect(cards(page).first()).toBeVisible();
   await expect(page.getByRole('list', { name: '作品列表' })).toBeVisible();
   await noOverflow(page);
   await screenshot(page, info, 'library-list');
   await recordLayout(page, info, 'library-list', ['no horizontal scroll', 'rows inside viewport']);
-  await page.getByRole('combobox', { name: '类型' }).selectOption('探索');
+  await page.getByRole('combobox', { name: '类型' }).selectOption('冒险');
   await page.getByRole('combobox', { name: '本机状态' }).selectOption('installed');
-  await expect(page.locator('.list-genre').first()).toHaveText('探索');
+  await expect(page.locator('.list-genre').first()).toHaveText('冒险');
   for (const genre of await page.locator('.list-genre').allTextContents())
-    expect(genre).toBe('探索');
+    expect(genre).toBe('冒险');
   for (const installed of await page.locator('.list-install').allTextContents())
-    expect(installed).toContain('已安装');
+    expect(installed).toMatch(/已安装|已下载/);
   await page.getByRole('combobox', { name: '游玩状态' }).selectOption('playing');
   await expect(page.locator('.list-status').first()).toContainText('进行中');
   await page.getByRole('combobox', { name: '排序' }).selectOption('playtime-desc');
@@ -130,37 +147,13 @@ test('list view, real filters, empty results and privacy', async ({ page }, info
   await expect(page.getByText('还没有找到这段冒险')).toBeVisible();
   await noOverflow(page);
   await screenshot(page, info, 'library-no-results');
-  await page.getByRole('textbox', { name: '搜索作品' }).fill('PRIVATE_SENTINEL');
+  await page.getByRole('textbox', { name: '搜索作品' }).fill('PRIVATE-SENTINEL');
   await expect(page.getByText('还没有找到这段冒险')).toBeVisible();
-  expect(await page.locator('body').ariaSnapshot()).not.toContain('PRIVATE_SENTINEL_PRIVATE_');
+  await expect(cards(page)).toHaveCount(0);
   await page.getByRole('button', { name: '清除筛选', exact: true }).last().click();
   await expect(cards(page).first()).toBeVisible();
   await page.keyboard.press('Control+k');
   await expect(page.getByRole('textbox', { name: '搜索作品' })).toBeFocused();
-});
-
-test('feedback states recover and dialog returns focus', async ({ page }, info) => {
-  await page.goto('/library?state=loading');
-  await expect(page.getByRole('status', { name: '正在读取本地作品库' })).toBeVisible();
-  await noOverflow(page);
-  await screenshot(page, info, 'library-loading');
-  await page.goto('/library?state=error');
-  await expect(page.getByRole('alert')).toContainText('暂时未能读取作品库');
-  await screenshot(page, info, 'library-error');
-  await page.getByRole('button', { name: '重新加载' }).click();
-  await expect(cards(page).first()).toBeVisible();
-  const about = page.getByRole('button', { name: '关于演示', exact: true });
-  await about.click();
-  await expect(page.getByRole('dialog')).toBeVisible();
-  await page.keyboard.press('Escape');
-  await expect(page.getByRole('dialog')).not.toBeVisible();
-  await expect(about).toBeFocused();
-  await page.goto('/library?state=empty');
-  await expect(page.getByText('收藏的故事，从这里开始')).toBeVisible();
-  await noOverflow(page);
-  await screenshot(page, info, 'library-empty');
-  await page.getByRole('button', { name: '浏览演示收藏' }).click();
-  await expect(cards(page).first()).toBeVisible();
 });
 
 test('favorites and container resize preserve the visible collection anchor', async ({
@@ -168,11 +161,12 @@ test('favorites and container resize preserve the visible collection anchor', as
 }, info) => {
   test.skip(info.project.name !== '1080p', 'Resize sequence is checked once.');
   await ready(page);
-  const favorite = cards(page).first().getByRole('button');
+  const favorite = cards(page).first().getByRole('button', { name: /收藏/ });
   const before = await favorite.getAttribute('aria-pressed');
   await favorite.click();
   await expect(favorite).toHaveAttribute('aria-pressed', before === 'true' ? 'false' : 'true');
-  const focusedGame = page.locator('[data-game-id="demo-00007"] .game-link');
+  const focusedId = await cards(page).nth(6).getAttribute('data-game-id');
+  const focusedGame = page.locator(`[data-game-id="${focusedId}"] .game-link`);
   await focusedGame.focus();
   await page.setViewportSize({ width: 1440, height: 900 });
   await expect(scroll(page)).toHaveAttribute('data-columns', '5');
@@ -191,7 +185,7 @@ test('favorites and container resize preserve the visible collection anchor', as
         const rect = card.getBoundingClientRect();
         return rect.bottom > box.top && rect.top < box.bottom;
       });
-      return Number(first?.getAttribute('data-game-id')?.replace('demo-', ''));
+      return Number(first?.closest<HTMLElement>('[data-index]')?.dataset.index);
     });
   await expect.poll(visibleAnchor).toBeGreaterThan(25);
   // Scrolling down hid the top bar; Ctrl+K brings its controls back where the list is.
@@ -218,12 +212,14 @@ test('1500/5000 virtualization and measured browser performance', async ({
     info.project.name !== '1080p',
     'Performance is sampled once at the reference viewport.',
   );
+  test.setTimeout(300_000);
+  const larger = await RealService.create(5000, 8817);
+  await larger.start();
   const measurements = [];
-  for (const size of [1500, 5000]) {
-    const coverRequests = new Set<string>();
-    page.on('request', (request) => {
-      if (request.url().includes('/demo/covers/')) coverRequests.add(request.url());
-    });
+  for (const [size, origin] of [
+    [1500, ''],
+    [5000, larger.origin],
+  ] as const) {
     await page.addInitScript(() => {
       const entries: number[] = [];
       Object.assign(window, { atlasLongTasks: entries });
@@ -231,16 +227,14 @@ test('1500/5000 virtualization and measured browser performance', async ({
         for (const entry of list.getEntries()) entries.push(entry.duration);
       }).observe({ type: 'longtask', buffered: true });
     });
-    await ready(page, `/library?size=${size}`);
+    await ready(page, `${origin}/library`);
     const firstReady = await page.evaluate(() => performance.now());
     const initialCards = await cards(page).count();
-    const initialRequests = coverRequests.size;
     expect(initialCards).toBeLessThan(100);
-    expect(initialRequests).toBeLessThanOrEqual(24);
     const latencies = [];
     const browserLatencies: number[] = [];
     for (let index = 0; index < 20; index++) {
-      const expectedTitle = index % 2 ? '跨越星海' : '星穹观测站';
+      const expectedTitle = index % 2 ? longTitleSearch : '多文件样本';
       await page.evaluate((expectedTitle) => {
         const input = document.querySelector<HTMLInputElement>('input[aria-label="搜索作品"]')!;
         const target = window as unknown as { atlasSearchTiming: Promise<number> };
@@ -269,7 +263,7 @@ test('1500/5000 virtualization and measured browser performance', async ({
       const start = performance.now();
       await page.getByRole('textbox', { name: '搜索作品' }).fill(expectedTitle);
       await expect(cards(page)).toHaveCount(1);
-      await expect(cards(page).first()).toContainText(index % 2 ? '跨越星海' : '星穹观测站');
+      await expect(cards(page).first()).toContainText(expectedTitle);
       latencies.push(performance.now() - start);
       browserLatencies.push(
         await page.evaluate(
@@ -323,12 +317,12 @@ test('1500/5000 virtualization and measured browser performance', async ({
       scrollFps: scrolling.fps,
       initialMountedCards: initialCards,
       finalMountedCards: await cards(page).count(),
-      initialCoverRequests: initialRequests,
       longTasks,
       browser: browser.version(),
       viewport: page.viewportSize(),
     });
   }
+  await larger.dispose();
   await writeEvidence(info, 'library.json', measurements);
 });
 
@@ -437,7 +431,7 @@ test('back to top answers a real press anywhere on it', async ({ page }) => {
 
 test('a short list keeps its controls in place', async ({ page }, info) => {
   test.skip(info.project.name !== '1080p', 'Behavior, not layout tiers.');
-  await page.goto('/library?q=%E6%98%9F%E7%A9%B9');
+  await page.goto('/library?q=%E5%A4%9C%E8%A1%8C%E7%81%AF%E5%A1%94');
   await expect(page.locator('[data-game-card]').first()).toBeVisible();
   const list = scroll(page);
   await list.hover();
@@ -448,6 +442,8 @@ test('a short list keeps its controls in place', async ({ page }, info) => {
 
 test('list columns show the facts and sort when clicked', async ({ page }, info) => {
   await page.goto('/library?view=list');
+  await setPersonal(page, 'syn-00000', { rating: 5 });
+  await page.reload();
   await expect(page.getByRole('list', { name: '作品列表' })).toBeVisible();
   await noHorizontalScroll(page);
   if (['1080p', 'narrow', '4k'].includes(info.project.name))
@@ -472,6 +468,7 @@ test('list columns show the facts and sort when clicked', async ({ page }, info)
   const release = heading.getByRole('button', { name: /按发售日排序/ });
   await release.click();
   await expect(sortSelect).toHaveValue('release-desc');
+  await expect(page.locator('.list-release').first()).toHaveText(/^\d{4}\/\d{2}\/\d{2}$/);
   const dates = await page.locator('.list-release').allTextContents();
   expect(dates[0]).toMatch(/^\d{4}\/\d{2}\/\d{2}$/);
   expect([...dates].sort().reverse()).toEqual(dates);
@@ -486,4 +483,26 @@ test('list columns show the facts and sort when clicked', async ({ page }, info)
   await expect(
     page.getByRole('group', { name: '按栏目排序' }).getByRole('button', { name: /按我的评价排序/ }),
   ).toHaveAttribute('aria-pressed', 'true');
+});
+
+test('reading states: loading, and a failure that recovers', async ({ page }, info) => {
+  await holdReads(page, '**/api/v1/works?*');
+  await page.goto('/library');
+  await expect(page.getByRole('status', { name: '正在读取本地作品库' })).toBeVisible();
+  await noOverflow(page);
+  await screenshot(page, info, 'library-loading');
+  await page.unroute('**/api/v1/works?*');
+  await page.route('**/api/v1/works?*', (route) => route.fulfill(readFails));
+  await page.goto('/library');
+  await expect(page.getByRole('heading', { name: '暂时未能读取资料' })).toBeVisible();
+  await screenshot(page, info, 'library-error');
+  await page.unroute('**/api/v1/works?*');
+  await page.getByRole('button', { name: '重新加载' }).click();
+  await expect(cards(page).first()).toBeVisible();
+  const about = page.locator('.topbar-right').getByRole('button', { name: '资料库状态' });
+  await about.click();
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog')).not.toBeVisible();
+  await expect(about).toBeFocused();
 });

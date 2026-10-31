@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { noHorizontalScroll, viewportTag } from './evidence';
-import { RealService, enterRealMode } from './real-service';
+import { RealService } from './real-service';
 
 /**
  * The real service and database, with the platform replaced by the test profile's stand-ins.
@@ -29,7 +29,6 @@ async function control(values: Record<string, string>) {
 }
 
 async function openPanel(page: Page) {
-  await enterRealMode(page);
   await page.goto(`${service.origin}/library`);
   await expect(page.getByTestId('workspace-indicator')).toHaveText('测试库 · 合成数据');
   await page.getByRole('link', { name: '首页', exact: true }).click();
@@ -275,7 +274,6 @@ test('the account is in the top bar, masked, with log out', async ({ page }) => 
 test('settings holds the account and the download folders', async ({ page }, info) => {
   const chosen = join(service.dataDir, '..', `chosen ${info.project.name} 文件夹`);
   await mkdir(chosen, { recursive: true });
-  await enterRealMode(page);
   await page.goto(`${service.origin}/library`);
   await page.getByRole('link', { name: '设置' }).click();
   await expect(page).toHaveURL(/\/settings$/);
@@ -305,20 +303,6 @@ test('settings holds the account and the download folders', async ({ page }, inf
   await expect(settings.locator('[data-folder="library"]').getByLabel('作品文件夹')).toHaveValue(
     /chosen/,
   );
-});
-
-test('settings in the demo space stay out of real data', async ({ page }) => {
-  const calls: string[] = [];
-  page.on('request', (request) => {
-    if (request.url().includes('/api/')) calls.push(request.url());
-  });
-  await page.goto(`${service.origin}/settings`);
-  const settings = page.getByTestId('settings-page');
-  await expect(settings).toContainText('演示空间不连接真实账号');
-  await expect(settings.getByLabel('密码', { exact: true })).toHaveCount(0);
-  await expect(page.getByTestId('account-menu')).toHaveCount(0);
-  await shot(page, 'settings-demo');
-  expect(calls).toEqual([]);
 });
 
 test('a poll that lands after the login cannot bring back the login form', async ({ page }) => {
@@ -385,17 +369,4 @@ test('a remembered login is one click and never reaches the page', async ({ page
   await saved.getByRole('button', { name: '忘记保存的密码' }).click();
   await expect(page.getByLabel('密码', { exact: true })).toBeVisible();
   await expect(page.getByTestId('dlsite-saved-login')).toHaveCount(0);
-});
-
-test('the demo connection panel never reaches the real flow', async ({ page }) => {
-  const calls: string[] = [];
-  page.on('request', (request) => {
-    if (request.url().includes('/sources/dlsite')) calls.push(request.url());
-  });
-  await page.goto(`${service.origin}/`);
-  await expect(page.getByTestId('workspace-indicator')).toHaveText('DEMO · 演示模式');
-  await page.getByRole('button', { name: '管理来源连接' }).click();
-  await expect(page.getByRole('dialog', { name: '来源连接' })).toContainText('Atlas 演示账号');
-  await expect(page.getByLabel('密码', { exact: true })).toHaveCount(0);
-  expect(calls).toEqual([]);
 });

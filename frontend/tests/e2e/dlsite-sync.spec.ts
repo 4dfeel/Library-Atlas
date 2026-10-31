@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { noHorizontalScroll, viewportTag } from './evidence';
-import { enterRealMode, RealService } from './real-service';
+import { RealService } from './real-service';
 
 /**
  * The real service and database, with the platform replaced by the test profile's stand-in.
@@ -49,7 +49,6 @@ async function connected() {
 }
 
 async function openPanel(page: Page) {
-  await enterRealMode(page);
   await page.goto(`${service.origin}/`);
   await expect(page.getByTestId('workspace-indicator')).toHaveText('测试库 · 合成数据');
   await page.getByRole('button', { name: '管理来源连接' }).click();
@@ -229,18 +228,6 @@ test.describe('sync', () => {
     await scroller.evaluate((node) => node.scrollTo({ top: node.scrollHeight }));
     await expect(page.locator('.list-size').last()).toHaveText('—');
     await expect(page.locator('body')).not.toContainText('NaN');
-  });
-
-  test('the demo space never reaches sync', async ({ page }) => {
-    const calls: string[] = [];
-    page.on('request', (request) => {
-      if (request.url().includes('/api/')) calls.push(request.url());
-    });
-    await page.goto(`${service.origin}/`);
-    await expect(page.getByTestId('workspace-indicator')).toHaveText('DEMO · 演示模式');
-    await page.getByRole('button', { name: '管理来源连接' }).click();
-    await expect(page.getByTestId('dlsite-sync')).toHaveCount(0);
-    expect(calls).toEqual([]);
   });
 });
 
