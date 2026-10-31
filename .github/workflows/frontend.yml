@@ -1,7 +1,7 @@
 name: Frontend checkpoint
+# By hand only: each run spends the account's Actions minutes. Checks normally run locally.
 on:
-  push:
-  pull_request:
+  workflow_dispatch:
 permissions:
   contents: read
 jobs:
