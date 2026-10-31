@@ -676,10 +676,17 @@ def test_a_removed_archive_is_not_reported_as_a_lost_file(
     work = first_work(api)
     start(api, work["id"], extract=True)
     settled(api, work["id"])
-    task = api.get("/api/v1/downloads").json()["tasks"][0]
+    # Unpacking is reported as done a moment before the archive goes and the folder is recorded.
+    deadline = time.monotonic() + 30
+    while time.monotonic() < deadline:
+        task = api.get("/api/v1/downloads").json()["tasks"][0]
+        installed = api.get(f"/api/v1/works/{work['id']}").json()["installed"]
+        if task["archiveRemoved"] and installed:
+            break
+        time.sleep(0.02)
     assert task["archiveRemoved"] is True
     assert task["fileMissing"] is False
-    assert api.get(f"/api/v1/works/{work['id']}").json()["installed"] is True
+    assert installed is True
     # Nothing to unpack from now, and it says so instead of failing halfway.
     response = api.post(BASE, json={"workId": work["id"], "again": True})
     assert response.status_code == 409

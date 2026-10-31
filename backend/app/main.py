@@ -20,6 +20,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app import __version__
 from app.adapters.dlsite.covers import CoverCache, CoverUnavailable
+from app.adapters.system.archives import ArchiveProblem, safe_parts
 from app.adapters.system.process_job import RunningGame
 from app.api import models
 from app.core.config import Settings
@@ -883,6 +884,18 @@ def _build_api() -> APIRouter:
     return api
 
 
+def _built_file(root: Path, path: str) -> Path | None:
+    """The build's file at this address, if any. Judged as text first: this route answers any web
+    page, and merely asking Windows about `\\\\host\\share` connects there and offers that host the
+    user's Windows credentials."""
+    try:
+        parts = safe_parts(path)
+    except ArchiveProblem:
+        return None
+    candidate = root.joinpath(*parts).resolve()
+    return candidate if candidate.is_relative_to(root) and candidate.is_file() else None
+
+
 def _static_response(static_dir: Path | None, path: str) -> Response:
     """Files inside the build, otherwise the SPA shell. Nothing outside the build is served."""
     if static_dir is None:
@@ -891,8 +904,8 @@ def _static_response(static_dir: Path | None, path: str) -> Response:
             status_code=503,
         )
     root = static_dir.resolve()
-    candidate = (root / path).resolve()
-    if path and candidate.is_relative_to(root) and candidate.is_file():
+    candidate = _built_file(root, path)
+    if candidate is not None:
         return FileResponse(candidate)
     return FileResponse(root / "index.html", headers={"Cache-Control": "no-cache"})
 
