@@ -90,7 +90,7 @@
 **缓存规则**：修改成功后用响应更新详情缓存，并使当前模式下的列表、详情、首页缓存全部失效。修改失败也会失效，让页面回到服务器的真实值。
 
 ### 首页 `GET /dashboard`
-参数 `scope`（`all` `games` `steam` `dlsite-games` `dlsite-media`）与 `batch`（≥0）。统计口径与 Demo 的 `selectDashboard` 相同，每个范围的作品数等于作品库相应筛选的数量（有测试）。无时长记录的游戏不计入时长；非游戏作品没有游玩统计。推荐在同一天同一 `batch` 内固定。
+参数 `scope`（`all` `games` `steam` `dlsite-games` `dlsite-media`）与 `batch`（≥0）。每个范围的作品数等于作品库相应筛选的数量（有测试）。无时长记录的游戏不计入时长；非游戏作品没有游玩统计。推荐在同一天同一 `batch` 内固定。
 
 ### 来源 `GET /sources`
 `{sources:[{id,displayName,connection,workCount,lastSyncAt,capabilities:{connect,sync,download}}]}`。`connection` 见下方“DLsite 连接”；有来源记录不代表已认证。`capabilities.connect` 仅 DLsite 为 `true`，其余为 `false`。

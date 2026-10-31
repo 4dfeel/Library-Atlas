@@ -3,7 +3,7 @@ import { ChevronDown, Clock3, LogOut, RefreshCw, Settings2 } from 'lucide-react'
 import { useShell } from '@/app/shell-context';
 import { AppLink } from '@/components/app-link';
 import { Button } from '@/components/ui/button';
-import { connectionLabels, realConnectionState } from '@/features/demo-services/labels';
+import { connectionLabels, realConnectionState } from './connection-labels';
 import { useDlsiteConnection, type DlsiteConnection } from '@/lib/data';
 import { settingsHref } from '@/lib/router';
 import { formatDate } from '@/lib/utils';

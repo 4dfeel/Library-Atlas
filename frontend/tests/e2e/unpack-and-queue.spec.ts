@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { mkdir, readdir, rm, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { noHorizontalScroll, viewportTag } from './evidence';
-import { enterRealMode, RealService } from './real-service';
+import { RealService } from './real-service';
 
 /**
  * The real service, queues and archive code, with real sockets and real files. Only the
@@ -140,8 +140,7 @@ test.describe('unpacking and the queue', () => {
     nextWork = 0;
   });
   test.afterAll(async () => service?.dispose());
-  test.beforeEach(async ({ page }) => {
-    await enterRealMode(page);
+  test.beforeEach(async () => {
     expect((await call('/settings/folders/library', 'PUT', { path: library })).status).toBe(200);
     await control({ download: { payload: archive }, gallery: null, intro: null, upgrade: null });
   });
@@ -242,7 +241,8 @@ test.describe('unpacking and the queue', () => {
     await openWork(page, work);
     await action(page).getByRole('button', { name: '仅下载' }).click();
     await expect(action(page).getByTestId('download-done')).toBeVisible({ timeout: 20_000 });
-    await control({ upgrade: '2026-10-30T00:00:00+09:00' });
+    // Later than the download above, whatever day the test runs.
+    await control({ upgrade: new Date(Date.now() + 30 * 86_400_000).toISOString() });
     await sync();
     await page.goto(`${service.origin}/downloads`);
     const row = page.locator(`[data-update="${work.id}"]`);

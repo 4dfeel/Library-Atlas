@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, within } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { setWorkspaceMode, type DownloadTask, type ExtractTask } from '@/lib/data';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { DownloadTask, ExtractTask } from '@/lib/data';
 import { DownloadsPage } from './downloads-page';
 
 const task = (values: Partial<DownloadTask>): DownloadTask => ({
@@ -43,14 +43,21 @@ function show(tasks: DownloadTask[], extractions: ExtractTask[] = []) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={client}>
-      <DownloadsPage size={1500} />
+      <DownloadsPage />
     </QueryClientProvider>,
   );
 }
 
 describe('the download queue', () => {
-  beforeEach(() => setWorkspaceMode('real'));
   afterEach(() => vi.unstubAllGlobals());
+
+  it('opens the work from its cover', async () => {
+    show([task({ state: 'done', bytesDone: 10, fileName: 'a.zip' })]);
+    const title = await screen.findByText('合成作品');
+    const cover = title.closest('li')!.querySelector('.queue-row-cover')!;
+    expect(cover.closest('a')).toHaveAttribute('href', '/library/w1');
+    expect(cover.closest('a')).toHaveAttribute('tabindex', '-1');
+  });
 
   it('says the total is unknown and shows no made-up number', async () => {
     show([task({})]);

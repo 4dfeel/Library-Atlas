@@ -206,6 +206,10 @@ def _curated() -> list[Sample]:
             "syn-long-title",
             replace(dlsite, source_work_id="RJ900003", title=LONG_TITLE, cover_ref=None),
         ),
+        Sample(
+            "syn-unbroken-title",
+            replace(dlsite, source_work_id="RJ900004", title="無限" * 40, cover_ref=None),
+        ),
         *(
             Sample(
                 f"syn-{visibility}",

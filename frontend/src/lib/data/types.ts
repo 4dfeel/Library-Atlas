@@ -1,7 +1,5 @@
 import type { DashboardRequest, DashboardResult } from './dashboard';
 
-export type DemoSize = 1500 | 5000;
-export type DemoScenario = 'normal' | 'empty' | 'loading' | 'error';
 export type GameStatus = 'unplayed' | 'playing' | 'completed' | 'paused';
 export type Visibility = 'normal' | 'hidden' | 'private' | 'quarantined';
 export const librarySorts = [
@@ -35,7 +33,7 @@ export const workKinds: readonly WorkKind[] = ['game', 'image', 'video', 'audio'
  * support; it covers games, image, video, audio and other works alike.
  */
 export interface Game {
-  /** Atlas-internal stable ID; routes and demo edits use it. */
+  /** Atlas-internal stable ID; routes use it. */
   id: string;
   platform: Platform;
   /** ID inside the source platform. Identity is (platform, sourceId), never sourceId alone. */
@@ -64,10 +62,9 @@ export interface Game {
   favorite: boolean;
   visibility: Visibility;
   /** `remote`: a platform image served through Atlas's own cover address. */
-  cover: { kind: 'art' | 'procedural' | 'remote' | 'missing'; index: number; url?: string | null };
-  background: string | null;
+  cover: { kind: 'procedural' | 'remote' | 'missing'; index: number; url?: string | null };
   addedAt: string;
-  /** Last use: played for games; read, watched or listened for others. Demo record. */
+  /** Last use: played for games; read, watched or listened for others. */
   lastPlayedAt: string | null;
   /** What Atlas could do with this work once the source is connected. */
   capabilities: WorkCapabilities;
@@ -79,9 +76,9 @@ export interface Game {
   sourceUrl?: string | null;
 }
 
-/** `null` means not known yet; the demo dataset always knows. */
+/** `null` means not known yet. */
 export interface WorkCapabilities {
-  /** Purchased files can be fetched directly (DLsite only, demo). */
+  /** Purchased files can be fetched directly (DLsite only). */
   download: boolean | null;
   /** Downloaded files are archives that need extracting. */
   extract: boolean | null;
@@ -113,7 +110,7 @@ export interface LibraryFilters {
   kind: WorkKind | 'all' | 'non-game';
   platform: Platform | 'all';
   favoritesOnly: boolean;
-  /** One of the user's own collections, or `all`. Real library only. */
+  /** One of the user's own collections, or `all`. */
   collection: string;
   sort: LibrarySort;
 }
@@ -129,13 +126,7 @@ export interface LibraryResult {
   kindCounts: Record<WorkKind, number>;
 }
 
-export interface LibraryRequest {
-  filters: LibraryFilters;
-  scenario?: DemoScenario;
-  signal?: AbortSignal;
-}
-
-/** Synthetic achievement counts. `null` means not provided, never 0%. */
+/** Achievement counts. `null` means not provided, never 0%. */
 export interface GameAchievements {
   unlocked: number;
   total: number;
@@ -153,9 +144,9 @@ export interface GameDetail extends Game {
   achievements: GameAchievements | null;
   rating: number | null;
   note: string;
-  /** Real mode: increases with every saved edit. */
+  /** Increases with every saved edit. */
   version?: number;
-  /** Real mode: every known file or part. */
+  /** Every known file or part. */
   files?: WorkFileInfo[];
 }
 
@@ -165,13 +156,12 @@ export interface GameUpdate {
   rating?: number | null;
   note?: string;
   favorite?: boolean;
-  /** Real mode: refuse the save if the record changed since this version was read. */
+  /** Refuse the save if the record changed since this version was read. */
   expectedVersion?: number;
 }
 
 export interface GameRequest {
   id: string;
-  scenario?: DemoScenario;
   signal?: AbortSignal;
 }
 
@@ -190,9 +180,8 @@ export class GameUpdateError extends Error {
   }
 }
 
-/** What pages use, whichever library is showing. Lists differ: see useLibraryCollection. */
+/** What pages use. Lists are read in pages: see useLibraryCollection. */
 export interface LibrarySource {
-  readonly mode: 'demo' | 'real';
   dashboard(request: DashboardRequest): Promise<DashboardResult>;
   getGame(request: GameRequest): Promise<GameDetail>;
   updateGame(id: string, update: GameUpdate): Promise<GameDetail>;

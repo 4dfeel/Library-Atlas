@@ -159,6 +159,14 @@ class _Control:
         self.event.set()
 
 
+def _moment(text: str) -> datetime | None:
+    try:
+        moment = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    return moment if moment.tzinfo else moment.replace(tzinfo=UTC)
+
+
 class DownloadQueue:
     def __init__(
         self,
@@ -293,11 +301,22 @@ class DownloadQueue:
         )
 
     @staticmethod
+    def _has_newer_version(row: Row[Any]) -> bool:
+        """With the platform's date from download time, any change counts: what the dates mean is
+        the platform's business. Without one, a date only counts if it is later than the download,
+        or filling in a date the platform always had would read as a new version."""
+        if not row.upgraded_at:
+            return False
+        if row.source_upgraded_at:
+            return bool(row.upgraded_at != row.source_upgraded_at)
+        platform, downloaded = _moment(row.upgraded_at), _moment(row.created_at)
+        return platform is not None and downloaded is not None and platform > downloaded
+
+    @staticmethod
     def _updates(
         rows: list[Row[Any]], out: list[models.DownloadTaskOut]
     ) -> list[models.DownloadUpdate]:
-        """Works whose newest download is older than what the platform now has. The dates are
-        only compared for being different: what they mean exactly is the platform's business."""
+        """Works whose newest download is older than what the platform now has."""
         missing = {task.id for task in out if task.file_missing}
         busy = {row.work_id for row in rows if row.state in _HOLDS_KEY}
         seen: set[str] = set()
@@ -309,8 +328,7 @@ class DownloadQueue:
             if (
                 row.work_id not in busy
                 and row.id not in missing
-                and row.upgraded_at
-                and row.upgraded_at != row.source_upgraded_at
+                and DownloadQueue._has_newer_version(row)
             ):
                 updates.append(
                     models.DownloadUpdate(

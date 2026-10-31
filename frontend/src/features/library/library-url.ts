@@ -45,7 +45,7 @@ export function parseLibraryUrl(search: string): LibraryUrlState {
   };
 }
 
-/** Keeps unrelated parameters (size, state previews) and writes only non-defaults. */
+/** Keeps unrelated parameters and writes only non-defaults. */
 export function libraryUrl(current: string, { filters, view }: LibraryUrlState): string {
   const url = new URL(current);
   const params = url.searchParams;
@@ -65,7 +65,7 @@ export function libraryUrl(current: string, { filters, view }: LibraryUrlState):
 }
 
 /** A Library link pre-filtered by the given values (used by Dashboard entries). */
-export function libraryHrefFor(size: number, filters: Partial<LibraryFilters>): string {
+export function libraryHrefFor(filters: Partial<LibraryFilters>): string {
   const params = new URLSearchParams();
   if (filters.kind && filters.kind !== 'all') params.set('kind', filters.kind);
   if (filters.platform && filters.platform !== 'all') params.set('platform', filters.platform);
@@ -73,6 +73,5 @@ export function libraryHrefFor(size: number, filters: Partial<LibraryFilters>): 
   if (filters.genre && filters.genre !== 'all') params.set('genre', filters.genre);
   if (filters.installed && filters.installed !== 'all') params.set('installed', filters.installed);
   if (filters.sort && filters.sort !== 'curated') params.set('sort', filters.sort);
-  if (size === 5000) params.set('size', '5000');
   return `/library${params.size ? `?${params}` : ''}`;
 }

@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { noHorizontalScroll, viewportTag } from './evidence';
-import { enterRealMode, RealService } from './real-service';
+import { RealService } from './real-service';
 
 /** Real API, queue and file operations, on made-up folders and saves. No real game is involved. */
 const evidenceDir = resolve('../artifacts/phase-2-checkpoint-9');
@@ -100,7 +100,6 @@ test.describe('updating a game', () => {
   test('saves first, the new version in place, the old one kept until confirmed', async ({
     page,
   }) => {
-    await enterRealMode(page);
     const name = test.info().project.name;
     const game = join(place, `game-${name}`);
     await mkdir(join(game, 'save'), { recursive: true });

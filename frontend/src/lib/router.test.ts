@@ -8,12 +8,11 @@ describe('routes', () => {
     expect(matchRoute('/')).toEqual({ name: 'dashboard' });
     expect(matchRoute('/library')).toEqual({ name: 'library' });
     expect(matchRoute('/library/')).toEqual({ name: 'library' });
-    expect(matchRoute('/library/demo-00001')).toEqual({ name: 'game', id: 'demo-00001' });
+    expect(matchRoute('/library/syn-00001')).toEqual({ name: 'game', id: 'syn-00001' });
     expect(matchRoute('/library/%E0%A4%A')).toEqual({ name: 'not-found' });
     expect(matchRoute('/library/a/b')).toEqual({ name: 'not-found' });
     expect(matchRoute('/dashboard')).toEqual({ name: 'not-found' });
-    expect(gameHref('demo-00001', 1500)).toBe('/library/demo-00001');
-    expect(gameHref('demo-04000', 5000)).toBe('/library/demo-04000?size=5000');
+    expect(gameHref('syn-00001')).toBe('/library/syn-00001');
   });
 });
 

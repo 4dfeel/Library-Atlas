@@ -1,14 +1,7 @@
 import { useEffect, useRef, useState, type MouseEvent } from 'react';
 import { Compass, Files, FolderOpen, Tag, Trophy } from 'lucide-react';
 import { FeedbackState } from '@/components/feedback-state';
-import {
-  GameUnavailableError,
-  useGameDetail,
-  useWorkspace,
-  type DemoScenario,
-  type DemoSize,
-  type GameDetail,
-} from '@/lib/data';
+import { GameUnavailableError, useGameDetail, useWorkspace, type GameDetail } from '@/lib/data';
 import { dashboardHref, libraryHref, navigate, readHistoryState } from '@/lib/router';
 import { ReadFailure } from '@/features/workspace/service-state';
 import {
@@ -27,20 +20,14 @@ import { PersonalRecord } from './personal-record';
 
 type Notify = (message: string, tone?: 'success' | 'error') => void;
 
-function scenarioFromUrl(): DemoScenario {
-  const value = new URLSearchParams(window.location.search).get('state');
-  return value === 'error' || value === 'loading' ? value : 'normal';
-}
-
-/** Back goes to the exact Library entry when we came from it; otherwise to /library. */
 /**
  * Back returns to the exact Library or Dashboard entry the detail was opened from;
  * opened directly, it goes to /library.
  */
-function useBackToLibrary(size: DemoSize) {
+function useBackToLibrary() {
   const [origin] = useState(() => readHistoryState());
   const fromDashboard = Boolean(origin.fromDashboard);
-  const href = fromDashboard ? dashboardHref(size) : libraryHref(size);
+  const href = fromDashboard ? dashboardHref() : libraryHref();
   const onBack = (event: MouseEvent<HTMLAnchorElement>) => {
     if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey) return;
     if (origin.fromLibrary || origin.fromDashboard) {
@@ -93,7 +80,7 @@ function FileList({ files }: { files: NonNullable<GameDetail['files']> }) {
 }
 
 function DetailBody({ game }: { game: GameDetail }) {
-  const { isDemo, isTestLibrary } = useWorkspace();
+  const { isTestLibrary } = useWorkspace();
   const achievements = game.achievements;
   const percent =
     achievements && achievements.total > 0
@@ -101,9 +88,9 @@ function DetailBody({ game }: { game: GameDetail }) {
       : 0;
   return (
     <>
-      {!isDemo && game.kind === 'audio' && <AudioPanel game={game} />}
-      {!isDemo && game.kind === 'image' && <ReaderPanel game={game} />}
-      {!isDemo && game.platform === 'dlsite' && <WorkGallery workId={game.id} />}
+      {game.kind === 'audio' && <AudioPanel game={game} />}
+      {game.kind === 'image' && <ReaderPanel game={game} />}
+      {game.platform === 'dlsite' && <WorkGallery workId={game.id} />}
       <section className="detail-about" aria-labelledby="about-title">
         <span className="eyebrow">ABOUT THIS WORK</span>
         <h2 id="about-title">作品简介</h2>
@@ -116,9 +103,9 @@ function DetailBody({ game }: { game: GameDetail }) {
         ) : (
           <p className="section-empty">这部作品暂未提供简介。</p>
         )}
-        {(isDemo || isTestLibrary) && (
+        {isTestLibrary && (
           <p className="source-note">
-            简介与标签为 Library Atlas 合成{isDemo ? '演示' : '测试'}资料，不对应任何真实作品。
+            简介与标签为 Library Atlas 合成测试资料，不对应任何真实作品。
           </p>
         )}
       </section>
@@ -142,7 +129,7 @@ function DetailBody({ game }: { game: GameDetail }) {
           <section className="detail-section" aria-labelledby="achievements-title">
             <h2 id="achievements-title">
               <Trophy size={15} />
-              成就进度{isDemo && <span className="field-rule">演示</span>}
+              成就进度
             </h2>
             {achievements ? (
               <div className="achievement-progress" data-testid="achievements">
@@ -209,10 +196,7 @@ function DetailBody({ game }: { game: GameDetail }) {
             </div>
             <div>
               <dt>本机状态</dt>
-              <dd>
-                {availabilityLabel(game)}
-                {isDemo && game.installed && '（演示）'}
-              </dd>
+              <dd>{availabilityLabel(game)}</dd>
             </div>
             <div>
               <dt>加入作品库</dt>
@@ -221,11 +205,7 @@ function DetailBody({ game }: { game: GameDetail }) {
             <div>
               <dt>资料来源</dt>
               <dd>
-                {isDemo
-                  ? `合成演示数据 · 未连接 ${platformLabels[game.platform]}`
-                  : isTestLibrary
-                    ? '合成测试样本'
-                    : '本地资料库'}
+                {isTestLibrary ? '合成测试样本' : '本地资料库'}
                 {game.sourceUrl && (
                   <>
                     {' · '}
@@ -240,9 +220,7 @@ function DetailBody({ game }: { game: GameDetail }) {
         </section>
         {game.files && game.files.length > 0 && <FileList files={game.files} />}
       </div>
-      {!isDemo && game.platform === 'dlsite' && (
-        <OfficialIntro workId={game.id} sourceUrl={game.sourceUrl} />
-      )}
+      {game.platform === 'dlsite' && <OfficialIntro workId={game.id} sourceUrl={game.sourceUrl} />}
     </>
   );
 }
@@ -292,8 +270,7 @@ function DetailSkeleton() {
   );
 }
 
-export function GameUnavailable({ size }: { size: DemoSize }) {
-  const { isDemo } = useWorkspace();
+export function GameUnavailable() {
   const headingRef = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
     document.title = '作品不可用 · Library Atlas';
@@ -306,31 +283,20 @@ export function GameUnavailable({ size }: { size: DemoSize }) {
         icon={Compass}
         eyebrow="OFF THE MAP"
         title="找不到这部作品"
-        description={`它不在当前${isDemo ? '演示' : ''}收藏中，或暂时无法在普通页面查看。请返回作品库继续浏览。`}
+        description="它不在当前收藏中，或暂时无法在普通页面查看。请返回作品库继续浏览。"
         action="返回作品库"
         headingRef={headingRef}
-        onAction={() => navigate(libraryHref(size))}
+        onAction={() => navigate(libraryHref())}
       />
     </main>
   );
 }
 
-export function GameDetailPage({
-  id,
-  size,
-  notify,
-}: {
-  id: string;
-  size: DemoSize;
-  notify: Notify;
-}) {
-  const { isDemo, isTestLibrary } = useWorkspace();
-  const [scenario, setScenario] = useState<DemoScenario>(() =>
-    isDemo ? scenarioFromUrl() : 'normal',
-  );
-  const query = useGameDetail(id, { size, scenario });
+export function GameDetailPage({ id, notify }: { id: string; notify: Notify }) {
+  const { isTestLibrary } = useWorkspace();
+  const query = useGameDetail(id);
   const headingRef = useRef<HTMLHeadingElement>(null);
-  const back = useBackToLibrary(size);
+  const back = useBackToLibrary();
   const game = query.data;
 
   useEffect(() => {
@@ -352,45 +318,19 @@ export function GameDetailPage({
         notify('正在编辑备注 · 保存或取消后再用 Ctrl+K 搜索', 'error');
         return;
       }
-      navigate(libraryHref(size), { state: { focusSearch: true } });
+      navigate(libraryHref(), { state: { focusSearch: true } });
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [notify, size]);
+  }, [notify]);
 
   if (query.isPending) return <DetailSkeleton />;
   // A failed refresh keeps the record on screen; only a failed first read replaces it.
   if (query.isError && !query.data) {
-    if (query.error instanceof GameUnavailableError) return <GameUnavailable size={size} />;
-    if (!isDemo)
-      return (
-        <main className="detail-page detail-feedback" data-testid="detail-failure">
-          <ReadFailure error={query.error} onRetry={() => void query.refetch()} />
-        </main>
-      );
+    if (query.error instanceof GameUnavailableError) return <GameUnavailable />;
     return (
-      <main className="detail-page detail-feedback">
-        <FeedbackState
-          kind="error"
-          title="暂时未能读取作品详情"
-          description="演示资料仍然安全，请重试；也可以先返回作品库。"
-          action="重新加载"
-          onAction={() => {
-            if (scenario !== 'normal') setScenario('normal');
-            else void query.refetch();
-          }}
-        >
-          <a
-            className="feedback-link"
-            href={back.href}
-            onClick={(event) => {
-              event.preventDefault();
-              navigate(back.href);
-            }}
-          >
-            返回作品库
-          </a>
-        </FeedbackState>
+      <main className="detail-page detail-feedback" data-testid="detail-failure">
+        <ReadFailure error={query.error} onRetry={() => void query.refetch()} />
       </main>
     );
   }
@@ -399,7 +339,6 @@ export function GameDetailPage({
     <main className="detail-page" data-testid="game-detail" data-game-id={loaded.id}>
       <GameHero
         game={loaded}
-        size={size}
         notify={notify}
         backHref={back.href}
         onBack={back.onBack}
@@ -411,13 +350,11 @@ export function GameDetailPage({
           <DetailBody game={loaded} />
         </div>
         <aside className="detail-side" aria-label="我的记录">
-          <PersonalRecord game={loaded} size={size} notify={notify} />
+          <PersonalRecord game={loaded} notify={notify} />
         </aside>
       </div>
       <footer className="detail-footer detail-frame">
-        {isDemo ? (
-          <span>DEMO · 所有游玩时长、成就、评分与备注均为合成或本机演示数据</span>
-        ) : isTestLibrary ? (
+        {isTestLibrary ? (
           <span>隔离测试库 · 所有资料均为合成样本，不是平台同步结果</span>
         ) : (
           <span>本地资料库 · 你的评分与备注只保存在这台电脑上</span>

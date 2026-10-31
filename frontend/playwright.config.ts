@@ -29,9 +29,10 @@ export default defineConfig({
     { name: 'laptop', use: { viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 } },
   ],
   webServer: {
-    command: 'npm run preview',
-    url: 'http://127.0.0.1:4173',
-    reuseExistingServer: !process.env.CI,
-    timeout: 30_000,
+    command: 'node tests/e2e/test-library-server.mjs',
+    url: 'http://127.0.0.1:4173/api/v1/ready',
+    // A new library each run: tests edit it, and must not inherit an earlier run's edits.
+    reuseExistingServer: false,
+    timeout: 120_000,
   },
 });

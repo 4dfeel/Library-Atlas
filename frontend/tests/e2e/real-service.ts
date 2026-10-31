@@ -4,11 +4,11 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import type { Page } from '@playwright/test';
+import { appOrigin } from './evidence';
 
 const run = promisify(execFile);
 const backendDir = resolve('../backend');
 const python = resolve(backendDir, '.venv/Scripts/python.exe');
-export const modeKey = 'library-atlas.workspace-mode.v1';
 
 /**
  * A real service process on an isolated temporary database, serving the production
@@ -104,6 +104,22 @@ function serviceEnv(tempRoot: string): NodeJS.ProcessEnv {
   };
 }
 
-export async function enterRealMode(page: Page) {
-  await page.addInitScript((key) => window.localStorage.setItem(key, 'real'), modeKey);
+/** A work's personal fields as a test wants them, through the same address the page uses. */
+export async function setPersonal(
+  page: Page,
+  id: string,
+  fields: { status?: string; rating?: number | null; note?: string; favorite?: boolean },
+) {
+  const origin = new URL(page.url() === 'about:blank' ? appOrigin : page.url()).origin;
+  const session = await (await page.request.get(`${origin}/api/v1/session`)).json();
+  const work = await (await page.request.get(`${origin}/api/v1/works/${id}`)).json();
+  const response = await page.request.patch(`${origin}/api/v1/works/${id}/personal`, {
+    headers: { Origin: origin, 'X-Atlas-CSRF': session.csrfToken },
+    data: { ...fields, expectedVersion: work.version },
+  });
+  if (!response.ok()) throw new Error(`could not set up ${id}: ${response.status()}`);
 }
+
+/** A work with nothing recorded on it, whatever an earlier test or viewport did. */
+export const clearPersonal = (page: Page, id: string) =>
+  setPersonal(page, id, { status: 'unplayed', rating: null, note: '', favorite: false });

@@ -1,7 +1,7 @@
 import { useVirtualizer, defaultRangeExtractor } from '@tanstack/react-virtual';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ArrowDown, ArrowUp, Download, Star } from 'lucide-react';
-import { useWorkspaceMode, type Game, type LibrarySort } from '@/lib/data';
+import type { Game, LibrarySort } from '@/lib/data';
 import {
   availabilityLabel,
   formatBytes,
@@ -96,7 +96,7 @@ export function GameCollection({
   count: number;
   /** `undefined` while that item's page is still loading. */
   gameAt: (index: number) => Game | undefined;
-  /** Reports the item range on screen, so real mode can read just those pages. */
+  /** Reports the item range on screen, so only those pages are read. */
   onVisibleRange?: (start: number, end: number) => void;
   onScrollChange?: (element: HTMLElement) => void;
   sort: LibrarySort;
@@ -195,7 +195,6 @@ export function GameCollection({
     requestAnimationFrame(focusOpened);
   }, [width, columns, rowHeight]);
   const { notify } = useShell();
-  const isReal = useWorkspaceMode() === 'real';
   const [menu, setMenu] = useState<{ game: Game; x: number; y: number } | null>(null);
   const closeMenu = useCallback(() => setMenu(null), []);
   const openGame = (id: string) => {
@@ -304,14 +303,11 @@ export function GameCollection({
                   <div
                     key={game.id}
                     role="listitem"
-                    onContextMenu={
-                      isReal
-                        ? (event) => {
-                            event.preventDefault();
-                            setMenu({ game, x: event.clientX, y: event.clientY });
-                          }
-                        : undefined
-                    }
+                    data-index={row.index * columns + index}
+                    onContextMenu={(event) => {
+                      event.preventDefault();
+                      setMenu({ game, x: event.clientX, y: event.clientY });
+                    }}
                     onFocusCapture={(event) => {
                       const control = (event.target as HTMLElement).closest<HTMLElement>(
                         '[data-focus-key]',

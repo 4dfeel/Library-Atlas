@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { mkdir, rm, unlink, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { noHorizontalScroll, viewportTag } from './evidence';
-import { enterRealMode, RealService } from './real-service';
+import { RealService } from './real-service';
 
 /** Real API, real files and the browser's real audio element. All sound is generated here. */
 const evidenceDir = resolve('../artifacts/phase-2-checkpoint-10');
@@ -80,10 +80,6 @@ test.describe('listening', () => {
     token = (await (await fetch(`${service.origin}/api/v1/session`)).json()).csrfToken;
   });
   test.afterAll(async () => service?.dispose());
-  test.beforeEach(async ({ page }) => {
-    await enterRealMode(page);
-  });
-
   const audioTime = (page: Page) =>
     page.getByTestId('player-time').evaluate((node) => node.textContent ?? '');
 

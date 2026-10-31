@@ -1,79 +1,63 @@
 # Library Atlas
 
-面向 Windows 11 的本地多平台作品库（Steam + DLsite，以游戏为核心）。当前包含 **Phase 1 前端 Demo**（已获用户确认，见 [验收报告](docs/PHASE1_ACCEPTANCE_REPORT.md)）和 **Phase 2 检查点 1 的本地服务与真实资料库基础**（见 [报告](docs/PHASE2_CHECKPOINT1_REPORT.md)）。Demo 的作品、封面和游玩记录均为合成资料（全部原创、全年龄）；真实资料库初始为空。目前不连接 Steam 或 DLsite。
+**把你买过的 DLsite 作品，整理成一个属于自己的作品库。** 运行在你自己的 Windows 电脑上，资料不上传。
 
-## 正式运行（本地服务 + 真实资料库）
-```bat
-scripts\setup-backend.cmd
-cd frontend && npm.cmd ci && npm.cmd run build && cd ..
-scripts\serve.cmd
-```
-打开 [http://127.0.0.1:8765/](http://127.0.0.1:8765/)，点右上角模式标识可在“演示空间”和“我的资料库”之间切换。真实资料库初始为空：登录 DLsite 后可以同步已购作品、下载并解压；Steam 尚未开放。解压 RAR、7z 需要安装 7-Zip 25.01 或更新版本。详见 [运行说明](docs/LOCAL_DEVELOPMENT.md) 与 [本地 API](docs/LOCAL_API.md)。
+- **一处看全部**：同步已购作品，按类型、制作方、状态筛选和搜索
+- **下载和解压**：一键完成，并自动找到 `DLsiteNest\Library` 里已有的作品
+- **直接启动**：记录单次和累计游玩时长、最近游玩、月度统计
+- **听和看**：内置音声播放器，以及漫画、CG、PDF 阅读器
+- **保护存档**：帮你找到存档位置，备份到你自己的 Google Drive
+- **你的记录**：评分、备注、收藏夹，只保存在这台电脑上
 
-## 只看前端（Demo，无需服务）
+> Steam 还没有开放，目前只支持 DLsite。
 
-使用 **Node 22.22.1 + npm 10.9.4**（见 `.node-version` 和 `frontend/package.json`），打开 PowerShell：
+## 安装（3 步，不用敲命令）
 
-重新执行 `npm.cmd ci` 前先用 `Ctrl+C` 停止已有开发/预览服务，避免 Windows 锁住已加载的原生模块文件。
+系统要求：Windows 11。
 
-```powershell
-Set-Location -LiteralPath 'H:\VSC workspacce\Library Atlas\frontend'
-npm.cmd ci
-npm.cmd run dev
-```
+### 第 1 步：装好两个软件
 
-访问 [http://127.0.0.1:5173/library](http://127.0.0.1:5173/library)。也可双击 `scripts/dev.cmd`，或从任意目录运行它；`scripts/dev.cmd preview` 启动构建预览。脚本按自身位置解析路径，路径中的中文、空格无需移动或改名。
+点击下载，一路点“下一步”就行。已经装过的可以跳过。
 
-另提供 `scripts/dev.ps1` 与 `scripts/check.ps1`，供允许执行本地 PowerShell 脚本的环境使用。当前机器的策略会阻止 `.ps1`；直接用 `.cmd` 或上述 `npm.cmd` 命令即可，无需修改执行策略。
+1. [Python 3.14](https://www.python.org/ftp/python/3.14.3/python-3.14.3-amd64.exe)
+2. [Node.js 22](https://nodejs.org/dist/v22.22.1/node-v22.22.1-x64.msi)
 
-构建与本地静态预览：
+想解压 RAR 和 7z 格式的作品，再装一个 [7-Zip](https://www.7-zip.org/download.html)（25.01 或更新版本）。
 
-```powershell
-npm.cmd run build
-npm.cmd run preview
-```
+### 第 2 步：下载 Library Atlas
 
-预览地址 [http://127.0.0.1:4173/library](http://127.0.0.1:4173/library)。这里用 Vite 评审前端；正式运行由 FastAPI 托管构建（见上）。端口已占用时命令直接报错，请先关闭原来占用该端口的服务。
+1. 在这个页面上方点绿色的 **Code** 按钮，再点 **Download ZIP**。
+2. 把下载的 ZIP 解压到你想放的位置，比如 `D:\Library-Atlas`。
 
-## Demo 使用
+### 第 3 步：安装并打开
 
-- 默认生成 1500 条；[5000 条压力场景](http://127.0.0.1:4173/library?size=5000) 或“关于演示”设置可切换规模。普通可见数量为 1463/4872，其余合成条目属于隐藏、私人或待确认，不进入普通查询。
-- 首页 [http://127.0.0.1:4173/](http://127.0.0.1:4173/) 可切换范围（`?scope=steam|dlsite-games|dlsite-media|games`）；“管理来源连接”演示连接/过期/失败/断开，顶栏下载图标查看演示任务。DLsite 作品详情（如 `demo-00033`）提供“演示下载并解压”，`demo-00144` 首次校验失败可重试，`demo-00048` 仅限官方阅读器。全部为模拟，不登录、不下载、不写文件；`?state=source-expired` 预置 DLsite 会话过期。
-- 顶部按作品类型（全部/游戏/非游戏/漫画·图像/视频/音声/其他）切换，工具栏可按平台筛选、仅看收藏。
-- 网格/列表均虚拟化；支持名称/制作方防抖搜索、类型/游玩/安装筛选、名称/游玩时长排序及收藏。`Ctrl+K` 聚焦搜索（详情页中跳回游戏库搜索；正在输入备注时不跳转）。搜索、筛选、排序与视图写入 URL，返回时恢复。
-- 点击游戏名称或卡片进入详情 `/library/<ID>`，例如 [星穹观测站](http://127.0.0.1:4173/library/demo-00001)。状态、1–5 星评分、备注与收藏是**演示修改**，保存在本浏览器 localStorage（键 `library-atlas.demo-edits.v1.atlas-demo-41544c41`），刷新后保留；“演示设置 → 重置演示修改…”确认后清除。不写入任何真实资料。
-- 详情边界样本：`demo-00010` 无背景、`demo-00036` 无封面、`demo-00025` 双缺图、`demo-00008` 未开始、`demo-00002` 无成就、`demo-00003` 无评分与备注、`demo-00029` 超长中日英标题；`demo-00098`（私人）与 `demo-99999`（不存在）显示同一不可用页面。`?state=loading|error|save-error` 复现加载、读取失败与保存失败。
-- `?state=empty` / `?state=error` / `?state=loading` 用于检查反馈；`?q=跨越星海` 检查超长标题，`?q=晨雾回廊` 检查缺封面。
-- `frontend/.env.example` 给出构建配置；`VITE_DEMO_MODE=false` 构建时移除演示空间，只保留真实资料库。
-- 收藏夹管理、游玩计划、发现、私人空间、启动/打开作品、真实登录、库同步与真实下载解压尚未开放；未实现操作明确标注，不会假装已经成功。
+1. 打开解压出来的文件夹，**双击 `install.cmd`**，等它显示“安装完成”，大约几分钟。
+2. **双击 `start.cmd`**，浏览器会自动打开 Library Atlas。
 
-## 验证与截图
+以后每次使用，只需要双击 `start.cmd`。用的时候不要关闭那个黑色窗口，用完关掉它就行。
 
-```powershell
-npm.cmd run typecheck
-npm.cmd run lint
-npm.cmd run format:check
-npm.cmd test
-npm.cmd run build
-npx.cmd --no-install playwright install chromium
-npm.cmd run test:e2e
-```
+## 打开之后
 
-快速检查可用 `npm.cmd run test:smoke`。完整检查使用七档 CSS 视口/DPR：1080P、2K、4K、4K@1.5、1080P@2、1280×720、1440×900。DPR 模拟不能替代 Windows 系统缩放人工检查。
+作品库一开始是空的，这是正常的：
 
-生成证据位于 `artifacts/phase-1-acceptance/`：`screenshots/<档位>/<页面-状态>__<视口>@<DPR>.png`、`layout-checks.jsonl`（已通过的布局断言）、`performance/*.json`（性能与离线样本）。运行后在仓库根目录执行 `node scripts/index-evidence.mjs` 生成 `INDEX.md` 覆盖表。HTML 报告在 `frontend/playwright-report/`。这些运行产物被 Git 忽略；GitHub CI 保留短期 artifact，不把 trace 或用户资料写入仓库。查看报告：`npx.cmd --no-install playwright show-report`。
+1. 点左下角的 **设置**，在“账号”里登录 DLsite。
+2. 登录后点 **同步**，你买过的作品就会出现。
+3. 在“文件夹”里选择作品的下载位置。
 
-单元测试验证可见性过滤、搜索排序、收藏隔离、SVG 安全、组件反馈、弹窗焦点与语义配色对比。Playwright 验证布局、实际筛选、快捷键、收藏、焦点返回、滚动锚点、图片请求范围和浏览器性能。新截图是评审证据；用户确认前不作为已批准的回归基线。
+用 DLsiteNest 下载过的作品，Atlas 会自动找到并关联，不会改动你的文件。
 
-## 结构与本地素材
+## 遇到问题、更新、卸载
 
-- `frontend/src/app/`：AppShell（侧栏、顶栏、路由切换、演示设置）。`src/lib/router.ts` 为最小 History API 路由。
-- `frontend/src/features/game-detail/`：详情页顶部展示区、正文与“我的记录”编辑。
-- `frontend/src/components/`：共用卡片及按 shadcn/ui 模式组合的 Radix 基础组件。
-- `frontend/src/lib/data/`：类型、Demo source、隐私选择器、TanStack Query hooks；页面不直接导入 fixture。未来仅替换 source，真实服务端仍须执行隐私过滤。
-- `frontend/src/features/library/`：Library 页面、URL 状态、容器测量与 TanStack Virtual 网格/列表。
-- `frontend/src/styles/globals.css`：设计 token、组件状态、响应式与减少动画规则。
-- `frontend/public/demo/covers/`：24 张原创叙事矢量插画；`node scripts/generate-demo-covers.mjs` 从仓库根目录可确定性重建，同时生成 `public/demo/backdrops/` 24 幅 2:1 详情背景。其余程序化 SVG 只在可见卡片生成，缺图使用独立占位。
-- 字体通过锁定的 `@fontsource-variable/noto-sans-sc` 包打入构建，使用 unicode-range 按需加载本地 WOFF2，无 Google Fonts/CDN 请求。系统 Segoe UI 优先；中文可回退 Noto Sans SC。字体许可证随发布物提供于 `licenses/noto-sans-sc-OFL.txt`。
+都写在 [详细教程](docs/INSTALL.md) 里。
 
-需求和范围以 [当前执行规范](docs/specs/PHASE1.md)、[设计规范](docs/DESIGN.md) 和 [路线图](docs/ROADMAP.md) 为准。Phase 2 按检查点逐点授权：本地服务与真实模式基础已完成；DLsite 登录、作品同步、下载和解压已实现（下载和解压待真实验证）；Steam 尚未开始。
+## 安全吗？
+
+- 所有资料都保存在你的电脑上，没有任何数据统计。
+- 服务只对本机开放，局域网和外网都访问不到。
+- 登录信息保存在 Windows 凭据管理器。只有你勾选“记住账号和密码”时才会保存密码。
+- Library Atlas 不绕过平台的授权或版权保护。
+- 游戏是以你的身份运行的程序，来源不明的作品请不要直接运行。
+
+## 参与开发
+
+见 [运行与开发说明](docs/LOCAL_DEVELOPMENT.md)。

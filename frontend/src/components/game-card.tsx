@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Download, ImageOff, Star } from 'lucide-react';
-import { getCoverSource, useWorkspaceMode, type Game } from '@/lib/data';
+import { getCoverSource, type Game } from '@/lib/data';
 import { availabilityLabel, statusLabels, workMeta } from '@/lib/utils';
 import { AppLink } from '@/components/app-link';
 import { Tooltip } from './ui/tooltip';
@@ -17,7 +17,6 @@ export function GameCover({
 }) {
   const [failed, setFailed] = useState(false);
   const source = getCoverSource(game);
-  const isDemo = useWorkspaceMode() === 'demo';
   return (
     <div
       className={`game-cover${compact ? ' compact-cover' : ''}`}
@@ -28,7 +27,7 @@ export function GameCover({
       {source && !failed ? (
         <img
           src={source}
-          alt={isDemo ? `${game.title} 演示封面` : `${game.title} 封面`}
+          alt={`${game.title} 封面`}
           loading={priority ? 'eager' : 'lazy'}
           fetchPriority={priority ? 'high' : undefined}
           decoding="async"
@@ -68,8 +67,6 @@ export function GameCard({
   href: string;
   onOpen?: () => void;
 }) {
-  const isDemo = useWorkspaceMode() === 'demo';
-  const savedNote = isDemo ? ' · 演示修改保存在本机' : '';
   return (
     <article className="game-card" data-testid="game-card" data-game-card data-game-id={game.id}>
       <div className="card-art">
@@ -81,7 +78,7 @@ export function GameCard({
             {availabilityLabel(game)}
           </span>
         )}
-        <Tooltip content={`${game.favorite ? '取消收藏' : '收藏作品'}${savedNote}`}>
+        <Tooltip content={game.favorite ? '取消收藏' : '收藏作品'}>
           <button
             data-focus-key="favorite"
             className={`favorite-button${game.favorite ? ' is-favorite' : ''}`}

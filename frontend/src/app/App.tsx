@@ -23,18 +23,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
 import { Tooltip } from '@/components/ui/tooltip';
-import {
-  getDemoEditCount,
-  isActiveTask,
-  useDemoTasks,
-  useDownloads,
-  useExtractions,
-  useDemoTaskSync,
-  useModeCacheIsolation,
-  useResetDemoEdits,
-  useWorkspace,
-  type DemoSize,
-} from '@/lib/data';
+import { useDownloads, useExtractions, useWorkspace } from '@/lib/data';
 import { AppLink } from '@/components/app-link';
 import {
   dashboardHref,
@@ -46,19 +35,16 @@ import {
   useLocationKey,
 } from '@/lib/router';
 import { DashboardPage } from '@/features/dashboard/dashboard-page';
-import { SourcesDialog } from '@/features/demo-services/sources-dialog';
 import { MiniPlayer } from '@/features/audio/audio-panel';
 import { ActivityPage } from '@/features/activity/activity-page';
 import { CollectionsPage } from '@/features/collections/collections-page';
 import { DownloadBar, DownloadsPage } from '@/features/downloads/downloads-page';
-import { TasksDialog } from '@/features/demo-services/tasks-dialog';
 import { AccountMenu } from '@/features/workspace/account-menu';
-import { WorkspaceSwitch } from '@/features/workspace/workspace-switch';
+import { SourcesDialog } from '@/features/workspace/sources-dialog';
 import { SettingsPage } from '@/features/settings/settings-page';
 import { RouteBoundary } from './route-boundary';
 import { ShellContext } from './shell-context';
 import { LibraryPage } from '@/features/library/library-page';
-import { noteDrafts } from '@/features/game-detail/note-drafts';
 
 // Route-level split keeps the Library bundle unchanged by the detail page.
 const detailModule = () => import('@/features/game-detail/game-detail-page');
@@ -122,35 +108,17 @@ function SoonItem({
   );
 }
 
-function sizeFromUrl(): DemoSize {
-  return new URLSearchParams(window.location.search).get('size') === '5000' ? 5000 : 1500;
-}
-
 export function App() {
   const narrow = useNarrow();
   const [manualCollapsed, setManualCollapsed] = useState(false);
   const collapsed = narrow || manualCollapsed;
   const locationKey = useLocationKey();
   const route = matchRoute(window.location.pathname);
-  const workspace = useWorkspace();
-  const { mode, isDemo, isTestLibrary, serviceDown, serviceMessage, retryService } = workspace;
-  const [demoSize, setSize] = useState<DemoSize>(sizeFromUrl);
-  // Scale is a property of the synthetic dataset; the real library has its own size.
-  const size: DemoSize = isDemo ? demoSize : 1500;
+  const { isTestLibrary, serviceDown, serviceMessage, retryService } = useWorkspace();
   const [aboutOpen, setAboutOpen] = useState(false);
-  const [confirmReset, setConfirmReset] = useState(false);
   const [sourcesOpen, setSourcesOpen] = useState(false);
-  const [tasksOpen, setTasksOpen] = useState(false);
   const [toast, setToast] = useState<Toast | null>(null);
   const reduceMotion = useReducedMotion();
-  const resetEdits = useResetDemoEdits(size);
-
-  // Size travels in the URL; follow it when history moves between entries.
-  const [sizeLocation, setSizeLocation] = useState(locationKey);
-  if (sizeLocation !== locationKey) {
-    setSizeLocation(locationKey);
-    setSize(sizeFromUrl());
-  }
   useEffect(() => {
     if (!toast) return;
     const timer = window.setTimeout(() => setToast(null), 2400);
@@ -160,33 +128,14 @@ export function App() {
   const notify = useCallback((message: string, tone: 'success' | 'error' = 'success') => {
     setToast({ id: Date.now(), message, tone });
   }, []);
-  const setDemoSize = (value: DemoSize) => {
-    setSize(value);
-    const url = new URL(window.location.href);
-    if (value === 5000) url.searchParams.set('size', '5000');
-    else url.searchParams.delete('size');
-    window.history.replaceState(window.history.state, '', url);
-  };
   const openAbout = useCallback(() => setAboutOpen(true), []);
   const openSources = useCallback(() => setSourcesOpen(true), []);
-  // A real library has a whole page for this; the demo keeps its dialog.
-  const openTasks = useCallback(() => {
-    if (isDemo) setTasksOpen(true);
-    else navigate(downloadsHref());
-  }, [isDemo]);
+  const openTasks = useCallback(() => navigate(downloadsHref()), []);
   const shell = useMemo(
     () => ({ notify, openSources, openTasks }),
     [notify, openSources, openTasks],
   );
-  const demoRunning = useDemoTasks().filter(isActiveTask).length;
-  const realDownloads = useDownloads();
-  const realExtractions = useExtractions();
-  const runningTasks = isDemo
-    ? demoRunning
-    : realDownloads.activeCount + realExtractions.activeCount;
-  useDemoTaskSync();
-  useModeCacheIsolation();
-  const editCount = aboutOpen ? getDemoEditCount(size) : 0;
+  const runningTasks = useDownloads().activeCount + useExtractions().activeCount;
 
   return (
     <MotionConfig reducedMotion="user">
@@ -199,7 +148,7 @@ export function App() {
                 {!collapsed && <div className="nav-label">我的空间</div>}
                 <AppLink
                   aria-label="首页"
-                  to={dashboardHref(size)}
+                  to={dashboardHref()}
                   className={`nav-item${route.name === 'dashboard' ? ' active' : ''}`}
                   aria-current={route.name === 'dashboard' ? 'page' : undefined}
                 >
@@ -208,7 +157,7 @@ export function App() {
                 </AppLink>
                 <AppLink
                   aria-label="作品库"
-                  to={libraryHref(size)}
+                  to={libraryHref()}
                   className={`nav-item${route.name === 'library' || route.name === 'game' ? ' active' : ''}`}
                   aria-current={route.name === 'library' ? 'page' : undefined}
                 >
@@ -220,35 +169,24 @@ export function App() {
                     </>
                   )}
                 </AppLink>
-                {isDemo ? (
-                  <SoonItem
-                    icon={FolderHeart}
-                    label="收藏夹"
-                    title="收藏夹将在后续阶段开放"
-                    collapsed={collapsed}
-                  />
-                ) : (
-                  <AppLink
-                    aria-label="收藏夹"
-                    to="/collections"
-                    className={`nav-item${route.name === 'collections' ? ' active' : ''}`}
-                    aria-current={route.name === 'collections' ? 'page' : undefined}
-                  >
-                    <FolderHeart size={19} />
-                    {!collapsed && <span>收藏夹</span>}
-                  </AppLink>
-                )}
-                {!isDemo && (
-                  <AppLink
-                    aria-label="游玩记录"
-                    to="/activity"
-                    className={`nav-item${route.name === 'activity' ? ' active' : ''}`}
-                    aria-current={route.name === 'activity' ? 'page' : undefined}
-                  >
-                    <ChartColumn size={19} />
-                    {!collapsed && <span>游玩记录</span>}
-                  </AppLink>
-                )}
+                <AppLink
+                  aria-label="收藏夹"
+                  to="/collections"
+                  className={`nav-item${route.name === 'collections' ? ' active' : ''}`}
+                  aria-current={route.name === 'collections' ? 'page' : undefined}
+                >
+                  <FolderHeart size={19} />
+                  {!collapsed && <span>收藏夹</span>}
+                </AppLink>
+                <AppLink
+                  aria-label="游玩记录"
+                  to="/activity"
+                  className={`nav-item${route.name === 'activity' ? ' active' : ''}`}
+                  aria-current={route.name === 'activity' ? 'page' : undefined}
+                >
+                  <ChartColumn size={19} />
+                  {!collapsed && <span>游玩记录</span>}
+                </AppLink>
                 <SoonItem
                   icon={Gamepad2}
                   label="游玩计划"
@@ -290,11 +228,7 @@ export function App() {
                 <div className="sidebar-profile">
                   <span className="profile-avatar">A</span>
                   {!collapsed &&
-                    (isDemo ? (
-                      <span>
-                        Atlas 演示空间<small>独立合成数据</small>
-                      </span>
-                    ) : isTestLibrary ? (
+                    (isTestLibrary ? (
                       <span>
                         隔离测试库<small>合成样本，不是同步结果</small>
                       </span>
@@ -339,7 +273,7 @@ export function App() {
                       <span aria-current="page">下载</span>
                     ) : (
                       <>
-                        <AppLink to={libraryHref(size)} className="breadcrumb-link">
+                        <AppLink to={libraryHref()} className="breadcrumb-link">
                           作品库
                         </AppLink>
                         <ChevronRight size={13} />
@@ -350,26 +284,22 @@ export function App() {
                 </div>
                 <div className="topbar-right">
                   <button
-                    className="demo-indicator"
+                    className="library-indicator"
                     data-testid="workspace-indicator"
-                    data-mode={
-                      isDemo ? 'demo' : serviceDown ? 'offline' : isTestLibrary ? 'test' : 'real'
-                    }
-                    title="切换资料空间"
+                    data-mode={serviceDown ? 'offline' : isTestLibrary ? 'test' : 'real'}
+                    title="资料库状态"
                     onClick={openAbout}
                   >
                     <span />
-                    {isDemo
-                      ? 'DEMO · 演示模式'
-                      : serviceDown
-                        ? '本地服务未连接'
-                        : isTestLibrary
-                          ? '测试库 · 合成数据'
-                          : '我的资料库'}
+                    {serviceDown
+                      ? '本地服务未连接'
+                      : isTestLibrary
+                        ? '测试库 · 合成数据'
+                        : '我的资料库'}
                   </button>
-                  {!isDemo && <AccountMenu />}
+                  <AccountMenu />
                   <span className="topbar-divider" />
-                  <Tooltip content={isDemo ? '下载与解压任务（演示）' : '下载与解压任务'}>
+                  <Tooltip content="下载与解压任务">
                     <Button
                       size="icon"
                       variant="ghost"
@@ -381,169 +311,69 @@ export function App() {
                       {runningTasks > 0 && <span className="tasks-badge">{runningTasks}</span>}
                     </Button>
                   </Tooltip>
-                  <Tooltip content={isDemo ? '关于本次演示' : '资料库状态'}>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      aria-label={isDemo ? '关于演示' : '资料库状态'}
-                      onClick={openAbout}
-                    >
+                  <Tooltip content="资料库状态">
+                    <Button size="icon" variant="ghost" aria-label="资料库状态" onClick={openAbout}>
                       <CircleHelp size={18} />
                     </Button>
                   </Tooltip>
                 </div>
               </header>
 
-              <RouteBoundary key={`${mode}-${locationKey}`}>
+              <RouteBoundary key={locationKey}>
                 <Suspense fallback={<main className="detail-page" aria-busy="true" />}>
                   {route.name === 'dashboard' ? (
-                    <DashboardPage key={`${mode}-dashboard-${locationKey}`} size={size} />
+                    <DashboardPage key={`dashboard-${locationKey}`} />
                   ) : route.name === 'library' ? (
                     <LibraryPage
-                      key={`${mode}-library-${locationKey}`}
-                      size={size}
+                      key={`library-${locationKey}`}
                       onAbout={openAbout}
                       notify={notify}
                     />
                   ) : route.name === 'settings' ? (
-                    <SettingsPage key={`${mode}-settings`} onDemoSettings={openAbout} />
-                  ) : route.name === 'downloads' && !isDemo ? (
-                    <DownloadsPage size={size} />
-                  ) : route.name === 'collections' && !isDemo ? (
+                    <SettingsPage />
+                  ) : route.name === 'downloads' ? (
+                    <DownloadsPage />
+                  ) : route.name === 'collections' ? (
                     <CollectionsPage />
-                  ) : route.name === 'activity' && !isDemo ? (
+                  ) : route.name === 'activity' ? (
                     <ActivityPage />
                   ) : route.name === 'game' ? (
-                    <GameDetailPage
-                      key={`${mode}-${route.id}-${size}`}
-                      id={route.id}
-                      size={size}
-                      notify={notify}
-                    />
+                    <GameDetailPage key={route.id} id={route.id} notify={notify} />
                   ) : (
-                    <GameUnavailable size={size} />
+                    <GameUnavailable />
                   )}
                 </Suspense>
               </RouteBoundary>
-              {!isDemo && <MiniPlayer />}
-              {!isDemo && <DownloadBar />}
+              <MiniPlayer />
+              <DownloadBar />
             </div>
           </div>
           <Dialog
             open={aboutOpen}
-            onOpenChange={(open) => {
-              setAboutOpen(open);
-              if (!open) setConfirmReset(false);
-            }}
-            title={isDemo ? '你的演示空间' : isTestLibrary ? '隔离测试库' : '我的资料库'}
+            onOpenChange={setAboutOpen}
+            title={isTestLibrary ? '隔离测试库' : '我的资料库'}
             description={
-              isDemo
-                ? '当前展示的作品、封面与游玩记录均为合成资料，与真实 Steam / DLsite 库存完全隔离。'
-                : isTestLibrary
-                  ? '这是用于验证的合成样本库，内容不是平台同步结果，也不会写入你的真实资料。'
-                  : '评分、备注、状态与收藏保存在这台电脑的本地资料库中，与演示空间完全隔离。'
+              isTestLibrary
+                ? '这是用于验证的合成样本库，内容不是平台同步结果，也不会写入你的真实资料。'
+                : '评分、备注、状态与收藏保存在这台电脑的本地资料库中。'
             }
           >
-            <div className="demo-settings">
-              <WorkspaceSwitch />
-              {!isDemo && (
-                <div className="demo-explanation" data-testid="service-status">
-                  <ShieldCheck size={18} />
-                  <p>
-                    {serviceDown
-                      ? (serviceMessage ??
-                        '本地服务没有响应。你的资料没有受到影响；请确认服务已启动。')
-                      : '本地服务已连接。下载和解压将在后续版本开放。'}
-                  </p>
-                  {serviceDown && (
-                    <Button variant="ghost" size="sm" onClick={retryService}>
-                      <RotateCcw size={14} />
-                      重试
-                    </Button>
-                  )}
-                </div>
-              )}
-              {isDemo && (
-                <>
-                  <div>
-                    <span className="eyebrow">DATA SCENARIO</span>
-                    <h3>选择收藏规模</h3>
-                    <p>固定种子生成；两种规模共用前 1500 条记录及其演示修改。</p>
-                  </div>
-                  <div className="scenario-buttons">
-                    {([1500, 5000] as const).map((value) => (
-                      <button
-                        key={value}
-                        className={size === value ? 'selected' : ''}
-                        aria-pressed={size === value}
-                        onClick={() => setDemoSize(value)}
-                      >
-                        <span>
-                          {value.toLocaleString('zh-CN')}
-                          <small>部作品</small>
-                        </span>
-                        {size === value && <Check size={18} />}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="demo-explanation">
-                    <ShieldCheck size={18} />
-                    <p>
-                      私人、隐藏与待确认条目已在数据选择层排除，按 ID
-                      读取和修改同样受限。评分、备注、状态与收藏只保存在本浏览器的演示存储中，不会写入真实资料。
-                    </p>
-                  </div>
-                  <div className="demo-reset">
-                    {confirmReset ? (
-                      <>
-                        <p role="alert">
-                          将清除本浏览器中 {editCount.toLocaleString('zh-CN')}{' '}
-                          部作品的演示修改（评分、备注、状态、收藏），恢复为初始合成资料。未保存的备注草稿也会丢弃。此操作无法撤销。
-                        </p>
-                        <div>
-                          <Button
-                            variant="secondary"
-                            size="sm"
-                            disabled={resetEdits.isPending}
-                            onClick={() =>
-                              resetEdits.mutate(undefined, {
-                                onSuccess: () => {
-                                  noteDrafts.clear();
-                                  setConfirmReset(false);
-                                  notify('演示修改已重置');
-                                },
-                                onError: (error) => notify(error.message, 'error'),
-                              })
-                            }
-                          >
-                            <RotateCcw size={14} />
-                            确认重置
-                          </Button>
-                          <Button variant="ghost" size="sm" onClick={() => setConfirmReset(false)}>
-                            取消
-                          </Button>
-                        </div>
-                      </>
-                    ) : (
-                      <>
-                        <p>
-                          已修改 {editCount.toLocaleString('zh-CN')}{' '}
-                          部作品。重置只影响本浏览器的演示存储。
-                        </p>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          disabled={editCount === 0}
-                          onClick={() => setConfirmReset(true)}
-                        >
-                          <RotateCcw size={14} />
-                          重置演示修改…
-                        </Button>
-                      </>
-                    )}
-                  </div>
-                </>
-              )}
+            <div className="about-panel">
+              <div className="about-note" data-testid="service-status">
+                <ShieldCheck size={18} />
+                <p>
+                  {serviceDown
+                    ? (serviceMessage ??
+                      '本地服务没有响应。你的资料没有受到影响；请确认服务已启动。')
+                    : '本地服务已连接。'}
+                </p>
+                {serviceDown && (
+                  <Button variant="ghost" size="sm" onClick={retryService}>
+                    <RotateCcw size={14} />
+                    重试
+                  </Button>
+                )}
+              </div>
               <Button variant="secondary" onClick={() => setAboutOpen(false)}>
                 继续浏览
                 <ChevronRight size={15} />
@@ -565,18 +395,7 @@ export function App() {
               </motion.div>
             )}
           </AnimatePresence>
-          <SourcesDialog
-            open={sourcesOpen}
-            onOpenChange={setSourcesOpen}
-            size={size}
-            demoEnabled={isDemo}
-          />
-          <TasksDialog
-            open={tasksOpen}
-            onOpenChange={setTasksOpen}
-            size={size}
-            demoEnabled={isDemo}
-          />
+          <SourcesDialog open={sourcesOpen} onOpenChange={setSourcesOpen} />
         </TooltipPrimitive.Provider>
       </ShellContext.Provider>
     </MotionConfig>

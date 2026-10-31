@@ -16,24 +16,21 @@ import { AppLink } from '@/components/app-link';
 import { FeedbackState } from '@/components/feedback-state';
 import { GameCover } from '@/components/game-card';
 import { useShell } from '@/app/shell-context';
-import { ConnectionBadge } from '@/features/demo-services/sources-dialog';
-import { realConnectionState } from '@/features/demo-services/labels';
+import { realConnectionState } from '@/features/workspace/connection-labels';
+import { ConnectionBadge } from '@/features/workspace/sources-dialog';
 import { ReadFailure, RealLibraryEmpty } from '@/features/workspace/service-state';
 import { HeroBackdrop } from '@/features/game-detail/game-hero';
 import { libraryHrefFor } from '@/features/library/library-url';
 import {
   dashboardScopes,
-  isActiveTask,
   scopeLibraryFilters,
-  useConnections,
   useDashboard,
-  useDemoTasks,
+  useDownloads,
+  useExtractions,
   useRealSources,
   useWorkspace,
   type DashboardResult,
   type DashboardScope,
-  type DemoScenario,
-  type DemoSize,
   type Game,
   type GameStatus,
 } from '@/lib/data';
@@ -68,31 +65,24 @@ function readScope(): DashboardScope {
   return dashboardScopes.includes(value as DashboardScope) ? (value as DashboardScope) : 'all';
 }
 
-function scenarioFromUrl(): DemoScenario {
-  const value = new URLSearchParams(window.location.search).get('state');
-  return value === 'empty' || value === 'error' || value === 'loading' ? value : 'normal';
-}
-
 const hours = (minutes: number) =>
   (minutes / 60).toLocaleString('zh-CN', { maximumFractionDigits: minutes < 6000 ? 1 : 0 });
 
 /** Detail links from the Dashboard come back here with history Back. */
 function WorkLink({
   game,
-  size,
   className,
   children,
   label,
 }: {
   game: Game;
-  size: DemoSize;
   className?: string;
   children: ReactNode;
   label?: string;
 }) {
   return (
     <AppLink
-      to={gameHref(game.id, size)}
+      to={gameHref(game.id)}
       state={{ fromDashboard: true }}
       className={className}
       aria-label={label}
@@ -131,10 +121,9 @@ function Stat({
   );
 }
 
-function Stats({ data, size }: { data: DashboardResult; size: DemoSize }) {
-  const { isDemo } = useWorkspace();
+function Stats({ data }: { data: DashboardResult }) {
   const t = data.totals;
-  const scoped = libraryHrefFor(size, scopeLibraryFilters(data.scope));
+  const scoped = libraryHrefFor(scopeLibraryFilters(data.scope));
   if (!data.hasGames)
     return (
       <dl className="dash-stats">
@@ -150,7 +139,7 @@ function Stats({ data, size }: { data: DashboardResult; size: DemoSize }) {
           label="有体验记录"
           value={t.usedNonGames.toLocaleString('zh-CN')}
           unit="部"
-          note={isDemo ? '演示记录 · 阅读、观看或收听' : '阅读、观看或收听'}
+          note="阅读、观看或收听"
         />
         <Stat
           label="待体验"
@@ -158,12 +147,7 @@ function Stats({ data, size }: { data: DashboardResult; size: DemoSize }) {
           unit="部"
           note="按你标记的状态"
         />
-        <Stat
-          label="已下载"
-          value={t.local.toLocaleString('zh-CN')}
-          unit="部"
-          note={isDemo ? '本机可用 · 演示' : '本机可用'}
-        />
+        <Stat label="已下载" value={t.local.toLocaleString('zh-CN')} unit="部" note="本机可用" />
       </dl>
     );
   const recorded = t.games - t.unknownPlaytimeGames;
@@ -198,7 +182,7 @@ function Stats({ data, size }: { data: DashboardResult; size: DemoSize }) {
         value={t.unstartedGames.toLocaleString('zh-CN')}
         unit="款"
         note="按你标记的“未开始”状态"
-        href={libraryHrefFor(size, {
+        href={libraryHrefFor({
           ...scopeLibraryFilters(data.scope),
           kind: 'game',
           status: 'unplayed',
@@ -211,7 +195,7 @@ function Stats({ data, size }: { data: DashboardResult; size: DemoSize }) {
         unit={recorded ? '小时' : undefined}
         note={
           recorded
-            ? `来自 ${recorded.toLocaleString('zh-CN')} 款有记录的游戏${isDemo ? ' · 演示' : ''}`
+            ? `来自 ${recorded.toLocaleString('zh-CN')} 款有记录的游戏`
             : '该来源不提供游玩时长'
         }
         testId="stat-playtime"
@@ -245,19 +229,17 @@ function ScopeSwitch({
 
 function Featured({
   game,
-  size,
   onNext,
   canCycle,
 }: {
   game: Game;
-  size: DemoSize;
   onNext: () => void;
   canCycle: boolean;
 }) {
   const used = formatShortDate(game.lastPlayedAt);
   return (
     <div className="dash-feature" data-testid="featured" data-game-id={game.id}>
-      <WorkLink game={game} size={size} className="dash-feature-cover" label={`查看 ${game.title}`}>
+      <WorkLink game={game} className="dash-feature-cover" label={`查看 ${game.title}`}>
         <GameCover game={game} priority />
       </WorkLink>
       <div className="dash-feature-copy">
@@ -289,7 +271,7 @@ function Featured({
           </span>
         </p>
         <div className="hero-actions">
-          <WorkLink game={game} size={size} className="button button-primary">
+          <WorkLink game={game} className="button button-primary">
             查看详情
             <ArrowRight size={16} />
           </WorkLink>
@@ -305,8 +287,7 @@ function Featured({
   );
 }
 
-function RecentRow({ data, size }: { data: DashboardResult; size: DemoSize }) {
-  const { isDemo } = useWorkspace();
+function RecentRow({ data }: { data: DashboardResult }) {
   const ref = useRef<HTMLDivElement>(null);
   const width = useMeasuredWidth(ref);
   // Show whole cards only; never render hidden-but-focusable extras.
@@ -321,7 +302,7 @@ function RecentRow({ data, size }: { data: DashboardResult; size: DemoSize }) {
           <Timer size={16} />
           {gameOnly ? '最近游玩' : '最近体验'}
         </h2>
-        <span className="dash-section-note">{isDemo ? '演示记录 · ' : ''}按最近使用排序</span>
+        <span className="dash-section-note">按最近使用排序</span>
       </div>
       <div
         className="recent-row"
@@ -335,7 +316,7 @@ function RecentRow({ data, size }: { data: DashboardResult; size: DemoSize }) {
           </p>
         ) : (
           data.recent.slice(0, count).map((game) => (
-            <WorkLink key={game.id} game={game} size={size} className="recent-card">
+            <WorkLink key={game.id} game={game} className="recent-card">
               <GameCover game={game} />
               <span className="recent-title">{game.title}</span>
               <span className="recent-meta">
@@ -349,15 +330,7 @@ function RecentRow({ data, size }: { data: DashboardResult; size: DemoSize }) {
   );
 }
 
-function Tonight({
-  data,
-  size,
-  onNext,
-}: {
-  data: DashboardResult;
-  size: DemoSize;
-  onNext: () => void;
-}) {
+function Tonight({ data, onNext }: { data: DashboardResult; onNext: () => void }) {
   const title = data.hasGames ? '今晚玩什么' : '今晚看点、听点什么';
   return (
     <section className="dash-tonight" aria-labelledby="tonight-title">
@@ -379,7 +352,7 @@ function Tonight({
         <ol className="tonight-list" data-testid="recommendations">
           {data.recommendations.map(({ game, reasons }) => (
             <li key={game.id}>
-              <WorkLink game={game} size={size} className="tonight-item">
+              <WorkLink game={game} className="tonight-item">
                 <GameCover game={game} compact />
                 <span>
                   <span className="tonight-title">{game.title}</span>
@@ -402,7 +375,7 @@ function Tonight({
 
 const backlogOrder: GameStatus[] = ['unplayed', 'playing', 'paused', 'completed'];
 
-function Backlog({ data, size }: { data: DashboardResult; size: DemoSize }) {
+function Backlog({ data }: { data: DashboardResult }) {
   const total = backlogOrder.reduce((sum, status) => sum + data.backlog[status], 0);
   const scoped = scopeLibraryFilters(data.scope);
   return (
@@ -432,7 +405,7 @@ function Backlog({ data, size }: { data: DashboardResult; size: DemoSize }) {
         {backlogOrder.map((status) => (
           <li key={status}>
             <AppLink
-              to={libraryHrefFor(size, {
+              to={libraryHrefFor({
                 ...scoped,
                 ...(data.hasGames ? { kind: 'game' as const } : {}),
                 status,
@@ -454,7 +427,7 @@ function Backlog({ data, size }: { data: DashboardResult; size: DemoSize }) {
   );
 }
 
-function MostPlayed({ data, size }: { data: DashboardResult; size: DemoSize }) {
+function MostPlayed({ data }: { data: DashboardResult }) {
   const max = data.mostPlayed[0]?.playtimeMinutes ?? 1;
   return (
     <section className="dash-module" aria-labelledby="most-played-title">
@@ -468,7 +441,7 @@ function MostPlayed({ data, size }: { data: DashboardResult; size: DemoSize }) {
           {data.mostPlayed.map((game, index) => (
             <li key={game.id}>
               <span className="rank">{index + 1}</span>
-              <WorkLink game={game} size={size} className="most-played-title">
+              <WorkLink game={game} className="most-played-title">
                 {game.title}
               </WorkLink>
               <span className="most-played-hours">{hours(game.playtimeMinutes ?? 0)} 小时</span>
@@ -485,24 +458,17 @@ function MostPlayed({ data, size }: { data: DashboardResult; size: DemoSize }) {
   );
 }
 
-function Sources({ data, size }: { data: DashboardResult; size: DemoSize }) {
-  const { isDemo } = useWorkspace();
-  const connections = useConnections();
-  const realSources = useRealSources(!isDemo).data;
-  const tasks = useDemoTasks();
+function Sources({ data }: { data: DashboardResult }) {
+  const realSources = useRealSources().data;
+  const running = useDownloads().activeCount + useExtractions().activeCount;
   const { openSources, openTasks } = useShell();
-  const running = tasks.filter(isActiveTask).length;
-  const failed = tasks.filter((task) => task.phase === 'failed').length;
-  const done = tasks.filter((task) => task.phase === 'done').length;
   return (
     <section className="dash-module dash-sources" aria-labelledby="sources-title">
       <h2 id="sources-title">
         <PlugZap size={15} />
         来源与同步
       </h2>
-      <p className="dash-module-note">
-        {isDemo ? '演示状态；不会连接真实账号。' : '作品资料来自你手动触发的同步。'}
-      </p>
+      <p className="dash-module-note">作品资料来自你手动触发的同步。</p>
       <ul className="source-list">
         {(['steam', 'dlsite'] as const).map((platform) => (
           <li key={platform} data-source={platform}>
@@ -510,18 +476,14 @@ function Sources({ data, size }: { data: DashboardResult; size: DemoSize }) {
               {platformLabels[platform].slice(0, 1)}
             </span>
             <span className="source-name">
-              <AppLink to={libraryHrefFor(size, { platform })}>{platformLabels[platform]}</AppLink>
+              <AppLink to={libraryHrefFor({ platform })}>{platformLabels[platform]}</AppLink>
               <small>
                 {data.sources[platform].works.toLocaleString('zh-CN')} 部 · 本机{' '}
                 {data.sources[platform].local.toLocaleString('zh-CN')}
               </small>
             </span>
             <ConnectionBadge
-              state={
-                isDemo
-                  ? connections[platform].state
-                  : realConnectionState(realSources?.find((source) => source.id === platform))
-              }
+              state={realConnectionState(realSources?.find((source) => source.id === platform))}
             />
           </li>
         ))}
@@ -531,11 +493,7 @@ function Sources({ data, size }: { data: DashboardResult; size: DemoSize }) {
       </button>
       <div className="queue-summary" data-testid="queue-summary">
         <Download size={14} />
-        <span>
-          {tasks.length
-            ? `下载队列：${running} 个进行中${failed ? ` · ${failed} 个失败` : ''}${done ? ` · ${done} 个完成` : ''}`
-            : '下载队列为空'}
-        </span>
+        <span>{running ? `下载队列：${running} 个进行中` : '下载队列为空'}</span>
         <button className="link-button" onClick={openTasks}>
           查看
         </button>
@@ -575,16 +533,12 @@ function DashboardSkeleton() {
   );
 }
 
-export function DashboardPage({ size }: { size: DemoSize }) {
-  const { isDemo, isTestLibrary } = useWorkspace();
+export function DashboardPage() {
+  const { isTestLibrary } = useWorkspace();
   const [scope, setScopeState] = useState<DashboardScope>(readScope);
-  // Preview states are demo tools; the real library only ever shows what is true.
-  const [scenario, setScenario] = useState<DemoScenario>(() =>
-    isDemo ? scenarioFromUrl() : 'normal',
-  );
   const [featuredIndex, setFeaturedIndex] = useState(0);
   const [batch, setBatch] = useState(0);
-  const query = useDashboard(scope, { size, scenario, batch });
+  const query = useDashboard(scope, batch);
   const data = query.data;
 
   useEffect(() => {
@@ -601,38 +555,23 @@ export function DashboardPage({ size }: { size: DemoSize }) {
   };
 
   if (query.isPending) return <DashboardSkeleton />;
-  if (!isDemo && !data)
+  if (!data)
     return (
       <main className="dashboard-page dash-feedback" data-testid="dashboard-failure">
         <ReadFailure error={query.error ?? new Error()} onRetry={() => void query.refetch()} />
       </main>
     );
-  if (!isDemo && data && data.sources.steam.works + data.sources.dlsite.works === 0)
+  if (data.sources.steam.works + data.sources.dlsite.works === 0)
     return (
       <main className="dashboard-page dash-feedback" data-testid="dashboard-empty">
         <RealLibraryEmpty />
-      </main>
-    );
-  if (query.isError || !data)
-    return (
-      <main className="dashboard-page dash-feedback">
-        <FeedbackState
-          kind="error"
-          title="暂时未能整理首页"
-          description="演示资料仍然安全，请重试。"
-          action="重新加载"
-          onAction={() => {
-            if (scenario !== 'normal') setScenario('normal');
-            else void query.refetch();
-          }}
-        />
       </main>
     );
 
   const featured = data.featured.length
     ? data.featured[featuredIndex % data.featured.length]!
     : null;
-  const libraryAll = libraryHrefFor(size, scopeLibraryFilters(scope));
+  const libraryAll = libraryHrefFor(scopeLibraryFilters(scope));
   return (
     <main
       className="dashboard-page"
@@ -656,8 +595,7 @@ export function DashboardPage({ size }: { size: DemoSize }) {
               <h1 id="dash-title">欢迎回来</h1>
               <p>
                 你的收藏共 {data.sources.steam.works + data.sources.dlsite.works} 部作品
-                {isDemo && <span className="demo-chip">DEMO · 合成数据</span>}
-                {isTestLibrary && <span className="demo-chip">测试数据 · 合成样本</span>}
+                {isTestLibrary && <span className="sample-chip">测试数据 · 合成样本</span>}
               </p>
             </div>
             <ScopeSwitch scope={scope} onChange={setScope} />
@@ -665,7 +603,6 @@ export function DashboardPage({ size }: { size: DemoSize }) {
           {featured ? (
             <Featured
               game={featured}
-              size={size}
               canCycle={data.featured.length > 1}
               onNext={() => setFeaturedIndex((index) => index + 1)}
             />
@@ -674,7 +611,7 @@ export function DashboardPage({ size }: { size: DemoSize }) {
               <p>这个范围暂时没有可展示的作品。</p>
             </div>
           )}
-          <Stats data={data} size={size} />
+          <Stats data={data} />
         </div>
       </section>
 
@@ -683,27 +620,20 @@ export function DashboardPage({ size }: { size: DemoSize }) {
           <FeedbackState
             kind="empty"
             icon={Shapes}
-            title={scenario === 'empty' ? '收藏的故事，从这里开始' : '这个范围还没有作品'}
-            description={
-              scenario === 'empty'
-                ? '这里还没有作品。切换回完整演示，看看未来收藏的模样。'
-                : '换一个范围，或回到全部作品。'
-            }
-            action={scenario === 'empty' ? '浏览演示收藏' : '查看全部作品'}
-            onAction={() => {
-              setScenario('normal');
-              setScope('all');
-            }}
+            title="这个范围还没有作品"
+            description="换一个范围，或回到全部作品。"
+            action="查看全部作品"
+            onAction={() => setScope('all')}
           />
         </div>
       ) : (
         <div className="detail-frame dash-body">
           <div className="dash-main-grid">
-            <RecentRow data={data} size={size} />
-            <Tonight data={data} size={size} onNext={() => setBatch((value) => value + 1)} />
+            <RecentRow data={data} />
+            <Tonight data={data} onNext={() => setBatch((value) => value + 1)} />
           </div>
           <div className="dash-insights">
-            {data.hasGames && <MostPlayed data={data} size={size} />}
+            {data.hasGames && <MostPlayed data={data} />}
             {data.hasGames && (
               <section className="dash-module" aria-labelledby="playtime-title">
                 <h2 id="playtime-title">
@@ -752,8 +682,8 @@ export function DashboardPage({ size }: { size: DemoSize }) {
                 <ArrowRight size={14} />
               </AppLink>
             </section>
-            <Backlog data={data} size={size} />
-            <Sources data={data} size={size} />
+            <Backlog data={data} />
+            <Sources data={data} />
           </div>
         </div>
       )}
