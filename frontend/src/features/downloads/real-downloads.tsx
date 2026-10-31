@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   CircleAlert,
   CircleCheck,
@@ -17,6 +17,7 @@ import {
   isExtractActive,
   useDownloadActions,
   useDownloads,
+  useLocalCopies,
   useExtractionActions,
   useExtractions,
   useFolderActions,
@@ -300,6 +301,7 @@ export function RealDownloadAction({ game }: { game: GameDetail }) {
   const { tasks: extractions } = useExtractions();
   const actions = useDownloadActions();
   const unpacking = useExtractionActions();
+  const { copies, refresh: refreshCopies } = useLocalCopies(game.id);
   const hasUpdate = updates.some((update) => update.workId === game.id);
   const [plan, setPlan] = useState<DownloadPlan | null>(null);
   const [wantsExtract, setWantsExtract] = useState(true);
@@ -310,6 +312,12 @@ export function RealDownloadAction({ game }: { game: GameDetail }) {
   const finished = mine.filter((task) => task.state === 'done' && !task.fileMissing);
   const troubled = mine.filter((task) => task.message && task.state !== 'cancelled');
   const extraction = extractions.find((task) => task.workId === game.id);
+
+  // Unpacking finishing is what puts a work on this computer: the page shows it straight away.
+  const unpackedAt = extraction?.state === 'done' ? extraction.id : null;
+  useEffect(() => {
+    if (unpackedAt) void refreshCopies();
+  }, [refreshCopies, unpackedAt]);
 
   const unpack = async (again = false) => {
     setBusy(true);
@@ -356,6 +364,20 @@ export function RealDownloadAction({ game }: { game: GameDetail }) {
     }
   };
 
+  // Asked for from the library's menu. Taken out of the address first, so going back and forward
+  // does not start it again.
+  const requested = useRef(new URLSearchParams(window.location.search).has('install'));
+  useEffect(() => {
+    if (!requested.current) return;
+    requested.current = false;
+    const url = new URL(window.location.href);
+    url.searchParams.delete('install');
+    window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}`);
+    void begin(true, true);
+    // Once, on arrival.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const replan = () => {
     actions
       .plan(game.id)
@@ -394,6 +416,36 @@ export function RealDownloadAction({ game }: { game: GameDetail }) {
         </Button>
         {error && <span className="download-state is-error">{error}</span>}
       </div>
+    );
+  }
+
+  // On this computer already: what to do with it is the panel below. Only an update, or trouble
+  // with a download, still needs saying here.
+  if (copies.length > 0 && troubled.length === 0) {
+    return (
+      <>
+        {hasUpdate && (
+          <div className="hero-download" data-testid="download-action" aria-live="polite">
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={busy}
+              data-testid="download-update"
+              onClick={() => void begin(true, true)}
+            >
+              <Download size={14} />
+              下载更新
+            </Button>
+            {error && (
+              <span className="download-state is-error" role="alert">
+                <CircleAlert size={14} />
+                {error}
+              </span>
+            )}
+          </div>
+        )}
+        {dialog}
+      </>
     );
   }
 

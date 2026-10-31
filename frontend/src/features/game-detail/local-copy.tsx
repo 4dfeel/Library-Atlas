@@ -1,19 +1,22 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import {
+  Circle,
   CircleAlert,
+  CircleDot,
   FolderOpen,
   FolderSearch,
   LoaderCircle,
+  PackageX,
   Pencil,
   Play,
   Plus,
-  Star,
   Trash2,
 } from 'lucide-react';
 import { useShell } from '@/app/shell-context';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { UninstallDialog } from './uninstall-dialog';
 import {
   useLocalCopies,
   useLocalCopyActions,
@@ -205,6 +208,92 @@ function CopyForm({
   );
 }
 
+function needsChoice(copy: LocalCopy) {
+  return copy.status === 'no_entry' || copy.status === 'entry_missing';
+}
+
+function driveOf(path: string) {
+  return /^[a-zA-Z]:/.exec(path)?.[0].toUpperCase() ?? '';
+}
+
+/** A folder with several programs: the user says which is the game, once, and it is remembered. */
+function ChooseProgram({
+  copy,
+  onClose,
+  onChoose,
+}: {
+  copy: LocalCopy;
+  onClose: () => void;
+  onChoose: (entry: string) => Promise<void>;
+}) {
+  const actions = useLocalCopyActions(copy.workId);
+  const [entries, setEntries] = useState<CopyPreview['entries'] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const { preview } = actions;
+  const root = copy.root;
+  const asked = useRef(false);
+  useEffect(() => {
+    if (asked.current) return;
+    asked.current = true;
+    preview(root)
+      .then((found) =>
+        setEntries(
+          [...found.entries].sort((a, b) => Number(a.likelyHelper) - Number(b.likelyHelper)),
+        ),
+      )
+      .catch((failure: unknown) => setError(messageOf(failure)));
+  }, [preview, root]);
+  return (
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open && !busy) onClose();
+      }}
+      title="选择要启动的程序"
+      description="这个文件夹里不止一个程序。选好后会记住，以后直接启动。"
+    >
+      <div className="download-plan" data-testid="choose-program">
+        {entries === null && !error && <p className="settings-note">正在读取…</p>}
+        {entries?.length === 0 && (
+          <p className="settings-note" data-testid="choose-none">
+            这个文件夹里没有找到可以启动的程序。可能还没解压完，或者它不是用 exe 启动的。
+          </p>
+        )}
+        <ul className="choose-program-list">
+          {entries?.map((entry) => (
+            <li key={entry.path}>
+              <button
+                type="button"
+                disabled={busy}
+                title={entry.path}
+                onClick={() => {
+                  setBusy(true);
+                  setError(null);
+                  onChoose(entry.path).catch((failure: unknown) => {
+                    setError(messageOf(failure));
+                    setBusy(false);
+                  });
+                }}
+              >
+                <Play size={14} />
+                <span>{entry.path}</span>
+                {entry.likelyHelper && <em>可能是工具程序</em>}
+              </button>
+            </li>
+          ))}
+        </ul>
+        {error && (
+          <p className="dlsite-message" role="alert">
+            <CircleAlert size={14} />
+            {error}
+          </p>
+        )}
+      </div>
+    </Dialog>
+  );
+}
+
 /** What is on this computer, and what can be done with it. Only ever acts on a click. */
 export function LocalCopyPanel({ game }: { game: GameDetail }) {
   const { notify } = useShell();
@@ -213,9 +302,26 @@ export function LocalCopyPanel({ game }: { game: GameDetail }) {
   const [editing, setEditing] = useState<LocalCopy | 'new' | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
+  const [uninstalling, setUninstalling] = useState(false);
+  const [choosing, setChoosing] = useState(false);
   const isGame = game.kind === 'game';
   const current = copies.find((copy) => copy.isDefault) ?? copies[0];
+  // Asked for from the library's menu; taken out of the address so it happens once.
+  const [askedToPlay, setAskedToPlay] = useState(() =>
+    new URLSearchParams(window.location.search).has('play'),
+  );
+  useEffect(() => {
+    if (!askedToPlay) return;
+    const url = new URL(window.location.href);
+    url.searchParams.delete('play');
+    window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}`);
+  }, [askedToPlay]);
   if (loading) return null;
+  const chooserOpen = choosing || (askedToPlay && Boolean(current) && needsChoice(current!));
+  const closeChooser = () => {
+    setChoosing(false);
+    setAskedToPlay(false);
+  };
 
   const start = async (copy: LocalCopy) => {
     setError(null);
@@ -243,9 +349,9 @@ export function LocalCopyPanel({ game }: { game: GameDetail }) {
           {isGame && (
             <Button
               size="sm"
-              disabled={current.status !== 'ok' || starting}
+              disabled={!needsChoice(current) && current.status !== 'ok'}
               data-testid="launch"
-              onClick={() => void start(current)}
+              onClick={() => (needsChoice(current) ? setChoosing(true) : void start(current))}
             >
               {starting ? <LoaderCircle size={14} className="spin" /> : <Play size={14} />}
               启动
@@ -264,7 +370,7 @@ export function LocalCopyPanel({ game }: { game: GameDetail }) {
             <Pencil size={14} />
             编辑关联
           </Button>
-          {(!isGame && current.status === 'no_entry') || current.status === 'ok' ? null : (
+          {current.status === 'no_entry' || current.status === 'ok' ? null : (
             <span className="download-state is-error" data-testid="copy-status">
               <CircleAlert size={14} />
               {current.message}
@@ -277,11 +383,13 @@ export function LocalCopyPanel({ game }: { game: GameDetail }) {
                   <button
                     type="button"
                     aria-pressed={copy.isDefault}
-                    title={copy.isDefault ? '默认副本' : '设为默认'}
+                    title={
+                      copy.isDefault ? `默认使用这里：${copy.root}` : `改为使用这里：${copy.root}`
+                    }
                     onClick={() => run(() => actions.setDefault(copy.id))}
                   >
-                    <Star size={13} fill={copy.isDefault ? 'currentColor' : 'none'} />
-                    <span title={copy.root}>{copy.label ?? folderName(copy.root)}</span>
+                    {copy.isDefault ? <CircleDot size={13} /> : <Circle size={13} />}
+                    <span>{copy.label ?? `${driveOf(copy.root)} · ${folderName(copy.root)}`}</span>
                   </button>
                   <Button
                     variant="ghost"
@@ -298,6 +406,16 @@ export function LocalCopyPanel({ game }: { game: GameDetail }) {
           <Button variant="ghost" size="sm" onClick={() => setEditing('new')}>
             <Plus size={14} />
             再加一个副本
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            data-testid="copy-uninstall"
+            title="把这个文件夹移到回收站"
+            onClick={() => setUninstalling(true)}
+          >
+            <PackageX size={14} />
+            卸载
           </Button>
           {copies.length === 1 && (
             <Button
@@ -322,6 +440,25 @@ export function LocalCopyPanel({ game }: { game: GameDetail }) {
           <CircleAlert size={14} />
           {error}
         </span>
+      )}
+      {chooserOpen && current && (
+        <ChooseProgram
+          copy={current}
+          onClose={closeChooser}
+          onChoose={async (entry) => {
+            await actions.update(current.id, { entry });
+            closeChooser();
+            await start(current);
+          }}
+        />
+      )}
+      {uninstalling && current && (
+        <UninstallDialog
+          copyId={current.id}
+          title={game.title}
+          onClose={() => setUninstalling(false)}
+          onDone={() => notify('已移到回收站')}
+        />
       )}
       {editing && (
         <CopyForm

@@ -120,7 +120,9 @@ test.describe('local copies', () => {
     await page.goto(`${service.origin}/library/${game.id}`);
     const panel = page.getByTestId('local-copy');
     await expect(panel.getByTestId('copy-status')).toContainText('主程序不在了');
-    await expect(panel.getByTestId('launch')).toBeDisabled();
+    // Starting is how the user is asked again. Here nothing is left to choose, and it says so.
+    await panel.getByTestId('launch').click();
+    await expect(page.getByTestId('choose-none')).toContainText('没有找到可以启动的程序');
     await shot(page, 'entry-missing');
   });
 

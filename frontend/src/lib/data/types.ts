@@ -55,6 +55,10 @@ export interface Game {
    * means not known, which is never shown as absent.
    */
   installed: boolean | null;
+  /** The folder this work is used from, in the real library. */
+  copyId?: string | null;
+  /** A game with its main program chosen. Whether it then runs is another matter. */
+  launchable?: boolean;
   /** Game play time only; `null` when the source does not report it. */
   playtimeMinutes: number | null;
   favorite: boolean;
@@ -109,6 +113,8 @@ export interface LibraryFilters {
   kind: WorkKind | 'all' | 'non-game';
   platform: Platform | 'all';
   favoritesOnly: boolean;
+  /** One of the user's own collections, or `all`. Real library only. */
+  collection: string;
   sort: LibrarySort;
 }
 
@@ -201,5 +207,6 @@ export const defaultLibraryFilters: LibraryFilters = {
   kind: 'all',
   platform: 'all',
   favoritesOnly: false,
+  collection: 'all',
   sort: 'curated',
 };

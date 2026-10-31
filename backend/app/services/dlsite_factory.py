@@ -13,6 +13,7 @@ from app.adapters.dlsite.store_page import PublicStorePage
 from app.adapters.system.archives import find_seven_zip
 from app.adapters.system.folder_dialog import DialogFolderPicker, ExplorerFolderOpener
 from app.adapters.system.launcher import ProcessLauncher
+from app.adapters.system.shell_files import WindowsShell
 from app.core.config import Settings
 from app.core.credentials import NAMESPACE, CredentialStoreError, WindowsCredentialStore
 from app.services.dlsite_auth import DlsiteAuth
@@ -24,6 +25,7 @@ from app.services.gallery import WorkGallery
 from app.services.introductions import WorkIntroductions
 from app.services.local_copies import LocalCopies
 from app.services.update_checks import UpdateChecker
+from app.testing.fake_shell import FakeShell
 
 
 def build_dlsite_auth(settings: Settings, engine: Engine) -> DlsiteAuth | None:
@@ -97,7 +99,9 @@ def build_introductions(
 
 
 def build_local_copies(settings: Settings, engine: Engine, folders: FolderService) -> LocalCopies:
-    return LocalCopies(engine, settings, folders, ProcessLauncher())
+    # A test library never reaches the real desktop or Recycle Bin.
+    shell = FakeShell(settings.data_dir) if settings.profile == "test" else WindowsShell()
+    return LocalCopies(engine, settings, folders, ProcessLauncher(), shell)
 
 
 def build_update_checker(settings: Settings, engine: Engine, sync: DlsiteSync) -> UpdateChecker:

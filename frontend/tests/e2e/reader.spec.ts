@@ -227,6 +227,72 @@ test.describe('reading', () => {
     await expect(opener.or(panel.getByTestId('reader-continue')).first()).toBeVisible();
   });
 
+  test('the wheel turns pages: onward is down, a flick is one turn, tall pages scroll first', async ({
+    page,
+  }) => {
+    const { item } = await work(async (folder) => {
+      await volume(folder, '本', 5);
+      await mkdir(join(folder, '長'));
+      for (const number of [1, 2])
+        await writeFile(join(folder, '長', `${number}.png`), png(pageWidth(number), 6000));
+    });
+    await page.goto(`${service.origin}/library/${item.id}`);
+    const panel = page.getByTestId('reader-panel');
+    await panel.getByRole('button', { name: '本', exact: true }).click();
+    const reader = page.getByTestId('reader');
+    await expectShown(page, [1]);
+    const box = (await reader.getByTestId('reader-stage').boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    const rest = () => page.waitForTimeout(300);
+
+    await page.mouse.wheel(0, 120);
+    await expectShown(page, [2]);
+    await rest();
+    await page.mouse.wheel(0, -120);
+    await expectShown(page, [1]);
+    await rest();
+    // Nothing before the first page.
+    await page.mouse.wheel(0, -120);
+    await rest();
+    await expectShown(page, [1]);
+
+    // A hard flick is one turn, not a run through the book.
+    for (let i = 0; i < 5; i += 1) await page.mouse.wheel(0, 120);
+    await rest();
+    await expectShown(page, [2]);
+
+    // A touchpad's small amounts add up.
+    await page.mouse.wheel(0, 10);
+    await rest();
+    await expectShown(page, [2]);
+    for (let i = 0; i < 5; i += 1) await page.mouse.wheel(0, 10);
+    await expectShown(page, [3]);
+    await rest();
+
+    // Down is still onward when the book reads from the right.
+    await reader.getByTestId('reader-direction').click();
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.wheel(0, 120);
+    await expectShown(page, [4]);
+    await rest();
+    await reader.getByTestId('reader-close').click();
+
+    // A page taller than the view scrolls, and turns only once it has reached the bottom.
+    await panel.getByRole('button', { name: '長', exact: true }).click();
+    await expectShown(page, [1]);
+    await reader.getByTestId('reader-fit').selectOption('width');
+    const stage = reader.getByTestId('reader-stage');
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.wheel(0, 200);
+    await expect.poll(() => stage.evaluate((node) => node.scrollTop)).toBeGreaterThan(0);
+    await expect(reader.getByTestId('reader-count')).toHaveText('1 / 2');
+    await stage.evaluate((node) => node.scrollTo({ top: node.scrollHeight }));
+    await rest();
+    await page.mouse.wheel(0, 200);
+    await expect(reader.getByTestId('reader-count')).toHaveText('2 / 2');
+    await expect.poll(() => stage.evaluate((node) => node.scrollTop)).toBe(0);
+  });
+
   test('double pages pair correctly in both directions, keeping the place', async ({ page }) => {
     const { item } = await work((folder) => volume(folder, '本', 6));
     await page.goto(`${service.origin}/library/${item.id}`);

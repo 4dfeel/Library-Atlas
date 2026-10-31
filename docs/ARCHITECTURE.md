@@ -253,3 +253,5 @@ frontend/src/features/game-detail/work-gallery.tsx  介绍图
 - `features/reader/`：阅读器。PDF 用本地打包的 `pdfjs-dist`，按需加载，只渲染页面内容。
 
 - 迁移 `0016`：`scan_jobs.auto_linked`、`scan_jobs.batch_id`、`scan_items.declined`。`LibraryScanner.scan_automatically` 在启动和同步完成后运行，测试配置下没有盘，不做任何事。
+
+- `adapters/system/shell_files.py`：回收站和 `.lnk`，路径作为数据传给 Windows API，不经命令行。测试配置用 `testing/fake_shell.py`。`services/collections.py`：收藏。迁移 `0017`：`collections`、`collection_items`。`repositories/works.py`：“已安装”同时看下载状态和本地副本。

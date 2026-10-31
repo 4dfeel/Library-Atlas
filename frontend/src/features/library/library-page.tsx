@@ -25,6 +25,7 @@ import { Input } from '@/components/ui/input';
 import { FeedbackState } from '@/components/feedback-state';
 import {
   defaultLibraryFilters,
+  useCollections,
   useLibraryCollection,
   useToggleFavorite,
   useWorkspace,
@@ -204,8 +205,11 @@ export function LibraryPage({
     // Saved on this Library entry, so Back (browser or in-app) lands where it left.
     patchHistoryState({ libraryAnchor: anchor, libraryFocusId: id, focusSearch: undefined });
   }, []);
+  const { collections: ownCollections } = useCollections();
+  const collectionName = ownCollections.find((item) => item.id === filters.collection)?.name;
   const hasFilters =
     search ||
+    filters.collection !== 'all' ||
     filters.genre !== 'all' ||
     filters.status !== 'all' ||
     filters.installed !== 'all' ||
@@ -426,6 +430,11 @@ export function LibraryPage({
               data-count={data?.filteredCount ?? 0}
             >
               <p aria-live="polite">
+                {collectionName && (
+                  <strong className="library-collection" data-testid="library-collection">
+                    {collectionName} ·{' '}
+                  </strong>
+                )}
                 <span>{(data?.filteredCount ?? 0).toLocaleString('zh-CN')}</span> 部作品
                 {hasFilters && (
                   <button onClick={reset}>

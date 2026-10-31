@@ -348,6 +348,26 @@ export interface ReaderBookmark {
   pageIndex: number;
 }
 
+export interface UninstallPreview {
+  root: string;
+  files: number;
+  sizeBytes: number;
+  complete: boolean;
+  blocked: string | null;
+}
+
+export interface WorkCollection {
+  id: string;
+  name: string;
+  count: number;
+  contains: boolean;
+}
+
+export interface CollectionsData {
+  favorites: number;
+  collections: WorkCollection[];
+}
+
 export type IntroBlock =
   | { type: 'heading'; text: string }
   | { type: 'paragraph'; spans: { text: string; href?: string }[] }
@@ -463,6 +483,7 @@ function filterParams(filters: LibraryFilters, offset: number, limit: number) {
   if (filters.genre !== 'all') params.set('genre', filters.genre);
   if (filters.status !== 'all') params.set('status', filters.status);
   if (filters.installed !== 'all') params.set('installed', filters.installed);
+  if (filters.collection !== 'all') params.set('collection', filters.collection);
   if (filters.favoritesOnly) params.set('favoritesOnly', 'true');
   if (filters.sort !== 'curated') params.set('sort', filters.sort);
   return params;
@@ -580,7 +601,7 @@ export class RealLibrarySource implements LibrarySource {
     return apiWrite<{ path: string | null }>('POST', '/api/v1/local-copies/choose-folder');
   }
 
-  updateLocalCopy(id: string, body: LocalCopyInput) {
+  updateLocalCopy(id: string, body: Partial<LocalCopyInput>) {
     return apiWrite<LocalCopy>('PATCH', `/api/v1/local-copies/${encodeURIComponent(id)}`, body);
   }
 
@@ -590,6 +611,51 @@ export class RealLibrarySource implements LibrarySource {
 
   localCopyAction(id: string, action: 'default' | 'open') {
     return apiWrite('POST', `/api/v1/local-copies/${encodeURIComponent(id)}/${action}`);
+  }
+
+  uninstallPreview(id: string, signal?: AbortSignal) {
+    return apiGet<UninstallPreview>(
+      `/api/v1/local-copies/${encodeURIComponent(id)}/uninstall`,
+      undefined,
+      signal,
+    );
+  }
+
+  uninstall(id: string, confirmRoot: string) {
+    return apiWrite('POST', `/api/v1/local-copies/${encodeURIComponent(id)}/uninstall`, {
+      confirmRoot,
+    });
+  }
+
+  addShortcut(id: string) {
+    return apiWrite('POST', `/api/v1/local-copies/${encodeURIComponent(id)}/shortcut`);
+  }
+
+  collections(workId: string | undefined, signal?: AbortSignal) {
+    return apiGet<CollectionsData>(
+      '/api/v1/collections',
+      workId ? new URLSearchParams({ workId }) : undefined,
+      signal,
+    );
+  }
+
+  createCollection(name: string, workId?: string) {
+    return apiWrite('POST', '/api/v1/collections', { name, ...(workId ? { workId } : {}) });
+  }
+
+  renameCollection(id: string, name: string) {
+    return apiWrite('PATCH', `/api/v1/collections/${encodeURIComponent(id)}`, { name });
+  }
+
+  removeCollection(id: string) {
+    return apiWrite('DELETE', `/api/v1/collections/${encodeURIComponent(id)}`);
+  }
+
+  setInCollection(id: string, workId: string, inside: boolean) {
+    return apiWrite(
+      inside ? 'PUT' : 'DELETE',
+      `/api/v1/collections/${encodeURIComponent(id)}/works/${encodeURIComponent(workId)}`,
+    );
   }
 
   launchLocalCopy(id: string) {

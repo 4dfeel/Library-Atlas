@@ -64,6 +64,9 @@ class FolderService:
             value = app_settings.get(connection, _KEYS[kind])
         return Path(value) if value else None
 
+    def chosen_folders(self) -> list[Path]:
+        return [path for kind in _KEYS if (path := self._chosen(kind)) is not None]
+
     def _describe(self, kind: models.FolderKind) -> models.FolderOut:
         chosen = self._chosen(kind)
         path = chosen or self._default(kind)

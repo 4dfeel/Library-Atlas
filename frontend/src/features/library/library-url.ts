@@ -38,6 +38,7 @@ export function parseLibraryUrl(search: string): LibraryUrlState {
       kind: kinds.has(kind) ? (kind as LibraryFilters['kind']) : 'all',
       platform: platforms.has(platform) ? (platform as LibraryFilters['platform']) : 'all',
       favoritesOnly: params.get('fav') === '1',
+      collection: (params.get('collection') ?? '').slice(0, 64) || 'all',
       sort: sorts.has(sort) ? sort : 'curated',
     },
     view: params.get('view') === 'list' ? 'list' : 'grid',
@@ -57,6 +58,7 @@ export function libraryUrl(current: string, { filters, view }: LibraryUrlState):
   set('kind', filters.kind, 'all');
   set('platform', filters.platform, 'all');
   set('fav', filters.favoritesOnly ? '1' : '0', '0');
+  set('collection', filters.collection, 'all');
   set('sort', filters.sort, 'curated');
   set('view', view, 'grid');
   return `${url.pathname}${params.size ? `?${params}` : ''}`;

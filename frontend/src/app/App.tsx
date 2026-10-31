@@ -47,6 +47,7 @@ import {
 import { DashboardPage } from '@/features/dashboard/dashboard-page';
 import { SourcesDialog } from '@/features/demo-services/sources-dialog';
 import { MiniPlayer } from '@/features/audio/audio-panel';
+import { CollectionsPage } from '@/features/collections/collections-page';
 import { DownloadBar, DownloadsPage } from '@/features/downloads/downloads-page';
 import { TasksDialog } from '@/features/demo-services/tasks-dialog';
 import { AccountMenu } from '@/features/workspace/account-menu';
@@ -217,12 +218,24 @@ export function App() {
                     </>
                   )}
                 </AppLink>
-                <SoonItem
-                  icon={FolderHeart}
-                  label="收藏夹"
-                  title="收藏夹将在后续阶段开放"
-                  collapsed={collapsed}
-                />
+                {isDemo ? (
+                  <SoonItem
+                    icon={FolderHeart}
+                    label="收藏夹"
+                    title="收藏夹将在后续阶段开放"
+                    collapsed={collapsed}
+                  />
+                ) : (
+                  <AppLink
+                    aria-label="收藏夹"
+                    to="/collections"
+                    className={`nav-item${route.name === 'collections' ? ' active' : ''}`}
+                    aria-current={route.name === 'collections' ? 'page' : undefined}
+                  >
+                    <FolderHeart size={19} />
+                    {!collapsed && <span>收藏夹</span>}
+                  </AppLink>
+                )}
                 <SoonItem
                   icon={Gamepad2}
                   label="游玩计划"
@@ -383,6 +396,8 @@ export function App() {
                     <SettingsPage key={`${mode}-settings`} onDemoSettings={openAbout} />
                   ) : route.name === 'downloads' && !isDemo ? (
                     <DownloadsPage size={size} />
+                  ) : route.name === 'collections' && !isDemo ? (
+                    <CollectionsPage />
                   ) : route.name === 'game' ? (
                     <GameDetailPage
                       key={`${mode}-${route.id}-${size}`}

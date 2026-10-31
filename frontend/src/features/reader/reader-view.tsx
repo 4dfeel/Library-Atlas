@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent,
+  type WheelEvent,
+} from 'react';
 import { createPortal } from 'react-dom';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import {
@@ -44,6 +52,12 @@ interface Choices {
 const CHOICES_KEY = 'atlas.reader.choices';
 const ZOOM_STEP = 25;
 const PRELOAD = 2;
+// One notch of a wheel is 100 or less, far less on a high-DPI screen; a touchpad's many small
+// amounts add up to a turn.
+const WHEEL_TURN = 20;
+const WHEEL_LINE = 40;
+// A long flick must not run through the book, or carry on past the end of a scroll.
+const WHEEL_REST_MS = 220;
 
 function loadChoices(bookId: string): Choices {
   const fallback: Choices = { mode: 'single', direction: 'ltr' };
@@ -449,6 +463,30 @@ function ReaderSurface({
     else if (place > 2 / 3) step(stepForSide('right', direction));
   };
 
+  // Down is always onward, whichever way the book reads. A page taller than the view scrolls first
+  // and turns at its edge. Vertical reading is simply scrolling, and Ctrl+wheel stays the browser's.
+  const wheelBuilt = useRef(0);
+  const wheelAt = useRef(-WHEEL_REST_MS);
+  const onStageWheel = (event: WheelEvent<HTMLDivElement>) => {
+    if (mode === 'vertical' || event.ctrlKey || event.deltaY === 0) return;
+    const onward = event.deltaY > 0;
+    const { scrollTop, scrollHeight, clientHeight } = event.currentTarget;
+    const atEdge = onward ? scrollTop + clientHeight >= scrollHeight - 1 : scrollTop <= 0;
+    if (!atEdge) {
+      wheelBuilt.current = 0;
+      wheelAt.current = event.timeStamp;
+      return;
+    }
+    if (event.timeStamp - wheelAt.current < WHEEL_REST_MS) return;
+    const amount = event.deltaMode === 1 ? event.deltaY * WHEEL_LINE : event.deltaY;
+    // A change of direction starts counting again.
+    wheelBuilt.current = wheelBuilt.current * amount > 0 ? wheelBuilt.current + amount : amount;
+    if (Math.abs(wheelBuilt.current) < WHEEL_TURN) return;
+    wheelBuilt.current = 0;
+    wheelAt.current = event.timeStamp;
+    step(onward ? 1 : -1);
+  };
+
   const pageIds = useMemo(() => new Set(pages.map((item) => item.id)), [pages]);
   const markHere = page ? bookmarks.find((mark) => mark.pageId === page.id) : undefined;
   const toggleMark = () => {
@@ -636,6 +674,7 @@ function ReaderSurface({
           data-mode={mode}
           style={{ '--reader-zoom': `${zoom}%` } as React.CSSProperties}
           onClick={onStageClick}
+          onWheel={onStageWheel}
         >
           {count === 0 ? (
             <div className="reader-problem" role="status" data-testid="reader-empty">

@@ -1,6 +1,7 @@
 """Application factory: one loopback service for the API and the built frontend."""
 
 import logging
+import mimetypes
 import time
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
@@ -25,6 +26,7 @@ from app.core.errors import NOT_READY_MESSAGES, AtlasError
 from app.core.security import LocalBoundaryMiddleware, new_csrf_token
 from app.db.bootstrap import DatabaseNotReady, open_database
 from app.services import library
+from app.services.collections import Collections
 from app.services.dlsite_auth import DlsiteAuth
 from app.services.dlsite_factory import (
     build_dlsite_auth,
@@ -49,6 +51,11 @@ from app.services.local_copies import LocalCopies
 from app.services.local_media import AUDIO_TYPES, LocalMedia
 from app.services.reader import Reader
 from app.services.update_checks import UpdateChecker
+
+# What Python answers comes partly from the Windows registry, which may say `.mjs` is plain text. A
+# browser then refuses to run it as a module, so PDF reading silently stops working on that machine.
+mimetypes.add_type("text/javascript", ".js")
+mimetypes.add_type("text/javascript", ".mjs")
 
 logger = logging.getLogger("atlas")
 
@@ -81,6 +88,7 @@ class ServiceState:
     local_copies: LocalCopies | None = None
     scanner: LibraryScanner | None = None
     media: LocalMedia | None = None
+    collections: Collections | None = None
     reader: Reader | None = None
     updates_game: GameUpdater | None = None
     updates: UpdateChecker | None = None
@@ -217,6 +225,15 @@ def _media(request: Request, _engine: EngineDep) -> LocalMedia:
 
 
 MediaDep = Annotated[LocalMedia, Depends(_media)]
+
+
+def _collections(request: Request, _engine: EngineDep) -> Collections:
+    service = _state(request).collections
+    assert service is not None  # Built whenever the engine is.
+    return service
+
+
+CollectionsDep = Annotated[Collections, Depends(_collections)]
 
 
 def _reader(request: Request, _engine: EngineDep) -> Reader:
@@ -477,6 +494,54 @@ def _build_api() -> APIRouter:
     @api.post("/local-copies/{copy_id}/launch")
     def launch_copy(service: CopiesDep, copy_id: str) -> models.LaunchOut:
         return service.launch(copy_id)
+
+    @api.get("/local-copies/{copy_id}/uninstall")
+    def uninstall_preview(service: CopiesDep, copy_id: str) -> models.UninstallPreview:
+        return service.uninstall_preview(copy_id)
+
+    @api.post("/local-copies/{copy_id}/uninstall")
+    def uninstall_copy(
+        service: CopiesDep, copy_id: str, body: models.UninstallIn
+    ) -> models.LocalCopiesOut:
+        return service.uninstall(copy_id, body)
+
+    @api.post("/local-copies/{copy_id}/shortcut")
+    def copy_shortcut(service: CopiesDep, copy_id: str) -> models.ShortcutOut:
+        return service.shortcut(copy_id)
+
+    @api.get("/collections")
+    def list_collections(
+        service: CollectionsDep, work_id: Annotated[str | None, Query(alias="workId")] = None
+    ) -> models.CollectionsOut:
+        return service.listed(work_id)
+
+    @api.post("/collections")
+    def create_collection(
+        service: CollectionsDep, body: models.CollectionIn
+    ) -> models.CollectionsOut:
+        return service.create(body)
+
+    @api.patch("/collections/{collection_id}")
+    def rename_collection(
+        service: CollectionsDep, collection_id: str, body: models.CollectionRename
+    ) -> models.CollectionsOut:
+        return service.rename(collection_id, body)
+
+    @api.delete("/collections/{collection_id}")
+    def remove_collection(service: CollectionsDep, collection_id: str) -> models.CollectionsOut:
+        return service.remove(collection_id)
+
+    @api.put("/collections/{collection_id}/works/{work_id}")
+    def add_to_collection(
+        service: CollectionsDep, collection_id: str, work_id: str
+    ) -> models.CollectionsOut:
+        return service.add_work(collection_id, work_id)
+
+    @api.delete("/collections/{collection_id}/works/{work_id}")
+    def remove_from_collection(
+        service: CollectionsDep, collection_id: str, work_id: str
+    ) -> models.CollectionsOut:
+        return service.remove_work(collection_id, work_id)
 
     @api.get("/library-scan")
     def scan_status(service: ScannerDep) -> models.ScanStatus:
@@ -758,6 +823,7 @@ def create_app(
                 )
                 state.scanner.recover()
                 state.media = LocalMedia(opened.engine)
+                state.collections = Collections(opened.engine)
                 state.reader = Reader(opened.engine, state.media)
                 state.dlsite = dlsite_factory(settings, opened.engine)
                 state.covers = CoverCache(settings.data_dir / "cache" / "covers")

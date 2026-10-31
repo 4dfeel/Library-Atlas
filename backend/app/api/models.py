@@ -53,6 +53,7 @@ class WorkQuery(ApiModel):
     status: Literal["all", "unplayed", "playing", "completed", "paused"] = "all"
     installed: Literal["all", "installed", "not-installed"] = "all"
     favorites_only: bool = False
+    collection: Annotated[str, StringConstraints(max_length=64)] = "all"
     sort: Sort = "curated"
     offset: Annotated[int, Field(ge=0, le=1_000_000)] = 0
     limit: Annotated[int, Field(ge=1, le=100)] = 100
@@ -125,6 +126,8 @@ class WorkOut(ApiModel):
     genre: str | None
     status: Status
     installed: bool | None
+    copy_id: str | None
+    launchable: bool  # A game with a main program chosen. Whether it then runs is another matter.
     playtime_minutes: int | None
     favorite: bool
     visibility: Literal["normal"] = "normal"
@@ -376,6 +379,49 @@ class LocalCopyOut(ApiModel):
     origin: CopyOrigin
     status: CopyStatus
     message: str
+
+
+class UninstallPreview(ApiModel):
+    root: str
+    files: int
+    size_bytes: int
+    complete: bool  # False: stopped counting. The number is a lower bound, and says so.
+    blocked: str | None  # Why it cannot be done, in the user's words.
+
+
+class UninstallIn(ApiModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, extra="forbid")
+
+    confirm_root: Annotated[str, StringConstraints(min_length=1, max_length=4096)]
+
+
+class ShortcutOut(ApiModel):
+    created: bool
+
+
+class CollectionOut(ApiModel):
+    id: str
+    name: str
+    count: int
+    contains: bool
+
+
+class CollectionsOut(ApiModel):
+    favorites: int
+    collections: list[CollectionOut]
+
+
+class CollectionIn(ApiModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, extra="forbid")
+
+    name: Annotated[str, StringConstraints(max_length=60)]
+    work_id: str | None = None
+
+
+class CollectionRename(ApiModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, extra="forbid")
+
+    name: Annotated[str, StringConstraints(max_length=60)]
 
 
 class LocalCopiesOut(ApiModel):

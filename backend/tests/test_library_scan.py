@@ -155,6 +155,58 @@ def test_a_left_off_subtitle_with_the_same_maker_is_a_match(
     assert scan(api, root)["counts"]["likely"] == 1
 
 
+@pytest.mark.parametrize(
+    "folder",
+    [
+        "IV Works -2nd Girl- ver121",
+        "IV Works -2nd Girl- Ver.1.21",
+        "IV Works -2nd Girl-_v1.2.3",
+        "IV Works -2nd Girl- (ver1.21)",
+        "IV Works -2nd Girl- 【Ver1.2a】",
+    ],
+)
+def test_a_version_on_the_folder_is_not_part_of_the_name(
+    api: TestClient, tmp_path: Path, folder: str
+) -> None:
+    work = work_ids(api)[0]
+    with engine_of(api).begin() as connection:
+        connection.execute(
+            update(works)
+            .where(works.c.id == work["id"])
+            .values(title="IV Works -2nd Girl-", maker="虚构社团")
+        )
+    root = make_library(tmp_path / "Library", {("Game", "虚构社团", folder): True})
+    status = scan(api, root)
+    assert status["counts"]["likely"] == 1
+    assert listed(api, "likely")[0]["candidates"][0]["workId"] == work["id"]
+
+
+def test_a_version_counts_as_a_version_only_with_the_word(api: TestClient, tmp_path: Path) -> None:
+    work = work_ids(api)[0]
+    with engine_of(api).begin() as connection:
+        connection.execute(
+            update(works).where(works.c.id == work["id"]).values(title="とても長い作品の名前")
+        )
+    root = make_library(
+        tmp_path / "Library", {("Game", "别的社团", "とても長い作品の名前 121"): True}
+    )
+    assert scan(api, root)["counts"]["unmatched"] == 1
+
+
+def test_a_work_really_named_with_a_version_still_matches_itself(
+    api: TestClient, tmp_path: Path
+) -> None:
+    work = work_ids(api)[0]
+    with engine_of(api).begin() as connection:
+        connection.execute(
+            update(works)
+            .where(works.c.id == work["id"])
+            .values(title="作品の名前 ver2", maker="虚构社团")
+        )
+    root = make_library(tmp_path / "Library", {("Game", "虚构社团", "作品の名前 ver2"): True})
+    assert scan(api, root)["counts"]["likely"] == 1
+
+
 def test_another_volume_is_not_a_left_off_subtitle(api: TestClient, tmp_path: Path) -> None:
     work = work_ids(api)[0]
     with engine_of(api).begin() as connection:
@@ -164,7 +216,58 @@ def test_another_volume_is_not_a_left_off_subtitle(api: TestClient, tmp_path: Pa
             .values(title="とても長い作品の名前 2", maker="虚构社团")
         )
     root = make_library(tmp_path / "Library", {("Game", "虚构社团", "とても長い作品の名前"): True})
+    # Close enough to ask about, never to link by itself.
+    status = scan(api, root)
+    assert status["counts"]["likely"] == 0
+    assert status["counts"]["review"] == 1
+
+
+def set_title(client: TestClient, work_id: str, title: str) -> None:
+    with engine_of(client).begin() as connection:
+        connection.execute(
+            update(works).where(works.c.id == work_id).values(title=title, maker="虚构社团")
+        )
+
+
+def test_an_almost_identical_name_by_the_same_maker_is_a_match(
+    api: TestClient, tmp_path: Path
+) -> None:
+    work = work_ids(api)[0]
+    set_title(api, work["id"], "魔法使いの長い物語と不思議な森")
+    root = make_library(
+        tmp_path / "Library", {("Game", "虚构社团", "魔法使いの長い物語と不思議の森"): True}
+    )
+    assert scan(api, root)["counts"]["likely"] == 1
+
+
+def test_a_similar_name_is_only_asked_about(api: TestClient, tmp_path: Path) -> None:
+    work = work_ids(api)[0]
+    set_title(api, work["id"], "魔法使いの長い物語")
+    root = make_library(tmp_path / "Library", {("Game", "虚构社团", "魔法使いの短い話"): True})
+    status = scan(api, root)
+    assert status["counts"]["review"] == 1
+    assert listed(api, "review")[0]["candidates"][0]["workId"] == work["id"]
+
+
+def test_an_unlike_name_by_the_same_maker_is_no_match(api: TestClient, tmp_path: Path) -> None:
+    work = work_ids(api)[0]
+    set_title(api, work["id"], "魔法使いの長い物語")
+    root = make_library(tmp_path / "Library", {("Game", "虚构社团", "全然違うタイトル"): True})
     assert scan(api, root)["counts"]["unmatched"] == 1
+
+
+def test_two_almost_identical_names_are_never_picked_between(
+    api: TestClient, tmp_path: Path
+) -> None:
+    one, two = work_ids(api)[:2]
+    set_title(api, one["id"], "魔法使いの長い物語と不思議な森あ")
+    set_title(api, two["id"], "魔法使いの長い物語と不思議な森い")
+    root = make_library(
+        tmp_path / "Library", {("Game", "虚构社团", "魔法使いの長い物語と不思議な森う"): True}
+    )
+    status = scan(api, root)
+    assert status["counts"]["likely"] == 0
+    assert len(listed(api, "review")[0]["candidates"]) == 2
 
 
 def auto_scan(client: TestClient, root: Path) -> dict[str, Any]:
@@ -308,10 +411,11 @@ def test_a_hidden_work_is_not_revealed_by_a_matching_folder(
             .values(visibility=visibility)
         )
     root = make_library(tmp_path / "Library", work_folders([work]))
+    # Other works by the maker may be offered as similar. The hidden one never is.
     status = scan(api, root)
     assert status["counts"]["likely"] == 0
-    assert status["counts"]["unmatched"] == 1
     assert work["id"] not in str(listed(api, "unmatched"))
+    assert work["id"] not in str(listed(api, "review"))
 
 
 # --- importing ---

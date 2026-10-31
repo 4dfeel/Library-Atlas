@@ -151,9 +151,9 @@ test.describe('unpacking and the queue', () => {
     await openWork(page, work);
     await expect(page.getByTestId('download-bar')).toBeVisible();
     await action(page).getByRole('button', { name: '下载并解压' }).click();
-    await expect(action(page).getByTestId('extract-done')).toBeVisible({ timeout: 20_000 });
-    await expect(action(page)).toContainText('已解压不代表已安装');
-    await expect(page.getByText('已安装', { exact: true })).toHaveCount(0);
+    // Once it is here the page offers to use it, and no longer to download it.
+    await expect(page.getByTestId('copy-uninstall')).toBeVisible({ timeout: 20_000 });
+    await expect(action(page)).toHaveCount(0);
     await shot(page, 'unpacked');
     // Filed by type, maker and title, as the user files works by hand.
     const location = await locationOf(work);
@@ -190,7 +190,8 @@ test.describe('unpacking and the queue', () => {
     await expect(action(page).getByRole('button', { name: '解压', exact: true })).toBeVisible();
     expect(await locationOf(work)).toBeNull();
     await action(page).getByRole('button', { name: '解压', exact: true }).click();
-    await expect(action(page).getByTestId('extract-done')).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByTestId('copy-uninstall')).toBeVisible({ timeout: 20_000 });
+    await expect(action(page)).toHaveCount(0);
   });
 
   test('a hostile archive is refused, and the download is kept', async ({ page }) => {

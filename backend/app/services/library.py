@@ -47,7 +47,15 @@ def _work_fields(row: Row[Any], files: list[Row[Any]]) -> dict[str, Any]:
         "subtitle": row.subtitle,
         "genre": row.genre,
         "status": row.status,
-        "installed": None if row.local_state == "unknown" else row.local_state == "available",
+        "installed": (
+            True
+            if row.copy_id
+            else None
+            if row.local_state == "unknown"
+            else row.local_state == "available"
+        ),
+        "copy_id": row.copy_id,
+        "launchable": row.kind == "game" and bool(row.copy_entry),
         "playtime_minutes": row.playtime_minutes,
         "favorite": bool(row.favorite),
         "cover": _cover(row),
@@ -111,6 +119,7 @@ def list_page(engine: Engine, query: models.WorkQuery) -> models.WorkPage:
         status=query.status,
         installed=query.installed,
         favorites_only=query.favorites_only,
+        collection=query.collection,
         sort=query.sort,
     )
     # One read transaction: rows and counts describe the same snapshot.

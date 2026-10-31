@@ -12,11 +12,31 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any, Literal
 
-from sqlalchemy import ColumnElement, Connection, Row, case, func, literal, select, update
+from sqlalchemy import (
+    ColumnElement,
+    Connection,
+    Row,
+    and_,
+    case,
+    exists,
+    func,
+    literal,
+    or_,
+    select,
+    update,
+)
 from sqlalchemy.dialects.sqlite import insert
 
 from app.core.errors import VersionConflict, WorkUnavailable
-from app.db.schema import library_entries, personal_records, sources, work_files, works
+from app.db.schema import (
+    collection_items,
+    library_entries,
+    local_copies,
+    personal_records,
+    sources,
+    work_files,
+    works,
+)
 from app.domain.dashboard import WorkFacts
 from app.domain.text import normalize, search_text, sort_title
 
@@ -25,8 +45,17 @@ ORDINARY: ColumnElement[bool] = personal_records.c.visibility == "normal"
 _JOINED = works.join(personal_records, personal_records.c.work_id == works.c.id).join(
     library_entries, library_entries.c.work_id == works.c.id
 )
+# The folder a work is used from: the default copy, or else the oldest.
+_FIRST_COPY = (
+    select(local_copies)
+    .where(local_copies.c.work_id == works.c.id)
+    .order_by(local_copies.c.is_default.desc(), local_copies.c.created_at)
+    .limit(1)
+)
 _WORK_COLUMNS = (
     works,
+    _FIRST_COPY.with_only_columns(local_copies.c.id).scalar_subquery().label("copy_id"),
+    _FIRST_COPY.with_only_columns(local_copies.c.entry_path).scalar_subquery().label("copy_entry"),
     personal_records.c.status,
     personal_records.c.rating,
     personal_records.c.note,
@@ -65,6 +94,7 @@ class WorkFilters:
     status: str = "all"
     installed: str = "all"
     favorites_only: bool = False
+    collection: str = "all"
     sort: Sort = "curated"
 
 
@@ -124,6 +154,10 @@ def _now() -> str:
     return datetime.now(UTC).isoformat()
 
 
+_HAS_COPY = exists().where(local_copies.c.work_id == works.c.id)
+_ON_THIS_MACHINE = or_(works.c.local_state == "available", _HAS_COPY)
+
+
 def _kind_clause(kind: str) -> ColumnElement[bool] | None:
     if kind == "all":
         return None
@@ -135,9 +169,9 @@ def _kind_clause(kind: str) -> ColumnElement[bool] | None:
 def _local_clause(installed: str) -> ColumnElement[bool] | None:
     # "Not on this machine" needs a known absence: unknown never counts as absent.
     if installed == "installed":
-        return works.c.local_state == "available"
+        return _ON_THIS_MACHINE
     if installed == "not-installed":
-        return works.c.local_state == "absent"
+        return and_(works.c.local_state == "absent", ~_HAS_COPY)
     return None
 
 
@@ -160,6 +194,14 @@ def _filter_clauses(filters: WorkFilters) -> list[ColumnElement[bool]]:
         clauses.append(local)
     if filters.favorites_only:
         clauses.append(personal_records.c.favorite == 1)
+    if filters.collection != "all":
+        clauses.append(
+            works.c.id.in_(
+                select(collection_items.c.work_id).where(
+                    collection_items.c.collection_id == filters.collection
+                )
+            )
+        )
     return clauses
 
 
@@ -244,9 +286,7 @@ def library_facets(connection: Connection, filters: WorkFilters) -> dict[str, An
         "total_visible": sum(kind_counts.values()),
         "kind_counts": kind_counts,
         "genres": list(connection.execute(genre_query).scalars()),
-        "installed_count": connection.execute(
-            base.where(works.c.local_state == "available")
-        ).scalar_one(),
+        "installed_count": connection.execute(base.where(_ON_THIS_MACHINE)).scalar_one(),
         "favorite_count": connection.execute(
             base.where(personal_records.c.favorite == 1)
         ).scalar_one(),
@@ -296,6 +336,7 @@ def dashboard_facts(connection: Connection) -> list[WorkFacts]:
             works.c.genre,
             personal_records.c.status,
             works.c.local_state,
+            _HAS_COPY.label("has_copy"),
             personal_records.c.favorite,
             works.c.cover_ref,
             works.c.playtime_minutes,
@@ -311,7 +352,13 @@ def dashboard_facts(connection: Connection) -> list[WorkFacts]:
             kind=row.kind,
             genre=row.genre,
             status=row.status,
-            local=None if row.local_state == "unknown" else row.local_state == "available",
+            local=(
+                True
+                if row.has_copy
+                else None
+                if row.local_state == "unknown"
+                else row.local_state == "available"
+            ),
             favorite=bool(row.favorite),
             has_cover=row.cover_ref is not None,
             playtime_minutes=row.playtime_minutes,

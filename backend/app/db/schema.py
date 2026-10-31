@@ -454,6 +454,24 @@ reader_bookmarks = Table(
     Index("ix_reader_bookmarks_book", "book_id"),
 )
 
+collections = Table(
+    "collections",
+    metadata,
+    Column("id", String, primary_key=True),
+    Column("name", String, nullable=False),
+    Column("name_key", String, nullable=False, unique=True),
+    Column("created_at", String, nullable=False),
+)
+
+collection_items = Table(
+    "collection_items",
+    metadata,
+    Column("collection_id", String, ForeignKey("collections.id"), primary_key=True),
+    Column("work_id", String, ForeignKey("works.id"), primary_key=True),
+    Column("added_at", String, nullable=False),
+    Index("ix_collection_items_work", "work_id"),
+)
+
 library_entries = Table(
     "library_entries",
     metadata,

@@ -215,7 +215,7 @@ function DetailBody({ game }: { game: GameDetail }) {
               </dd>
             </div>
             <div>
-              <dt>加入收藏</dt>
+              <dt>加入作品库</dt>
               <dd>{formatDate(game.addedAt) ?? '未记录'}</dd>
             </div>
             <div>

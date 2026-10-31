@@ -1,10 +1,13 @@
-"""Where a work's files are on this computer. A record only: adding or removing a copy never moves
+"""Where a work's files are on this computer. Mostly a record: uninstalling is the one thing here
+that moves files, and only to the Recycle Bin. Otherwise adding or removing a copy never moves
 or deletes anything, and nothing here runs a program except `launch`, on the user's own click.
 
 A request can only name a saved copy to act on, never a command or a path to run. Paths are
 checked when saved and again when used, because folders go offline and files get replaced.
 """
 
+import os
+import re
 import threading
 import time
 import uuid
@@ -20,7 +23,14 @@ from app.api import models
 from app.core.config import Settings
 from app.core.errors import AtlasError
 from app.db.engine import writing
-from app.db.schema import local_copies, personal_records, works
+from app.db.schema import (
+    game_updates,
+    local_copies,
+    personal_records,
+    scan_items,
+    scan_roots,
+    works,
+)
 from app.domain.local_files import entry_candidates, single_entry
 from app.repositories.works import ORDINARY, get_ordinary_work
 from app.services.folders import FolderService, is_protected
@@ -39,6 +49,70 @@ MESSAGES = {
 
 class Launcher(Protocol):
     def launch(self, program: Path, arguments: list[str], working: Path) -> None: ...
+
+
+class Shell(Protocol):
+    def recycle(self, path: Path) -> None: ...
+
+    def desktop(self) -> Path: ...
+
+    def write_shortcut(
+        self,
+        link: Path,
+        target: Path,
+        arguments: list[str],
+        working: Path | None,
+        icon: Path | None,
+    ) -> None: ...
+
+
+_UPDATE_HOLDS = (
+    "queued",
+    "backing_up",
+    "downloading",
+    "unpacking",
+    "replacing",
+    "cleaning",
+    "awaiting_confirmation",
+)
+# `<library>/<type>/<maker>/<work>`: anything above the work is shared with other works.
+_LIBRARY_LAYERS = 3
+_MAX_COUNTED = 200_000
+_UNSAFE_NAME = re.compile(r'[\\/:*?"<>|\x00-\x1f]')
+
+
+def _in_use(program: Path) -> bool:
+    """Windows will not let a running program be opened for writing. Not everything a game holds
+    is covered, so the Recycle Bin's own refusal is the other half of this."""
+    try:
+        with program.open("r+b"):
+            return False
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+
+
+def _measure(root: Path) -> tuple[int, int, bool]:
+    """Files and bytes, without following links out of the folder."""
+    files = size = 0
+    stack = [str(root)]
+    while stack:
+        try:
+            with os.scandir(stack.pop()) as entries:
+                for entry in entries:
+                    if entry.is_symlink() or entry.is_junction():
+                        continue
+                    if entry.is_dir(follow_symlinks=False):
+                        stack.append(entry.path)
+                        continue
+                    files += 1
+                    if files > _MAX_COUNTED:
+                        return files, size, False
+                    size += entry.stat(follow_symlinks=False).st_size
+        except OSError:
+            return files, size, False
+    return files, size, True
 
 
 def _invalid(message: str) -> AtlasError:
@@ -71,6 +145,7 @@ class LocalCopies:
         settings: Settings,
         folders: FolderService,
         launcher: Launcher,
+        shell: Shell,
         *,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
@@ -78,6 +153,7 @@ class LocalCopies:
         self._settings = settings
         self._folders = folders
         self._launcher = launcher
+        self._shell = shell
         self._clock = clock
         self._lock = threading.Lock()
         self._last_launch: dict[str, float] = {}
@@ -329,6 +405,129 @@ class LocalCopies:
                         update(local_copies).where(local_copies.c.id == other).values(is_default=1)
                     )
         return self.copies(row.work_id)
+
+    # --- uninstalling ---
+
+    def _uninstall_block(self, row: Row[Any]) -> str | None:
+        """Why this folder must not go. Only one work's own folder ever may: never something that
+        holds other works, the library itself or a place the user chose for Atlas."""
+        raw = Path(row.root_path)
+        if not raw.is_dir():
+            return "这个文件夹现在不存在或硬盘没有连接。"
+        if raw.is_symlink() or raw.is_junction():
+            return "这是一个链接，不是作品本身的文件夹。"
+        root = raw.resolve()
+        data_dir = self._settings.data_dir.resolve()
+        if is_protected(root) or root == data_dir or data_dir.is_relative_to(root):
+            return "这是系统文件夹，不能卸载。"
+        if root.is_relative_to(data_dir):
+            return "这是 Atlas 自己的数据目录，不能卸载。"
+        for chosen in self._folders.chosen_folders():
+            place = chosen.resolve()
+            if root == place or place.is_relative_to(root):
+                return "这是你为 Atlas 选择的文件夹，不能卸载。"
+        with self._engine.connect() as connection:
+            libraries = connection.execute(select(scan_roots.c.path)).scalars().all()
+            others = connection.execute(
+                select(local_copies.c.root_path).where(local_copies.c.id != row.id)
+            ).scalars()
+            for other in others:
+                place = Path(other).resolve()
+                if place == root or place.is_relative_to(root) or root.is_relative_to(place):
+                    return "这个文件夹和另一个关联的文件夹重叠，不能卸载。"
+            updating = connection.execute(
+                select(game_updates.c.id).where(
+                    game_updates.c.work_id == row.work_id, game_updates.c.state.in_(_UPDATE_HOLDS)
+                )
+            ).first()
+        for library in libraries:
+            place = Path(library).resolve()
+            if place.is_relative_to(root):
+                return "这个文件夹包含整个作品库，不能卸载。"
+            if root.is_relative_to(place) and len(root.relative_to(place).parts) < _LIBRARY_LAYERS:
+                return "这是作品库的一层目录，里面可能有别的作品，不能卸载。"
+        if updating is not None:
+            return "这部作品正在更新，请等更新结束。"
+        if row.entry_path:
+            program = _inside(root, row.entry_path)
+            if program.is_file() and _in_use(program):
+                return "主程序正在运行。请先关闭游戏。"
+        return None
+
+    def uninstall_preview(self, copy_id: str) -> models.UninstallPreview:
+        with self._engine.connect() as connection:
+            row = self._copy(connection, copy_id)
+        blocked = self._uninstall_block(row)
+        files, size, complete = _measure(Path(row.root_path)) if blocked is None else (0, 0, True)
+        return models.UninstallPreview(
+            root=row.root_path, files=files, size_bytes=size, complete=complete, blocked=blocked
+        )
+
+    def uninstall(self, copy_id: str, body: models.UninstallIn) -> models.LocalCopiesOut:
+        """To the Recycle Bin, so it can be got back, and only the folder the user was shown. The
+        record goes only once the folder really has. Their notes, ratings and collections stay."""
+        with self._engine.connect() as connection:
+            row = self._copy(connection, copy_id)
+        if body.confirm_root != row.root_path:
+            raise AtlasError("uninstall_changed", "文件夹已经变了，请重新确认。", status=409)
+        blocked = self._uninstall_block(row)
+        if blocked is not None:
+            raise AtlasError("uninstall_refused", blocked, status=409)
+        try:
+            self._shell.recycle(Path(row.root_path))
+        except OSError:
+            raise AtlasError(
+                "uninstall_failed",
+                "没能移到回收站。可能有文件正在使用，或路径太长。什么都没有删除。",
+                status=409,
+            ) from None
+        self.remove(copy_id)
+        with writing(self._engine).begin() as connection:
+            # A folder got back from the bin should be found again by the next scan.
+            connection.execute(delete(scan_items).where(scan_items.c.path_key == row.root_key))
+            left = connection.execute(
+                select(local_copies.c.id).where(local_copies.c.work_id == row.work_id).limit(1)
+            ).first()
+            if left is None:
+                connection.execute(
+                    update(works).where(works.c.id == row.work_id).values(local_state="absent")
+                )
+        return self.copies(row.work_id)
+
+    # --- shortcuts ---
+
+    def shortcut(self, copy_id: str) -> models.ShortcutOut:
+        """A game's shortcut starts the game; anything else's opens its folder. Never replaces a
+        file already on the desktop."""
+        with self._engine.connect() as connection:
+            row = self._copy(connection, copy_id)
+            work = connection.execute(
+                select(works.c.kind, works.c.title).where(works.c.id == row.work_id)
+            ).one()
+        root = Path(row.root_path)
+        status = self._status(row)
+        if work.kind == "game":
+            if status != "ok":
+                raise AtlasError(f"copy_{status}", MESSAGES[status], status=409)
+            program = _inside(root, row.entry_path)
+            working = _inside(root, row.working_path) if row.working_path else program.parent
+            target, arguments, start_in, icon = program, list(row.arguments or []), working, program
+        else:
+            if not root.is_dir():
+                raise AtlasError("copy_root_missing", MESSAGES["root_missing"], status=409)
+            target, arguments, start_in, icon = root, [], None, None
+        name = _UNSAFE_NAME.sub(" ", work.title).strip(" .")[:80].strip(" .") or "作品"
+        try:
+            desktop = self._shell.desktop()
+            link = desktop / f"{name}.lnk"
+            attempt = 2
+            while link.exists():
+                link = desktop / f"{name} ({attempt}).lnk"
+                attempt += 1
+            self._shell.write_shortcut(link, target, arguments, start_in, icon)
+        except OSError:
+            raise AtlasError("shortcut_failed", "没能创建快捷方式。", status=409) from None
+        return models.ShortcutOut(created=True)
 
     def choose_folder(self) -> models.ChosenFolderOut:
         chosen = self._folders.choose()

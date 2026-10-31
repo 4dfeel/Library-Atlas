@@ -26,6 +26,7 @@ import {
   type Playlist,
   type PlaylistEntry,
   type ReaderBookmark,
+  type WorkCollection,
   type SaveRule,
   type ScanItemState,
   type LocalCopyInput,
@@ -672,6 +673,7 @@ export function useWorkIntroduction(workId: string) {
 
 export function useLocalCopies(workId: string) {
   const isReal = useWorkspaceMode() === 'real';
+  const queryClient = useQueryClient();
   const query = useQuery({
     queryKey: [...realRoot, 'local-copies', workId],
     queryFn: ({ signal }) => realSource.localCopies(workId, signal),
@@ -680,7 +682,14 @@ export function useLocalCopies(workId: string) {
     // A drive coming back, or a folder moved outside Atlas, shows up without a reload.
     refetchInterval: 30_000,
   });
-  return { copies: query.data ?? emptyCopies, loading: isReal && query.isPending };
+  return {
+    copies: query.data ?? emptyCopies,
+    loading: isReal && query.isPending,
+    refresh: useCallback(
+      () => queryClient.invalidateQueries({ queryKey: [...realRoot, 'local-copies', workId] }),
+      [queryClient, workId],
+    ),
+  };
 }
 
 const emptyCopies: LocalCopy[] = [];
@@ -698,7 +707,8 @@ export function useLocalCopyActions(workId: string) {
     preview: (path: string) => realSource.previewLocalCopy(workId, path),
     chooseFolder: async () => (await realSource.chooseCopyFolder()).path,
     add: (body: LocalCopyInput) => then(realSource.addLocalCopy(workId, body)),
-    update: (id: string, body: LocalCopyInput) => then(realSource.updateLocalCopy(id, body)),
+    update: (id: string, body: Partial<LocalCopyInput>) =>
+      then(realSource.updateLocalCopy(id, body)),
     remove: (id: string) => then(realSource.removeLocalCopy(id)),
     setDefault: (id: string) => then(realSource.localCopyAction(id, 'default')),
     open: (id: string) => realSource.localCopyAction(id, 'open'),
@@ -936,4 +946,70 @@ export function useReaderActions(copyId: string, bookId: string) {
       },
     };
   }, [bookId, copyId, queryClient]);
+}
+
+export function useCollections(workId?: string) {
+  const query = useQuery({
+    queryKey: [...realRoot, 'collections', workId ?? null],
+    queryFn: ({ signal }) => realSource.collections(workId, signal),
+    enabled: useWorkspaceMode() === 'real',
+    retry: false,
+  });
+  return {
+    collections: query.data?.collections ?? emptyCollections,
+    favorites: query.data?.favorites ?? 0,
+    loading: query.isPending,
+  };
+}
+
+const emptyCollections: WorkCollection[] = [];
+
+/** Everything shown from a collection can change with it, so the library is read again too. */
+export function useCollectionActions(workId?: string) {
+  const queryClient = useQueryClient();
+  const then = async (work: Promise<unknown>) => {
+    await work;
+    await queryClient.invalidateQueries({ queryKey: realRoot });
+  };
+  return {
+    create: (name: string) => then(realSource.createCollection(name, workId)),
+    rename: (id: string, name: string) => then(realSource.renameCollection(id, name)),
+    remove: (id: string) => then(realSource.removeCollection(id)),
+    toggle: (id: string, inside: boolean) =>
+      workId ? then(realSource.setInCollection(id, workId, inside)) : Promise.resolve(),
+  };
+}
+
+export function useWorkActions(workId: string) {
+  const queryClient = useQueryClient();
+  void workId;
+  return {
+    launch: (copyId: string) =>
+      realSource.launchLocalCopy(copyId).then(async (result) => {
+        await queryClient.invalidateQueries({ queryKey: realRoot });
+        return result;
+      }),
+    shortcut: (copyId: string) => realSource.addShortcut(copyId),
+    browse: (copyId: string) => realSource.localCopyAction(copyId, 'open'),
+  };
+}
+
+export function useUninstall(copyId: string) {
+  const queryClient = useQueryClient();
+  const query = useQuery({
+    // Checked fresh each time: what may be removed depends on the moment.
+    queryKey: [...realRoot, 'uninstall', copyId],
+    queryFn: ({ signal }) => realSource.uninstallPreview(copyId, signal),
+    gcTime: 0,
+    staleTime: 0,
+    retry: false,
+  });
+  return {
+    preview: query.data,
+    error: query.error ? (query.error as Error).message : null,
+    uninstall: async (root: string) => {
+      await realSource.uninstall(copyId, root);
+      await queryClient.invalidateQueries({ queryKey: realRoot });
+    },
+  };
 }

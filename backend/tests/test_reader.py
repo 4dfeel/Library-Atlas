@@ -105,6 +105,15 @@ def test_absurd_sizes_are_refused(width: int, height: int, fine: bool) -> None:
     assert acceptable(ImageHeader("image/png", width, height)) is fine
 
 
+def test_module_scripts_are_served_as_scripts_whatever_the_registry_says() -> None:
+    import mimetypes
+
+    import app.main
+
+    assert app.main is not None
+    assert mimetypes.guess_type("pdf.worker.min.mjs")[0] == "text/javascript"
+
+
 # --- finding books ---
 
 

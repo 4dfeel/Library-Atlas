@@ -279,7 +279,7 @@ export function GameHero({
                   </Fact>
                 </>
               )}
-              <Fact label="加入收藏">
+              <Fact label="加入作品库">
                 <strong className="fact-date">{formatDate(game.addedAt) ?? '未记录'}</strong>
               </Fact>
             </dl>

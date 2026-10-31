@@ -226,6 +226,18 @@
 ### 本机作品库的自动关联
 `POST /library-scan/start` 接受 `autoLink`。任务结果里有 `autoLinked` 和 `batchId`，`batchId` 传给 `undo` 可撤销。
 
+### 卸载、快捷方式、收藏夹
+| 接口 | 说明 |
+| --- | --- |
+| `GET /local-copies/{id}/uninstall` | `{root,files,sizeBytes,complete,blocked}` |
+| `POST /local-copies/{id}/uninstall` | `{confirmRoot}`，必须和预览的路径相同。移到回收站 |
+| `POST /local-copies/{id}/shortcut` | 在桌面创建快捷方式，不覆盖已有文件 |
+| `GET /collections?workId=` | `{favorites,collections:[{id,name,count,contains}]}` |
+| `POST /collections` | `{name,workId?}` |
+| `PATCH`、`DELETE /collections/{id}` | 重命名、删除（作品不受影响） |
+| `PUT`、`DELETE /collections/{id}/works/{workId}` | 放入、移出 |
+| `GET /works?collection=` | 按收藏筛选。作品带 `copyId`、`launchable` |
+
 ### 音声
 | 接口 | 说明 |
 | --- | --- |

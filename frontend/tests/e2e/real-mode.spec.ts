@@ -418,10 +418,16 @@ test.describe('large synthetic libraries', () => {
         await scroller.evaluate((node) => node.scrollTo({ top: node.scrollHeight }));
         await expect.poll(() => page.locator('[data-game-card]').count()).toBeGreaterThan(0);
         await expect(page.locator('[data-pending-item]')).toHaveCount(0, { timeout: 15_000 });
-        const lastIds = await page
-          .locator('[data-game-card]')
-          .evaluateAll((cards) => cards.map((card) => (card as HTMLElement).dataset.gameId));
-        expect(lastIds.length).toBeGreaterThan(0);
+        // The list may still be redrawing what the jump brought in: wait until it has settled.
+        let lastIds: (string | undefined)[] = [];
+        await expect
+          .poll(async () => {
+            lastIds = await page
+              .locator('[data-game-card]')
+              .evaluateAll((cards) => cards.map((card) => (card as HTMLElement).dataset.gameId));
+            return lastIds.length;
+          })
+          .toBeGreaterThan(0);
         expect(new Set(lastIds).size).toBe(lastIds.length);
         const mountedAtEnd = await page.locator('[data-game-card]').count();
         expect(mountedAtEnd).toBeLessThan(80);

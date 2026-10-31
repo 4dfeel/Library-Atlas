@@ -1,7 +1,7 @@
 import { useVirtualizer, defaultRangeExtractor } from '@tanstack/react-virtual';
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ArrowDown, ArrowUp, Download, Star } from 'lucide-react';
-import type { Game, LibrarySort } from '@/lib/data';
+import { useWorkspaceMode, type Game, type LibrarySort } from '@/lib/data';
 import {
   availabilityLabel,
   formatBytes,
@@ -9,7 +9,9 @@ import {
   statusLabels,
   workMeta,
 } from '@/lib/utils';
+import { useShell } from '@/app/shell-context';
 import { GameCard, GameCover } from '@/components/game-card';
+import { WorkMenu } from './work-menu';
 import { getGridLayout, useMeasuredWidth } from '@/lib/layout';
 import { AppLink } from '@/components/app-link';
 
@@ -192,6 +194,10 @@ export function GameCollection({
     };
     requestAnimationFrame(focusOpened);
   }, [width, columns, rowHeight]);
+  const { notify } = useShell();
+  const isReal = useWorkspaceMode() === 'real';
+  const [menu, setMenu] = useState<{ game: Game; x: number; y: number } | null>(null);
+  const closeMenu = useCallback(() => setMenu(null), []);
   const openGame = (id: string) => {
     const scroll = scrollRef.current;
     const anchor = scroll ? Math.floor(scroll.scrollTop / rowHeight) * columns : 0;
@@ -298,6 +304,14 @@ export function GameCollection({
                   <div
                     key={game.id}
                     role="listitem"
+                    onContextMenu={
+                      isReal
+                        ? (event) => {
+                            event.preventDefault();
+                            setMenu({ game, x: event.clientX, y: event.clientY });
+                          }
+                        : undefined
+                    }
                     onFocusCapture={(event) => {
                       const control = (event.target as HTMLElement).closest<HTMLElement>(
                         '[data-focus-key]',
@@ -394,6 +408,19 @@ export function GameCollection({
           </div>
         ))}
       </div>
+      {menu && (
+        <WorkMenu
+          key={`${menu.game.id}-${menu.x}-${menu.y}`}
+          game={menu.game}
+          x={menu.x}
+          y={menu.y}
+          detailHref={detailHref(menu.game.id)}
+          onOpen={() => openGame(menu.game.id)}
+          onFavorite={() => onFavorite(menu.game.id)}
+          onClose={closeMenu}
+          notify={notify}
+        />
+      )}
     </div>
   );
 }

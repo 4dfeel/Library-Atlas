@@ -7,6 +7,7 @@ written, each can be undone, and what they take back is not linked again unless 
 ambiguous match is never picked for them.
 """
 
+import difflib
 import json
 import logging
 import os
@@ -54,6 +55,12 @@ _SKIPPED = {
     "msocache",
     "perflogs",
 }
+# `Title ver121`, `Title_v1.2.3`, `Title (Ver.1.21)`: the release, not part of the name. Only at the
+# end, and only with the word: a bare number may be another volume.
+_VERSION = re.compile(
+    r"[\s_\-–—~～(\[（【]*(?<![a-z0-9])(?:version|ver|v)[\s._]*\d+(?:[._]\d+)*[a-z]?[\s)\]）】]*$",
+    re.IGNORECASE,
+)
 _ID = re.compile(r"(?<![A-Za-z0-9])((?:RJ|VJ|BJ)\d{6,8})(?![0-9])", re.IGNORECASE)
 _DEEP_DEPTH = 6
 MAX_FOLDERS = 400_000
@@ -63,6 +70,10 @@ _PAGE_LIMIT = 200
 # Long enough that a same name is not a coincidence.
 _MIN_UNIQUE_TITLE = 6
 _MIN_CONTAINED_TITLE = 8
+# How alike two names by the same maker must be: to be the same work, and to be worth asking about.
+_SAME_NAME = 0.85
+_SIMILAR_NAME = 0.6
+_MAX_CANDIDATES = 3
 MESSAGES = {
     "budget": "这次扫描到达了文件夹数量上限，范围没有查完，可以指定具体文件夹再扫。",
     "interrupted": "上次扫描被中断了，已发现的结果还在，可以重新扫描。",
@@ -78,6 +89,10 @@ def _norm(text: str | None) -> str:
     """For comparing names: full-width forms, case and punctuation do not count."""
     cleaned = unicodedata.normalize("NFKC", text or "").casefold()
     return re.sub(r"[\s\W_]+", "", cleaned)
+
+
+def _without_version(name: str) -> str:
+    return _VERSION.sub("", name).strip() or name
 
 
 def _key(path: Path | str) -> str:
@@ -129,6 +144,15 @@ def _contained(title_key: str, same_maker: list[Row[Any]]) -> list[Row[Any]]:
         if not any(character.isdigit() for character in long.replace(short, "", 1)):
             found.append(row)
     return found
+
+
+def _similar(title_key: str, same_maker: list[Row[Any]]) -> list[tuple[float, Row[Any]]]:
+    """Works by this maker with a name like the folder's, closest first."""
+    scored = [
+        (difflib.SequenceMatcher(None, title_key, _norm(row.title)).ratio(), row)
+        for row in same_maker
+    ]
+    return sorted((item for item in scored if item[0] >= _SIMILAR_NAME), key=lambda item: -item[0])
 
 
 @dataclass
@@ -447,12 +471,29 @@ class LibraryScanner:
             found = _ID.search(name)
             if found and found.group(1).upper() in by_id:
                 return "certain", [by_id[found.group(1).upper()]], "文件夹名里有作品编号"
+        # As it stands first: a work may really be called that. Then without the release.
         title_key = _norm(title)
         same = by_title.get(title_key, [])
+        if not same:
+            title_key = _norm(_without_version(title))
+            same = by_title.get(title_key, [])
         if not same:
             contained = _contained(title_key, by_maker.get(_norm(maker), []))
             if len(contained) == 1:
                 return "likely", [contained[0].id], "制作方相同，作品名只差副标题"
+            similar = _similar(title_key, by_maker.get(_norm(maker), []))
+            if similar:
+                close = [row for score, row in similar if score >= _SAME_NAME]
+                # Different numbers are different volumes, however alike the rest is.
+                if len(close) == 1 and re.findall(r"\d+", _norm(close[0].title)) == re.findall(
+                    r"\d+", title_key
+                ):
+                    return "likely", [close[0].id], "制作方相同，作品名几乎一样"
+                return (
+                    "review",
+                    [row.id for _score, row in similar[:_MAX_CANDIDATES]],
+                    "制作方相同，作品名相近",
+                )
             return "unmatched", [], "作品库里没有同名作品"
         same_maker = [row for row in same if _norm(row.maker) == _norm(maker)]
         if len(same_maker) == 1:
