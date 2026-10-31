@@ -2846,3 +2846,66 @@
   font-size: 13px;
   line-height: 1.8;
 }
+
+.save-finder {
+  display: grid;
+  gap: 8px;
+}
+
+.save-finder-list {
+  display: grid;
+  gap: 6px;
+  max-height: 34vh;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+}
+
+.save-finder-list li {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+  border-radius: 6px;
+}
+
+.save-finder-list label {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.save-finder-path {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.save-finder-samples {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.save-finder-heading {
+  margin: 4px 0 0;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.download-plan:has(.save-finder) {
+  max-height: 72vh;
+  overflow: auto;
+}
+
+/* The dialog's own actions stay in reach however long the list of places gets. */
+.download-plan:has(.save-finder) > .dlsite-actions:last-child {
+  position: sticky;
+  bottom: 0;
+  padding-block: 8px;
+  background: var(--sidebar);
+}

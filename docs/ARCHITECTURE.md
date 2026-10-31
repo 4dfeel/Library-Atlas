@@ -257,3 +257,5 @@ frontend/src/features/game-detail/work-gallery.tsx  介绍图
 - `adapters/system/shell_files.py`：回收站和 `.lnk`，路径作为数据传给 Windows API，不经命令行。测试配置用 `testing/fake_shell.py`。`services/collections.py`：收藏。迁移 `0017`：`collections`、`collection_items`。`repositories/works.py`：“已安装”同时看下载状态和本地副本。
 
 - `adapters/google/`：官方 OAuth 桌面流程和 Drive 调用。`services/cloud_saves.py`：快照、队列、冲突判定、恢复。复用 C9 的存档配置和本地备份。`testing/fake_drive.py`：HTTP 层的假 Google，放在一个文件夹里，两个资料库可以共用。迁移 `0018`：`cloud_states`、`cloud_outbox`。C13 导出必须排除凭据和 `cloud-outbox`。
+
+- `domain/save_hints.py`：按游戏文件判断引擎和存档位置。`services/save_discovery.py`：游戏期间变化文件的查找，只看名字、时间和大小，结果只是建议。`adapters/system/registry.py`：只读写游戏自己在 `HKCU\\Software` 下的键，导出成稳定的 JSON，下游当普通存档文件处理。测试配置用假用户目录和文件版注册表。迁移 `0019`：`save_discoveries`。

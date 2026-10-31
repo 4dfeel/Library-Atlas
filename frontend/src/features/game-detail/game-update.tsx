@@ -51,12 +51,19 @@ export function SaveRules({
           >
             <option value="inside">游戏文件夹内</option>
             <option value="outside">其他位置</option>
+            <option value="registry">注册表</option>
           </select>
           <Input
             aria-label="存档路径"
             value={rule.path}
             spellCheck={false}
-            placeholder={rule.kind === 'inside' ? '如 www/save' : '完整路径'}
+            placeholder={
+              rule.kind === 'inside'
+                ? '如 www/save 或 Save*.dat'
+                : rule.kind === 'registry'
+                  ? '如 HKCU\\Software\\公司名\\游戏名'
+                  : '完整路径'
+            }
             onChange={(event) =>
               setRules(
                 rules.map((item, position) =>

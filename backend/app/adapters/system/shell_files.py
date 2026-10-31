@@ -10,6 +10,8 @@ from ctypes import wintypes
 from pathlib import Path
 from typing import Any
 
+from app.domain.save_hints import KnownFolders
+
 _FO_DELETE = 3
 _FOF_SILENT = 0x0004
 _FOF_NOCONFIRMATION = 0x0010
@@ -78,18 +80,32 @@ def _method(pointer: ctypes.c_void_p, index: int, *arguments: type) -> Any:
     return prototype(table[index])
 
 
-def desktop_folder() -> Path:
-    """Asked of Windows: the desktop is often not where its name suggests."""
+def _known_folder(folder_id: str) -> Path:
+    """Asked of Windows: these folders are often not where their names suggest."""
     found = wintypes.LPWSTR()
     result = ctypes.windll.shell32.SHGetKnownFolderPath(
-        _guid(_FOLDERID_DESKTOP), 0, None, ctypes.byref(found)
+        _guid(folder_id), 0, None, ctypes.byref(found)
     )
     if result != 0:
-        raise OSError("the desktop folder is not known")
+        raise OSError("that folder is not known")
     try:
         return Path(found.value or "")
     finally:
         ctypes.windll.ole32.CoTaskMemFree(found)
+
+
+def desktop_folder() -> Path:
+    return _known_folder(_FOLDERID_DESKTOP)
+
+
+def user_folders() -> KnownFolders:
+    return KnownFolders(
+        _known_folder("F1B32785-6FBA-4FCF-9D55-7B8E7F157091"),
+        _known_folder("A520A1A4-1780-4FF6-BD18-167343C5AF16"),
+        _known_folder("3EB685DB-65F9-4CF6-A03A-E3EF65729F3D"),
+        _known_folder("FDD39AD0-238F-46AF-ADB4-6C85480369C7"),
+        _known_folder("4C5C32FF-BB9D-43B0-B5B4-2D72E54EAAA4"),
+    )
 
 
 def write_shortcut(

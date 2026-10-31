@@ -244,8 +244,33 @@ export interface ScanItem {
 }
 
 export interface SaveRule {
-  kind: 'inside' | 'outside';
+  kind: 'inside' | 'outside' | 'registry';
   path: string;
+}
+
+export interface SaveSuggestion {
+  kind: SaveRule['kind'];
+  path: string;
+  source: 'engine' | 'play';
+  reason: string;
+  likely: boolean;
+  files: number;
+  sizeBytes: number;
+  modifiedAt: string | null;
+  samples: string[];
+  configured: boolean;
+}
+
+export interface SaveSuggestions {
+  available: boolean;
+  engine: string | null;
+  suggestions: SaveSuggestion[];
+  session: {
+    state: 'none' | 'recording' | 'scanning' | 'done' | 'failed';
+    startedAt: string | null;
+    finishedAt: string | null;
+    complete: boolean;
+  };
 }
 
 export interface GameUpdateStatus {
@@ -740,6 +765,17 @@ export class RealLibrarySource implements LibrarySource {
       keep,
       confirmClosed: true,
     });
+  }
+
+  saveSuggestions(workId: string, signal?: AbortSignal) {
+    return apiGet<SaveSuggestions>(`${workPath(workId)}/saves/suggestions`, undefined, signal);
+  }
+
+  saveSession(workId: string, finish: boolean) {
+    return apiWrite<SaveSuggestions>(
+      'POST',
+      `${workPath(workId)}/saves/session${finish ? '/finish' : ''}`,
+    );
   }
 
   launchLocalCopy(id: string) {

@@ -10,6 +10,7 @@ Nothing here touches anything but the copy being updated, its saves as the user 
 what this task itself created. No other copy of the game is affected, and nothing is ever run.
 """
 
+import fnmatch
 import hashlib
 import json
 import logging
@@ -28,6 +29,13 @@ from sqlalchemy import Connection, Engine, Row, delete, select, update
 from sqlalchemy.exc import IntegrityError
 
 from app.adapters.system.archives import ArchiveProblem, Stopped, safe_parts
+from app.adapters.system.registry import (
+    Registry,
+    RegistryRefused,
+    canonical,
+    player_values,
+    subkey_of,
+)
 from app.api import models
 from app.core.config import Settings
 from app.core.errors import AtlasError
@@ -47,6 +55,7 @@ _HASH_BYTES = 1024 * 1024
 _MAX_EXTRA_SAMPLE = 8
 _MAX_WALK = 500_000
 _POLL = 0.1
+_PROGRAM_SUFFIXES = {".exe", ".dll", ".bat", ".cmd", ".com", ".scr", ".msi", ".ps1"}
 MESSAGES = {
     "saves_unconfirmed": "请先说明这部作品的存档在哪里，或确认没有需要保留的存档。",
     "confirm_closed": "请先确认游戏已经关闭。",
@@ -107,6 +116,22 @@ class SavedFile:
     is_file_rule: bool
 
 
+def split_pattern(path: str) -> tuple[str, str | None]:
+    """`data/Save*.dat` is the folder `data` and the pattern `Save*.dat`. So that new slots are
+    covered: only the last part can be a pattern."""
+    folder, _, last = path.replace("\\", "/").rpartition("/")
+    return (folder, last) if "*" in last else (path, None)
+
+
+def check_pattern(pattern: str) -> None:
+    """Must say what it is after: not everything, and not the game's own programs."""
+    stem, suffix = os.path.splitext(pattern)
+    named = stem.replace("*", "").strip() or (suffix not in ("", ".*") and "*" not in suffix)
+    if pattern.count("*") > 1 or not named or suffix.casefold() in _PROGRAM_SUFFIXES:
+        raise ArchiveProblem("unsafe_path")
+    safe_parts(pattern.replace("*", "x"))
+
+
 class _Stop(Exception):
     def __init__(self, state: str, code: str | None) -> None:
         super().__init__(state)
@@ -126,9 +151,12 @@ class GameUpdater:
         settings: Settings,
         downloads: DownloadQueue | None,
         extractions: ExtractionService,
+        registry: Registry | None = None,
     ) -> None:
         self._engine = engine
         self._backups = settings.data_dir / "save-backups"
+        self._exports = settings.data_dir / "registry-exports"
+        self._registry = registry
         self._downloads = downloads
         self._extractions = extractions
         self._lock = threading.Lock()
@@ -178,11 +206,26 @@ class GameUpdater:
     def set_save_config(self, work_id: str, body: models.SaveConfigIn) -> models.SaveConfigOut:
         for rule in body.rules:
             if rule.kind == "inside":
+                folder, pattern = split_pattern(rule.path)
                 try:
-                    safe_parts(rule.path)
+                    if folder or pattern is None:
+                        safe_parts(folder)
+                    if pattern is not None:
+                        check_pattern(pattern)
                 except ArchiveProblem:
                     raise AtlasError(
-                        "save_rule_invalid", "存档路径必须在游戏文件夹内。", status=422
+                        "save_rule_invalid",
+                        "存档路径必须在游戏文件夹内，通配符只能用在最后一段，比如 Save*.dat。",
+                        status=422,
+                    ) from None
+            elif rule.kind == "registry":
+                try:
+                    subkey_of(rule.path)
+                except RegistryRefused:
+                    raise AtlasError(
+                        "save_rule_invalid",
+                        "只能是游戏自己的注册表项，比如 HKCU\\Software\\公司名\\游戏名。",
+                        status=422,
                     ) from None
             else:
                 path = Path(rule.path)
@@ -206,11 +249,69 @@ class GameUpdater:
             )
         return self.save_config(work_id)
 
-    @staticmethod
-    def _targets(rule: dict[str, str], root: Path) -> Path:
+    def _targets(self, rule: dict[str, str], root: Path) -> Path:
+        """The place a rule names. For a registry key, the file that stands in for it, so that
+        everything downstream treats it as one more save file."""
+        if rule["kind"] == "registry":
+            name = hashlib.sha256(rule["path"].casefold().encode()).hexdigest()[:32]
+            return self._exports / name / "values.json"
         if rule["kind"] == "inside":
-            return root.joinpath(*safe_parts(rule["path"]))
+            folder = split_pattern(rule["path"])[0]
+            return root.joinpath(*safe_parts(folder)) if folder else root
         return Path(rule["path"])
+
+    def rule_files(self, rule: dict[str, str], root: Path) -> list[tuple[str, Path, bool]]:
+        """What a rule holds now: its name within the rule, the file, and whether the rule names
+        that one file. A rule that finds nothing holds nothing."""
+        source = self._targets(rule, root)
+        if rule["kind"] == "registry":
+            if self._registry is None:
+                return []
+            try:
+                values = self._registry.read(rule["path"])
+            except (RegistryRefused, OSError):
+                return []
+            if not player_values(values):
+                return []
+            assert values is not None
+            content = canonical(values)
+            source.parent.mkdir(parents=True, exist_ok=True)
+            if not source.is_file() or source.read_bytes() != content:
+                source.write_bytes(content)
+            return [(source.name, source, True)]
+        _folder, pattern = split_pattern(rule["path"])
+        if pattern is not None:
+            if rule["kind"] != "inside" or not source.is_dir():
+                return []
+            wanted = pattern.casefold()
+            with os.scandir(source) as entries:
+                return [
+                    (entry.name, Path(entry.path), False)
+                    for entry in entries
+                    if not entry.is_symlink()
+                    and entry.is_file(follow_symlinks=False)
+                    and fnmatch.fnmatchcase(entry.name.casefold(), wanted)
+                ]
+        if not source.exists():
+            return []
+        return [
+            (
+                file.relative_to(source).as_posix() if source.is_dir() else file.name,
+                file,
+                source.is_file(),
+            )
+            for file in _files_under(source)
+        ]
+
+    def apply_registry(self, rule: dict[str, str]) -> None:
+        """Puts back a registry rule's stand-in file, once it has been restored and checked."""
+        if self._registry is None:
+            raise AtlasError("restore_failed", "注册表不可用。", status=409)
+        try:
+            values = json.loads(self._targets(rule, Path()).read_text(encoding="utf-8"))
+            self._registry.write(rule["path"], values)
+        except (RegistryRefused, OSError, ValueError, KeyError, TypeError):
+            raise AtlasError("restore_failed", "注册表存档没有恢复。", status=409) from None
 
     def save_target(self, rule: dict[str, str], root: Path) -> Path:
         return self._targets(rule, root)
@@ -219,19 +320,10 @@ class GameUpdater:
         """What the rules name right now. A rule that finds nothing adds nothing."""
         found = []
         for index, rule in enumerate(rules):
-            source = self._targets(rule, root)
-            if not source.exists():
-                continue
-            for file in _files_under(source):
-                relative = file.relative_to(source).as_posix() if source.is_dir() else file.name
+            for relative, file, single in self.rule_files(rule, root):
                 found.append(
                     SavedFile(
-                        index,
-                        relative,
-                        f"{index}/{relative}",
-                        file,
-                        file.stat().st_size,
-                        source.is_file(),
+                        index, relative, f"{index}/{relative}", file, file.stat().st_size, single
                     )
                 )
         return found
@@ -264,11 +356,7 @@ class GameUpdater:
         manifest: list[dict[str, Any]] = []
         try:
             for index, rule in enumerate(rules):
-                source = self._targets(rule, root)
-                if not source.exists():
-                    continue
-                for file in _files_under(source):
-                    relative = file.relative_to(source).as_posix() if source.is_dir() else file.name
+                for relative, file, single in self.rule_files(rule, root):
                     stored = f"{index}/{relative}"
                     target = folder.joinpath(*stored.split("/"))
                     target.parent.mkdir(parents=True, exist_ok=True)
@@ -283,7 +371,7 @@ class GameUpdater:
                             "stored": stored,
                             "size": file.stat().st_size,
                             "sha256": digest,
-                            "is_file_rule": source.is_file(),
+                            "is_file_rule": single,
                         }
                     )
             self._prove_restorable(folder, manifest)
@@ -389,6 +477,8 @@ class GameUpdater:
                     raise AtlasError("restore_failed", "备份文件已损坏，已停止。", status=409)
                 os.replace(partial, target)
                 written += 1
+                if rule["kind"] == "registry":
+                    self.apply_registry(rule)
         except OSError:
             raise AtlasError(
                 "restore_failed", "恢复没有完成。恢复前的存档已备份。", status=409
@@ -697,8 +787,8 @@ class GameUpdater:
                 rule = rules[item["rule"]]
                 if rule["kind"] != "inside":
                     continue
-                base = root.joinpath(*safe_parts(rule["path"]))
-                source_base = old.joinpath(*safe_parts(rule["path"]))
+                base = self._targets(rule, root)
+                source_base = self._targets(rule, old)
                 if item.get("is_file_rule"):
                     source, target = source_base, base
                 else:
@@ -717,11 +807,13 @@ class GameUpdater:
     def _extras(old: Path, root: Path, rules: list[dict[str, str]]) -> tuple[int, list[str]]:
         """What only the old folder has, for the user to see before it goes: most is outdated
         program files, but it could be something of theirs that no rule named."""
+        inside = [rule["path"] for rule in rules if rule["kind"] == "inside"]
         keep = [
-            "/".join(safe_parts(rule["path"])).casefold()
-            for rule in rules
-            if rule["kind"] == "inside"
+            "/".join(safe_parts(path)).casefold()
+            for path in inside
+            if split_pattern(path)[1] is None
         ]
+        patterns = [path.replace("\\", "/").casefold() for path in inside if split_pattern(path)[1]]
         count = 0
         sample: list[str] = []
         walked = 0
@@ -732,6 +824,8 @@ class GameUpdater:
             relative = file.relative_to(old).as_posix()
             folded = relative.casefold()
             if any(folded == item or folded.startswith(f"{item}/") for item in keep):
+                continue
+            if any(fnmatch.fnmatchcase(folded, item) for item in patterns):
                 continue
             if not (root / relative).exists():
                 count += 1

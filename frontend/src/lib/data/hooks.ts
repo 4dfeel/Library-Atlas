@@ -1100,3 +1100,34 @@ export function useWorkCloud(workId: string) {
     },
   };
 }
+
+export function useSaveSuggestions(workId: string) {
+  const queryClient = useQueryClient();
+  const key = [...realRoot, 'save-suggestions', workId];
+  const [error, setError] = useState<string | null>(null);
+  const query = useQuery({
+    queryKey: key,
+    queryFn: ({ signal }) => realSource.saveSuggestions(workId, signal),
+    enabled: useWorkspaceMode() === 'real',
+    retry: false,
+    refetchInterval: (current) => {
+      const state = current.state.data?.session.state;
+      // A launch from Atlas ends by itself: keep the list current while that is going on.
+      return state === 'scanning' ? 1_000 : state === 'recording' ? 5_000 : false;
+    },
+  });
+  const run = async (finish: boolean) => {
+    try {
+      await realSource.saveSession(workId, finish);
+      setError(null);
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : '操作没有完成，请重试。');
+    }
+    await queryClient.invalidateQueries({ queryKey: key });
+  };
+  return {
+    data: query.data,
+    error,
+    actions: { start: () => run(false), finish: () => run(true) },
+  };
+}

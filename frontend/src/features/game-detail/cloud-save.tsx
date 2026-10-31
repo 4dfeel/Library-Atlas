@@ -24,6 +24,7 @@ import {
 } from '@/lib/data';
 import { formatBytes, formatDate } from '@/lib/utils';
 import { SaveRules } from './game-update';
+import { SaveFinder } from './save-finder';
 
 /** "Done" is said only of what Drive has and can give back. A queued one says it is queued. */
 const stateText: Record<string, string> = {
@@ -161,19 +162,22 @@ function RestoreDialog({
 }
 
 function ConfigDialog({
+  workId,
   rules,
   none,
   onSave,
   onClose,
 }: {
+  workId: string;
   rules: SaveRule[];
   none: boolean;
   onSave: (rules: SaveRule[], none: boolean) => Promise<unknown>;
   onClose: () => void;
 }) {
-  const [shown, setShown] = useState(
-    rules.length ? rules : [{ kind: 'inside' as const, path: '' }],
+  const [shown, setShown] = useState<SaveRule[]>(
+    rules.length ? rules : [{ kind: 'inside', path: '' }],
   );
+  const [error, setError] = useState<string | null>(null);
   const [confirmedNone, setConfirmedNone] = useState(none);
   const cleaned = shown.filter((rule) => rule.path.trim());
   return (
@@ -183,9 +187,11 @@ function ConfigDialog({
         if (!open) onClose();
       }}
       title="存档位置"
-      description="只上传这里列出的位置。Atlas 不猜存档在哪，也不会上传游戏本体。"
+      description="只备份你在这里确认的位置，不会上传游戏本体。"
     >
       <div className="download-plan" data-testid="cloud-config">
+        {!confirmedNone && <SaveFinder workId={workId} rules={shown} onChange={setShown} />}
+        {!confirmedNone && <h3 className="save-finder-heading">已确认的位置</h3>}
         {!confirmedNone && <SaveRules rules={shown} setRules={setShown} />}
         {!confirmedNone && (
           <Button
@@ -204,12 +210,25 @@ function ConfigDialog({
           />
           这部游戏没有存档
         </label>
+        {error && (
+          <p className="dlsite-message" role="alert">
+            <CircleAlert size={14} />
+            {error}
+          </p>
+        )}
         <div className="dlsite-actions">
           <Button
             size="sm"
             data-testid="cloud-config-save"
             disabled={!confirmedNone && cleaned.length === 0}
-            onClick={() => void onSave(confirmedNone ? [] : cleaned, confirmedNone).then(onClose)}
+            onClick={() => {
+              setError(null);
+              onSave(confirmedNone ? [] : cleaned, confirmedNone)
+                .then(onClose)
+                .catch((failure: unknown) =>
+                  setError(failure instanceof Error ? failure.message : '没有保存。'),
+                );
+            }}
           >
             保存
           </Button>
@@ -252,6 +271,17 @@ export function CloudSavePanel({ game }: { game: GameDetail }) {
         >
           <Settings2 size={14} />
           设置存档位置
+        </Button>
+      )}
+      {state !== 'unconfigured' && state !== 'no_saves' && update && (
+        <Button
+          variant="ghost"
+          size="sm"
+          data-testid="cloud-configure-again"
+          onClick={() => setDialog('config')}
+        >
+          <Settings2 size={14} />
+          存档位置
         </Button>
       )}
       {canUpload && state !== 'synced' && (
@@ -320,6 +350,7 @@ export function CloudSavePanel({ game }: { game: GameDetail }) {
       )}
       {dialog === 'config' && update && (
         <ConfigDialog
+          workId={game.id}
           rules={update.config.rules}
           none={update.config.confirmedNone}
           onSave={async (rules, none) => {

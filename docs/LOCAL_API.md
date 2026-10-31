@@ -285,3 +285,12 @@
 | `POST /works/{id}/cloud/resolve` | `{keep:"local"\|快照 ID,confirmClosed}` |
 
 `state`：`not_connected` `unconfigured` `no_saves` `no_copy` `folder_offline` `empty` `local_only` `local_changed` `pending` `uploading` `synced` `cloud_update` `conflict` `needs_auth` `offline` `quota` `error` `restore_interrupted` `too_large`。
+
+### 查找存档
+| 接口 | 说明 |
+| --- | --- |
+| `GET /works/{id}/saves/suggestions` | `{available,engine,suggestions,session}`。只是建议，不会写入存档配置 |
+| `POST /works/{id}/saves/session` | 从现在开始记录 |
+| `POST /works/{id}/saves/session/finish` | 查找记录期间变化的文件，后台进行 |
+
+存档规则的 `kind` 增加 `registry`，路径只能是 `HKCU\\Software\\公司\\游戏`。`inside` 的最后一段可以用一个通配符，比如 `Save*.dat`。

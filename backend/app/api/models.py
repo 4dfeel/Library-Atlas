@@ -574,10 +574,13 @@ class ScanLink(ApiModel):
     work_id: str
 
 
+SaveRuleKind = Literal["inside", "outside", "registry"]
+
+
 class SaveRule(ApiModel):
     model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, extra="forbid")
 
-    kind: Literal["inside", "outside"]
+    kind: SaveRuleKind
     path: Annotated[str, StringConstraints(min_length=1, max_length=1024)]
 
 
@@ -591,6 +594,33 @@ class SaveConfigIn(ApiModel):
 class SaveConfigOut(ApiModel):
     rules: list[SaveRule]
     confirmed_none: bool
+
+
+class SaveSuggestion(ApiModel):
+    kind: SaveRuleKind
+    path: str
+    source: Literal["engine", "play"]
+    reason: str
+    likely: bool
+    files: int
+    size_bytes: int
+    modified_at: str | None
+    samples: list[str]
+    configured: bool
+
+
+class SaveSessionOut(ApiModel):
+    state: str
+    started_at: str | None
+    finished_at: str | None
+    complete: bool
+
+
+class SaveSuggestionsOut(ApiModel):
+    available: bool
+    engine: str | None
+    suggestions: list[SaveSuggestion]
+    session: SaveSessionOut
 
 
 class CloudStatus(ApiModel):

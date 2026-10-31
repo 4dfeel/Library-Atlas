@@ -39,6 +39,8 @@ from app.services.dlsite_factory import (
     build_gallery,
     build_introductions,
     build_local_copies,
+    build_registry,
+    build_save_discovery,
     build_update_checker,
 )
 from app.services.dlsite_sync import DlsiteSync
@@ -52,6 +54,7 @@ from app.services.library_scan import LibraryScanner
 from app.services.local_copies import LocalCopies
 from app.services.local_media import AUDIO_TYPES, LocalMedia
 from app.services.reader import Reader
+from app.services.save_discovery import SaveDiscovery
 from app.services.update_checks import UpdateChecker
 
 # What Python answers comes partly from the Windows registry, which may say `.mjs` is plain text. A
@@ -93,6 +96,7 @@ class ServiceState:
     media: LocalMedia | None = None
     collections: Collections | None = None
     cloud: CloudSaves | None = None
+    discovery: SaveDiscovery | None = None
     reader: Reader | None = None
     updates_game: GameUpdater | None = None
     updates: UpdateChecker | None = None
@@ -247,6 +251,15 @@ def _cloud(request: Request, _engine: EngineDep) -> CloudSaves:
 
 
 CloudDep = Annotated[CloudSaves, Depends(_cloud)]
+
+
+def _discovery(request: Request, _engine: EngineDep) -> SaveDiscovery:
+    service = _state(request).discovery
+    assert service is not None  # Built whenever the engine is.
+    return service
+
+
+DiscoveryDep = Annotated[SaveDiscovery, Depends(_discovery)]
 
 
 def _reader(request: Request, _engine: EngineDep) -> Reader:
@@ -521,6 +534,18 @@ def _build_api() -> APIRouter:
     @api.post("/local-copies/{copy_id}/shortcut")
     def copy_shortcut(service: CopiesDep, copy_id: str) -> models.ShortcutOut:
         return service.shortcut(copy_id)
+
+    @api.get("/works/{work_id}/saves/suggestions")
+    def save_suggestions(service: DiscoveryDep, work_id: str) -> models.SaveSuggestionsOut:
+        return service.suggestions(work_id)
+
+    @api.post("/works/{work_id}/saves/session")
+    def save_session_start(service: DiscoveryDep, work_id: str) -> models.SaveSuggestionsOut:
+        return service.start_session(work_id)
+
+    @api.post("/works/{work_id}/saves/session/finish")
+    def save_session_finish(service: DiscoveryDep, work_id: str) -> models.SaveSuggestionsOut:
+        return service.finish_session(work_id)
 
     @api.get("/cloud")
     def cloud_status(service: CloudDep) -> models.CloudStatus:
@@ -900,18 +925,35 @@ def create_app(
                     state.updates = build_update_checker(settings, opened.engine, state.sync)
                     state.dlsite.restore()
                 assert state.extractions is not None  # Built just above.
+                registry = build_registry(settings)
                 state.updates_game = GameUpdater(
-                    opened.engine, settings, state.downloads, state.extractions
+                    opened.engine, settings, state.downloads, state.extractions, registry
                 )
                 state.updates_game.recover()
                 state.cloud = build_cloud_saves(settings, opened.engine, state.updates_game)
                 state.cloud.start()
-                state.local_copies.on_launched = state.cloud.game_started
+                state.discovery = build_save_discovery(
+                    settings, opened.engine, state.updates_game, registry
+                )
+                state.discovery.recover()
+                cloud, discovery = state.cloud, state.discovery
+
+                def launched(work_id: str, program: Path) -> None:
+                    # The game has already been handed over: nothing here may fail that.
+                    for listener in (cloud.game_started, discovery.game_started):
+                        try:
+                            listener(work_id, program)
+                        except Exception as error:  # noqa: BLE001 - type only, no paths.
+                            logger.error("after launch: %s", type(error).__name__)
+
+                state.local_copies.on_launched = launched
                 state.scanner.scan_automatically()
             except DatabaseNotReady as error:
                 state.not_ready_reason = error.reason
                 logger.error("database not ready: %s", error.reason)
         yield
+        if state.discovery is not None:
+            state.discovery.shutdown()
         if state.cloud is not None:
             state.cloud.shutdown()
         if state.updates_game is not None:

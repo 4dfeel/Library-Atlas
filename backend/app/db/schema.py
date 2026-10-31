@@ -499,6 +499,18 @@ cloud_outbox = Table(
     Index("ix_cloud_outbox_work", "account_id", "work_id"),
 )
 
+save_discoveries = Table(
+    "save_discoveries",
+    metadata,
+    Column("work_id", String, ForeignKey("works.id"), primary_key=True),
+    Column("state", String, nullable=False),  # recording | scanning | done | failed
+    Column("started_at", String, nullable=True),
+    Column("started_clock", Float, nullable=True),
+    Column("finished_at", String, nullable=True),
+    Column("results", Text, nullable=True),  # Holds local paths: stays here, never in a log.
+    Column("complete", Integer, nullable=False, server_default=text("1")),
+)
+
 library_entries = Table(
     "library_entries",
     metadata,

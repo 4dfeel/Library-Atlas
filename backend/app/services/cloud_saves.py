@@ -117,7 +117,7 @@ def _hash_file(path: Path, algorithm: str = "sha256") -> str:
 def fingerprint(rules: list[dict[str, str]]) -> str:
     """What must match for a snapshot to fit: a place outside the game is matched by position,
     since its full path differs from one computer to the next."""
-    shape = [(rule["kind"], rule["path"] if rule["kind"] == "inside" else "") for rule in rules]
+    shape = [(rule["kind"], "" if rule["kind"] == "outside" else rule["path"]) for rule in rules]
     return hashlib.sha256(json.dumps(shape, ensure_ascii=False).encode()).hexdigest()
 
 
@@ -935,6 +935,8 @@ class CloudSaves:
                 os.replace(partial, target)
             finally:
                 partial.unlink(missing_ok=True)
+            if rules[index]["kind"] == "registry":
+                self._updater.apply_registry(rules[index])
 
     def resolve(self, work_id: str, keep: str, closed: bool) -> models.CloudWorkOut:
         """The user's decision on a conflict, written down as a snapshot following every branch, so
