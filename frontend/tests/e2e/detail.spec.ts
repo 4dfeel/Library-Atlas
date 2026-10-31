@@ -363,6 +363,9 @@ test('edits reach the Library, survive a reload and fail visibly', async ({ page
   await page.getByTestId('back-to-library').click();
   await page.getByRole('combobox', { name: '游玩状态' }).selectOption('paused');
   await searchBox(page).fill('夜行灯塔');
+  // Only once the search has settled: its results replace the cards on screen.
+  await expect(page).toHaveURL(/q=/);
+  await expect(page.getByTestId('library-results')).toHaveAttribute('data-count', '1');
   const card = page.locator(`[data-game-id="${samples.complete}"]`);
   await expect(card).toContainText('搁置');
   const toggle = card.getByRole('button', { name: /收藏 同名样本/ });

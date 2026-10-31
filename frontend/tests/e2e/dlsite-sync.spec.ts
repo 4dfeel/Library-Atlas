@@ -11,7 +11,7 @@ import { RealService } from './real-service';
 const evidenceDir = resolve('../artifacts/phase-2-checkpoint-3');
 const coreProjects = ['1080p', 'narrow', '4k-200'];
 /** Curated synthetic works already in the seeded test library. */
-const seeded = 5;
+const seeded = 6;
 
 let service: RealService;
 
