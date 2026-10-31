@@ -593,6 +593,73 @@ class SaveConfigOut(ApiModel):
     confirmed_none: bool
 
 
+class CloudStatus(ApiModel):
+    configured: bool
+    connected: bool
+    connecting: bool
+    problem: str | None
+    account_name: str | None
+    device_name: str
+    auto_check: bool
+    auto_backup: bool
+
+
+class CloudClientIn(ApiModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, extra="forbid")
+
+    client_id: Annotated[str, StringConstraints(min_length=1, max_length=512)]
+    client_secret: Annotated[str, StringConstraints(max_length=512)] | None = None
+
+
+class CloudOptionsIn(ApiModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, extra="forbid")
+
+    auto_check: bool
+    auto_backup: bool
+
+
+class CloudSnapshotOut(ApiModel):
+    id: str
+    device_name: str
+    this_device: bool
+    created_at: str
+    files: int
+    size_bytes: int
+    is_head: bool
+    restorable: bool
+    is_current: bool
+
+
+class CloudQueueOut(ApiModel):
+    count: int = 0
+    uploading: bool = False
+    failed: str | None = None
+
+
+class CloudWorkOut(ApiModel):
+    state: str
+    message: str | None = None
+    auto_check: bool = False
+    history: list[CloudSnapshotOut] = []
+    local_files: int = 0
+    local_bytes: int = 0
+    queue: CloudQueueOut = CloudQueueOut()
+
+
+class CloudRestoreIn(ApiModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, extra="forbid")
+
+    snapshot_id: Annotated[str, StringConstraints(min_length=1, max_length=64)]
+    confirm_closed: bool = False
+
+
+class CloudResolveIn(ApiModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, extra="forbid")
+
+    keep: Annotated[str, StringConstraints(min_length=1, max_length=64)]
+    confirm_closed: bool = False
+
+
 class SaveBackupOut(ApiModel):
     id: str
     created_at: str

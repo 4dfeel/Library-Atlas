@@ -2789,3 +2789,60 @@
   background: color-mix(in srgb, var(--text-primary) 10%, transparent);
   color: var(--text-primary);
 }
+
+.cloud-save {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  margin-top: 8px;
+}
+
+.cloud-save .settings-note {
+  flex-basis: 100%;
+}
+
+.cloud-history {
+  display: grid;
+  gap: 4px;
+  max-height: 50vh;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+}
+
+.cloud-history li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 8px;
+  border: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.cloud-history li > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.cloud-panel,
+.cloud-form {
+  display: grid;
+  gap: 10px;
+}
+
+.cloud-form summary {
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.cloud-steps {
+  margin: 8px 0;
+  padding-left: 20px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.8;
+}

@@ -472,6 +472,33 @@ collection_items = Table(
     Index("ix_collection_items_work", "work_id"),
 )
 
+cloud_states = Table(
+    "cloud_states",
+    metadata,
+    Column("account_id", String, primary_key=True),
+    Column("work_id", String, ForeignKey("works.id"), primary_key=True),
+    Column("base_snapshot", String, nullable=True),  # Last agreed with the cloud.
+    Column("base_digest", String, nullable=True),
+    Column("restoring", String, nullable=True),  # Set for the length of a restore.
+    Column("updated_at", String, nullable=False),
+)
+
+cloud_outbox = Table(
+    "cloud_outbox",
+    metadata,
+    Column("snapshot_id", String, primary_key=True),
+    Column("account_id", String, nullable=False),
+    Column("work_id", String, ForeignKey("works.id"), nullable=False),
+    Column("source_work_id", String, nullable=False),
+    Column("digest", String, nullable=False),
+    Column("manifest", Text, nullable=False),
+    Column("state", String, nullable=False),
+    Column("code", String, nullable=True),
+    Column("attempts", Integer, nullable=False, server_default=text("0")),
+    Column("created_at", String, nullable=False),
+    Index("ix_cloud_outbox_work", "account_id", "work_id"),
+)
+
 library_entries = Table(
     "library_entries",
     metadata,

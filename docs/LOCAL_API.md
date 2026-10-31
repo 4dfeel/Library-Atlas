@@ -271,3 +271,17 @@
 | `POST /save-backups/{id}/restore` | `{copyId}`，恢复前先备份当前存档 |
 
 `state`：`queued` `backing_up` `downloading` `unpacking` `replacing` `awaiting_confirmation` `cleaning` `done` `failed` `cancelled` `interrupted` `rolled_back`。
+
+### 云存档（检查点 9b）
+| 接口 | 说明 |
+| --- | --- |
+| `GET /cloud` | `{configured,connected,connecting,problem,accountName,deviceName,autoCheck,autoBackup}`，不含任何令牌 |
+| `PUT /cloud/client` | `{clientId,clientSecret?}`，密钥进 Windows 凭据管理器 |
+| `PUT /cloud/options` | `{autoCheck,autoBackup}` |
+| `POST /cloud/connect` `disconnect` | 打开系统浏览器；断开只清本机授权 |
+| `GET /works/{id}/cloud` | `{state,message,history,queue,localFiles,localBytes,autoCheck}` |
+| `POST /works/{id}/cloud/backup` `retry` | |
+| `POST /works/{id}/cloud/restore` | `{snapshotId,confirmClosed}` |
+| `POST /works/{id}/cloud/resolve` | `{keep:"local"\|快照 ID,confirmClosed}` |
+
+`state`：`not_connected` `unconfigured` `no_saves` `no_copy` `folder_offline` `empty` `local_only` `local_changed` `pending` `uploading` `synced` `cloud_update` `conflict` `needs_auth` `offline` `quota` `error` `restore_interrupted` `too_large`。

@@ -25,7 +25,7 @@ const stateLabels: Record<string, string> = {
 };
 
 /** A save's place, in the words the user would use. Nothing is searched for or guessed. */
-function SaveRules({
+export function SaveRules({
   rules,
   setRules,
 }: {

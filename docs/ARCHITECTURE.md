@@ -255,3 +255,5 @@ frontend/src/features/game-detail/work-gallery.tsx  介绍图
 - 迁移 `0016`：`scan_jobs.auto_linked`、`scan_jobs.batch_id`、`scan_items.declined`。`LibraryScanner.scan_automatically` 在启动和同步完成后运行，测试配置下没有盘，不做任何事。
 
 - `adapters/system/shell_files.py`：回收站和 `.lnk`，路径作为数据传给 Windows API，不经命令行。测试配置用 `testing/fake_shell.py`。`services/collections.py`：收藏。迁移 `0017`：`collections`、`collection_items`。`repositories/works.py`：“已安装”同时看下载状态和本地副本。
+
+- `adapters/google/`：官方 OAuth 桌面流程和 Drive 调用。`services/cloud_saves.py`：快照、队列、冲突判定、恢复。复用 C9 的存档配置和本地备份。`testing/fake_drive.py`：HTTP 层的假 Google，放在一个文件夹里，两个资料库可以共用。迁移 `0018`：`cloud_states`、`cloud_outbox`。C13 导出必须排除凭据和 `cloud-outbox`。

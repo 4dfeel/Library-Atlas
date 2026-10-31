@@ -1025,3 +1025,78 @@ export function useWorkSearch(search: string) {
   });
   return { works: query.data ?? [], loading: query.isPending };
 }
+
+export function useCloudStatus() {
+  const queryClient = useQueryClient();
+  const key = [...realRoot, 'cloud'];
+  const [error, setError] = useState<string | null>(null);
+  const query = useQuery({
+    queryKey: key,
+    queryFn: ({ signal }) => realSource.cloudStatus(signal),
+    enabled: useWorkspaceMode() === 'real',
+    retry: false,
+    refetchInterval: (current) => (current.state.data?.connecting ? 1_000 : false),
+  });
+  const run = async (work: Promise<unknown>) => {
+    try {
+      await work;
+      setError(null);
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : '操作没有完成，请重试。');
+    }
+    await queryClient.invalidateQueries({ queryKey: realRoot });
+  };
+  return {
+    status: query.data,
+    error,
+    actions: {
+      connect: (client: { clientId: string; clientSecret: string } | null) =>
+        run(
+          (async () => {
+            if (client) await realSource.setCloudClient(client.clientId, client.clientSecret);
+            await realSource.cloudConnect();
+          })(),
+        ),
+      disconnect: () => run(realSource.cloudDisconnect()),
+      options: (autoCheck: boolean, autoBackup: boolean) =>
+        run(realSource.setCloudOptions(autoCheck, autoBackup)),
+    },
+  };
+}
+
+export function useWorkCloud(workId: string) {
+  const queryClient = useQueryClient();
+  const key = [...realRoot, 'work-cloud', workId];
+  const [error, setError] = useState<string | null>(null);
+  const query = useQuery({
+    queryKey: key,
+    queryFn: ({ signal }) => realSource.workCloud(workId, signal),
+    enabled: useWorkspaceMode() === 'real',
+    retry: false,
+    refetchInterval: (current) =>
+      current.state.data && current.state.data.queue.count > 0 ? 2_000 : false,
+  });
+  const refresh = () => queryClient.invalidateQueries({ queryKey: key });
+  const run = async (work: Promise<unknown>) => {
+    try {
+      await work;
+      setError(null);
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : '操作没有完成，请重试。');
+      throw failure;
+    } finally {
+      await refresh();
+    }
+  };
+  return {
+    cloud: query.data,
+    error,
+    actions: {
+      refresh,
+      backup: () => run(realSource.workCloudAction(workId, 'backup')),
+      retry: () => run(realSource.workCloudAction(workId, 'retry')).catch(() => undefined),
+      restore: (snapshotId: string) => run(realSource.workCloudRestore(workId, snapshotId)),
+      resolve: (keep: string) => run(realSource.workCloudResolve(workId, keep)),
+    },
+  };
+}

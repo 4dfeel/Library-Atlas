@@ -16,6 +16,7 @@ import { useShell } from '@/app/shell-context';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { realSource } from '@/lib/data/real-source';
 import { UninstallDialog } from './uninstall-dialog';
 import {
   useLocalCopies,
@@ -304,6 +305,9 @@ export function LocalCopyPanel({ game }: { game: GameDetail }) {
   const [starting, setStarting] = useState(false);
   const [uninstalling, setUninstalling] = useState(false);
   const [choosing, setChoosing] = useState(false);
+  const [cloudWarning, setCloudWarning] = useState<{ copy: LocalCopy; conflict: boolean } | null>(
+    null,
+  );
   const isGame = game.kind === 'game';
   const current = copies.find((copy) => copy.isDefault) ?? copies[0];
   // Asked for from the library's menu; taken out of the address so it happens once.
@@ -321,6 +325,23 @@ export function LocalCopyPanel({ game }: { game: GameDetail }) {
   const closeChooser = () => {
     setChoosing(false);
     setAskedToPlay(false);
+  };
+
+  /**
+   * If the user asked: what the cloud holds is said before the game can write over it. Atlas does
+   * not restore by itself. When it cannot find out, it says so and the game still starts.
+   */
+  const startChecked = async (copy: LocalCopy) => {
+    const cloud = await realSource.workCloud(game.id).catch(() => null);
+    if (cloud?.autoCheck) {
+      if (cloud.state === 'cloud_update' || cloud.state === 'conflict') {
+        setCloudWarning({ copy, conflict: cloud.state === 'conflict' });
+        return;
+      }
+      if (cloud.state === 'offline' || cloud.state === 'needs_auth' || cloud.state === 'error')
+        notify('无法核对云存档，这次按本机存档启动', 'error');
+    }
+    await start(copy);
   };
 
   const start = async (copy: LocalCopy) => {
@@ -351,7 +372,9 @@ export function LocalCopyPanel({ game }: { game: GameDetail }) {
               size="sm"
               disabled={!needsChoice(current) && current.status !== 'ok'}
               data-testid="launch"
-              onClick={() => (needsChoice(current) ? setChoosing(true) : void start(current))}
+              onClick={() =>
+                needsChoice(current) ? setChoosing(true) : void startChecked(current)
+              }
             >
               {starting ? <LoaderCircle size={14} className="spin" /> : <Play size={14} />}
               启动
@@ -443,6 +466,37 @@ export function LocalCopyPanel({ game }: { game: GameDetail }) {
           <CircleAlert size={14} />
           {error}
         </span>
+      )}
+      {cloudWarning && (
+        <Dialog
+          open
+          onOpenChange={(open) => {
+            if (!open) setCloudWarning(null);
+          }}
+          title={cloudWarning.conflict ? '云端和本机的存档不一样' : '云端有更新的存档'}
+          description={
+            cloudWarning.conflict
+              ? '两边各有不同的进度。现在启动会继续用本机存档，之后两份都还在，可以再选择。'
+              : '另一台电脑上传了新进度。现在启动会用本机的旧存档继续玩，之后会形成两份不同的进度。'
+          }
+        >
+          <div className="dlsite-actions" data-testid="cloud-before-start">
+            <Button
+              size="sm"
+              data-testid="cloud-start-anyway"
+              onClick={() => {
+                const { copy } = cloudWarning;
+                setCloudWarning(null);
+                void start(copy);
+              }}
+            >
+              仍然启动
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setCloudWarning(null)}>
+              先不启动
+            </Button>
+          </div>
+        </Dialog>
       )}
       {chooserOpen && current && (
         <ChooseProgram

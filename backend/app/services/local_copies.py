@@ -154,6 +154,8 @@ class LocalCopies:
         self._folders = folders
         self._launcher = launcher
         self._shell = shell
+        # Told after a game is handed to Windows. It must not be able to fail the launch.
+        self.on_launched: Callable[[str, Path], None] | None = None
         self._clock = clock
         self._lock = threading.Lock()
         self._last_launch: dict[str, float] = {}
@@ -576,6 +578,8 @@ class LocalCopies:
             self._last_launch[copy_id] = now
         try:
             self._launcher.launch(program, list(row.arguments or []), working)
+            if self.on_launched is not None:
+                self.on_launched(row.work_id, program)
         except OSError as error:
             denied = isinstance(error, PermissionError) or getattr(error, "winerror", 0) in (
                 5,

@@ -13,6 +13,7 @@ import {
   type GameDetail,
 } from '@/lib/data';
 import { AppLink } from '@/components/app-link';
+import { CloudSavePanel } from './cloud-save';
 import { DownloadAction } from './download-action';
 import { GameUpdatePanel } from './game-update';
 import { LocalCopyPanel } from './local-copy';
@@ -53,10 +54,14 @@ function ContourPattern() {
 function StoreBackdrop({ workId }: { workId: string }) {
   const { gallery } = useWorkGallery(workId);
   const [pick] = useState(() => Math.random());
-  const [failed, setFailed] = useState<string | null>(null);
-  const images = gallery?.images ?? [];
-  const wide = images.filter((image) => (image.width ?? 1) >= (image.height ?? 1));
-  const pool = (wide.length ? wide : images).filter((image) => image.url !== failed);
+  const [failed, setFailed] = useState<string[]>([]);
+  // The platform does not always give sizes, so an upright one may only show itself on arrival.
+  const [upright, setUpright] = useState<string[]>([]);
+  const usable = (gallery?.images ?? []).filter((image) => !failed.includes(image.url));
+  const wide = usable.filter(
+    (image) => !upright.includes(image.url) && (image.width ?? 1) >= (image.height ?? 1),
+  );
+  const pool = wide.length ? wide : usable;
   const chosen = pool[Math.floor(pick * pool.length)];
   if (!chosen)
     return (
@@ -72,7 +77,11 @@ function StoreBackdrop({ workId }: { workId: string }) {
         alt=""
         decoding="async"
         fetchPriority="high"
-        onError={() => setFailed(chosen.url)}
+        onError={() => setFailed([...failed, chosen.url])}
+        onLoad={(event) => {
+          const { naturalWidth, naturalHeight } = event.currentTarget;
+          if (naturalHeight > naturalWidth) setUpright([...upright, chosen.url]);
+        }}
       />
     </div>
   );
@@ -259,6 +268,7 @@ export function GameHero({
             <DownloadAction game={game} size={size} />
             {!isDemo && <LocalCopyPanel game={game} />}
             {!isDemo && <GameUpdatePanel game={game} />}
+            {!isDemo && <CloudSavePanel game={game} />}
             <dl className="hero-facts">
               {tracksPlay ? (
                 <>

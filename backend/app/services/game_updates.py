@@ -97,6 +97,16 @@ def _files_under(path: Path) -> list[Path]:
     return found
 
 
+@dataclass(frozen=True)
+class SavedFile:
+    rule: int
+    relative: str
+    stored: str
+    path: Path
+    size: int
+    is_file_rule: bool
+
+
 class _Stop(Exception):
     def __init__(self, state: str, code: str | None) -> None:
         super().__init__(state)
@@ -201,6 +211,49 @@ class GameUpdater:
         if rule["kind"] == "inside":
             return root.joinpath(*safe_parts(rule["path"]))
         return Path(rule["path"])
+
+    def save_target(self, rule: dict[str, str], root: Path) -> Path:
+        return self._targets(rule, root)
+
+    def saved_files(self, root: Path, rules: list[dict[str, str]]) -> list[SavedFile]:
+        """What the rules name right now. A rule that finds nothing adds nothing."""
+        found = []
+        for index, rule in enumerate(rules):
+            source = self._targets(rule, root)
+            if not source.exists():
+                continue
+            for file in _files_under(source):
+                relative = file.relative_to(source).as_posix() if source.is_dir() else file.name
+                found.append(
+                    SavedFile(
+                        index,
+                        relative,
+                        f"{index}/{relative}",
+                        file,
+                        file.stat().st_size,
+                        source.is_file(),
+                    )
+                )
+        return found
+
+    def protect_saves(self, work_id: str, root: Path, rules: list[dict[str, str]]) -> str:
+        """A checked local backup, for anyone about to touch these saves."""
+        try:
+            return self.backup(work_id, root, rules)
+        except _Stop:
+            raise AtlasError(
+                "backup_failed", "本地存档备份失败，已停止，存档没有改动。", status=409
+            ) from None
+
+    def is_running(self, program: Path) -> bool:
+        try:
+            self._refuse_if_running(program)
+        except AtlasError:
+            return True
+        return False
+
+    def refuse_if_running(self, root: Path, entry: str) -> None:
+        self._refuse_if_running(root / entry)
 
     def backup(self, work_id: str, root: Path, rules: list[dict[str, str]]) -> str:
         """Copies, then proves it: every file re-read and compared, then restored into a separate

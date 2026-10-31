@@ -1,6 +1,9 @@
 """Wires the DLsite connection to real or test parts. The profile alone decides: no
 request, option or environment variable can put stand-ins behind a real library."""
 
+import os
+from pathlib import Path
+
 from sqlalchemy import Engine
 
 from app.adapters.dlsite.covers import CoverCache
@@ -16,13 +19,20 @@ from app.adapters.system.folder_dialog import DialogFolderPicker, ExplorerFolder
 from app.adapters.system.launcher import ProcessLauncher
 from app.adapters.system.shell_files import WindowsShell
 from app.core.config import Settings
-from app.core.credentials import NAMESPACE, CredentialStoreError, WindowsCredentialStore
+from app.core.credentials import (
+    NAMESPACE,
+    CredentialStore,
+    CredentialStoreError,
+    WindowsCredentialStore,
+)
+from app.services.cloud_saves import CloudSaves
 from app.services.dlsite_auth import DlsiteAuth
 from app.services.dlsite_sync import DlsiteSync
 from app.services.downloads import DownloadQueue
 from app.services.extractions import ExtractionService
 from app.services.folders import FolderService
 from app.services.gallery import WorkGallery
+from app.services.game_updates import GameUpdater
 from app.services.introductions import WorkIntroductions
 from app.services.local_copies import LocalCopies
 from app.services.update_checks import UpdateChecker
@@ -105,6 +115,31 @@ def build_local_copies(settings: Settings, engine: Engine, folders: FolderServic
     # A test library never reaches the real desktop or Recycle Bin.
     shell = FakeShell(settings.data_dir) if settings.profile == "test" else WindowsShell()
     return LocalCopies(engine, settings, folders, ProcessLauncher(), shell)
+
+
+def build_cloud_saves(settings: Settings, engine: Engine, updater: GameUpdater) -> CloudSaves:
+    if settings.profile == "test":
+        from app.testing.fake_dlsite import FakeControl, FileTestStore
+        from app.testing.fake_drive import FakeBrowser, FakeDrive
+
+        # A shared folder stands for one Drive seen from two computers.
+        shared = os.environ.get("ATLAS_FAKE_DRIVE_DIR")
+        folder = Path(shared) if shared else settings.data_dir / "fake-drive"
+        return CloudSaves(
+            engine,
+            settings,
+            updater,
+            FileTestStore(settings.data_dir, FakeControl(settings.data_dir)),
+            transport=FakeDrive(folder).transport(),
+            browser=FakeBrowser(settings.data_dir),
+            sleep=lambda seconds: None,
+            device_name="合成电脑",
+        )
+    try:
+        store: CredentialStore | None = WindowsCredentialStore(namespace=f"{NAMESPACE}real/")
+    except CredentialStoreError:
+        store = None
+    return CloudSaves(engine, settings, updater, store)
 
 
 def build_update_checker(settings: Settings, engine: Engine, sync: DlsiteSync) -> UpdateChecker:

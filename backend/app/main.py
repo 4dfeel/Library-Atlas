@@ -26,9 +26,11 @@ from app.core.errors import NOT_READY_MESSAGES, AtlasError
 from app.core.security import LocalBoundaryMiddleware, new_csrf_token
 from app.db.bootstrap import DatabaseNotReady, open_database
 from app.services import library
+from app.services.cloud_saves import CloudSaves
 from app.services.collections import Collections
 from app.services.dlsite_auth import DlsiteAuth
 from app.services.dlsite_factory import (
+    build_cloud_saves,
     build_dlsite_auth,
     build_dlsite_sync,
     build_download_queue,
@@ -90,6 +92,7 @@ class ServiceState:
     scanner: LibraryScanner | None = None
     media: LocalMedia | None = None
     collections: Collections | None = None
+    cloud: CloudSaves | None = None
     reader: Reader | None = None
     updates_game: GameUpdater | None = None
     updates: UpdateChecker | None = None
@@ -235,6 +238,15 @@ def _collections(request: Request, _engine: EngineDep) -> Collections:
 
 
 CollectionsDep = Annotated[Collections, Depends(_collections)]
+
+
+def _cloud(request: Request, _engine: EngineDep) -> CloudSaves:
+    service = _state(request).cloud
+    assert service is not None  # Built whenever the engine is.
+    return service
+
+
+CloudDep = Annotated[CloudSaves, Depends(_cloud)]
 
 
 def _reader(request: Request, _engine: EngineDep) -> Reader:
@@ -509,6 +521,50 @@ def _build_api() -> APIRouter:
     @api.post("/local-copies/{copy_id}/shortcut")
     def copy_shortcut(service: CopiesDep, copy_id: str) -> models.ShortcutOut:
         return service.shortcut(copy_id)
+
+    @api.get("/cloud")
+    def cloud_status(service: CloudDep) -> models.CloudStatus:
+        return service.status()
+
+    @api.put("/cloud/client")
+    def cloud_client(service: CloudDep, body: models.CloudClientIn) -> models.CloudStatus:
+        return service.set_client(body)
+
+    @api.put("/cloud/options")
+    def cloud_options(service: CloudDep, body: models.CloudOptionsIn) -> models.CloudStatus:
+        return service.set_options(body)
+
+    @api.post("/cloud/connect")
+    def cloud_connect(service: CloudDep) -> models.CloudStatus:
+        return service.connect()
+
+    @api.post("/cloud/disconnect")
+    def cloud_disconnect(service: CloudDep) -> models.CloudStatus:
+        return service.disconnect()
+
+    @api.get("/works/{work_id}/cloud")
+    def work_cloud(service: CloudDep, work_id: str) -> models.CloudWorkOut:
+        return service.work_status(work_id)
+
+    @api.post("/works/{work_id}/cloud/backup")
+    def work_cloud_backup(service: CloudDep, work_id: str) -> models.CloudWorkOut:
+        return service.backup(work_id)
+
+    @api.post("/works/{work_id}/cloud/retry")
+    def work_cloud_retry(service: CloudDep, work_id: str) -> models.CloudWorkOut:
+        return service.retry(work_id)
+
+    @api.post("/works/{work_id}/cloud/restore")
+    def work_cloud_restore(
+        service: CloudDep, work_id: str, body: models.CloudRestoreIn
+    ) -> models.CloudWorkOut:
+        return service.restore(work_id, body.snapshot_id, body.confirm_closed)
+
+    @api.post("/works/{work_id}/cloud/resolve")
+    def work_cloud_resolve(
+        service: CloudDep, work_id: str, body: models.CloudResolveIn
+    ) -> models.CloudWorkOut:
+        return service.resolve(work_id, body.keep, body.confirm_closed)
 
     @api.get("/collections")
     def list_collections(
@@ -848,11 +904,16 @@ def create_app(
                     opened.engine, settings, state.downloads, state.extractions
                 )
                 state.updates_game.recover()
+                state.cloud = build_cloud_saves(settings, opened.engine, state.updates_game)
+                state.cloud.start()
+                state.local_copies.on_launched = state.cloud.game_started
                 state.scanner.scan_automatically()
             except DatabaseNotReady as error:
                 state.not_ready_reason = error.reason
                 logger.error("database not ready: %s", error.reason)
         yield
+        if state.cloud is not None:
+            state.cloud.shutdown()
         if state.updates_game is not None:
             state.updates_game.shutdown()
         if state.scanner is not None:

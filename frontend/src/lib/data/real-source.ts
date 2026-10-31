@@ -368,6 +368,39 @@ export interface CollectionsData {
   collections: WorkCollection[];
 }
 
+export interface CloudStatus {
+  configured: boolean;
+  connected: boolean;
+  connecting: boolean;
+  problem: string | null;
+  accountName: string | null;
+  deviceName: string;
+  autoCheck: boolean;
+  autoBackup: boolean;
+}
+
+export interface CloudSnapshot {
+  id: string;
+  deviceName: string;
+  thisDevice: boolean;
+  createdAt: string;
+  files: number;
+  sizeBytes: number;
+  isHead: boolean;
+  restorable: boolean;
+  isCurrent: boolean;
+}
+
+export interface CloudWork {
+  state: string;
+  message: string | null;
+  autoCheck: boolean;
+  history: CloudSnapshot[];
+  localFiles: number;
+  localBytes: number;
+  queue: { count: number; uploading: boolean; failed: string | null };
+}
+
 export type IntroBlock =
   | { type: 'heading'; text: string }
   | { type: 'paragraph'; spans: { text: string; href?: string }[] }
@@ -665,6 +698,48 @@ export class RealLibrarySource implements LibrarySource {
       inside ? 'PUT' : 'DELETE',
       `/api/v1/collections/${encodeURIComponent(id)}/works/${encodeURIComponent(workId)}`,
     );
+  }
+
+  cloudStatus(signal?: AbortSignal) {
+    return apiGet<CloudStatus>('/api/v1/cloud', undefined, signal);
+  }
+
+  setCloudClient(clientId: string, clientSecret: string) {
+    return apiWrite<CloudStatus>('PUT', '/api/v1/cloud/client', { clientId, clientSecret });
+  }
+
+  setCloudOptions(autoCheck: boolean, autoBackup: boolean) {
+    return apiWrite<CloudStatus>('PUT', '/api/v1/cloud/options', { autoCheck, autoBackup });
+  }
+
+  cloudConnect() {
+    return apiWrite<CloudStatus>('POST', '/api/v1/cloud/connect');
+  }
+
+  cloudDisconnect() {
+    return apiWrite<CloudStatus>('POST', '/api/v1/cloud/disconnect');
+  }
+
+  workCloud(workId: string, signal?: AbortSignal) {
+    return apiGet<CloudWork>(`${workPath(workId)}/cloud`, undefined, signal);
+  }
+
+  workCloudAction(workId: string, action: 'backup' | 'retry') {
+    return apiWrite<CloudWork>('POST', `${workPath(workId)}/cloud/${action}`);
+  }
+
+  workCloudRestore(workId: string, snapshotId: string) {
+    return apiWrite<CloudWork>('POST', `${workPath(workId)}/cloud/restore`, {
+      snapshotId,
+      confirmClosed: true,
+    });
+  }
+
+  workCloudResolve(workId: string, keep: string) {
+    return apiWrite<CloudWork>('POST', `${workPath(workId)}/cloud/resolve`, {
+      keep,
+      confirmClosed: true,
+    });
   }
 
   launchLocalCopy(id: string) {

@@ -408,10 +408,14 @@ test.describe('unpacking and the queue', () => {
       .poll(() => banner.evaluate((node: HTMLImageElement) => node.naturalWidth))
       .toBeGreaterThan(0);
     // Among the store's images the first stands upright: a wide banner never picks that one.
-    const shape = await banner.evaluate(
-      (node: HTMLImageElement) => node.naturalWidth >= node.naturalHeight,
-    );
-    expect(shape).toBe(true);
+    await expect
+      .poll(() =>
+        banner.evaluate(
+          (node: HTMLImageElement) =>
+            node.naturalWidth > 0 && node.naturalWidth >= node.naturalHeight,
+        ),
+      )
+      .toBe(true);
     expect(await banner.evaluate((node) => getComputedStyle(node).filter)).toContain('blur');
     const covers = await page
       .locator('.hero-cover img')

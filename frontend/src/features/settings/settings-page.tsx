@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { DlsiteConnectionPanel } from '@/features/workspace/dlsite-connection';
 import { WorkspaceSwitch } from '@/features/workspace/workspace-switch';
+import { CloudPanel } from './cloud-panel';
 import { LibraryScanPanel } from './library-scan';
 import { useFolderActions, useFolders, useWorkspace, type FolderInfo } from '@/lib/data';
 
@@ -175,6 +176,13 @@ export function SettingsPage({ onDemoSettings }: { onDemoSettings: () => void })
           <section className="settings-section" aria-labelledby="settings-scan">
             <h2 id="settings-scan">本机作品库</h2>
             <LibraryScanPanel />
+          </section>
+        )}
+
+        {!isDemo && (
+          <section className="settings-section" aria-labelledby="settings-cloud">
+            <h2 id="settings-cloud">云存档</h2>
+            <CloudPanel />
           </section>
         )}
 
