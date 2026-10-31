@@ -136,10 +136,10 @@ test.describe('listening', () => {
     await panel.getByRole('button', { name: /10 おわり/ }).click();
     const player = page.getByTestId('mini-player');
     await player.getByTestId('player-rate').selectOption('2');
-    // It is the last track and looping is off, so it stops at the end.
-    await expect(player.getByRole('button', { name: '播放', exact: true })).toBeVisible({
-      timeout: 15_000,
-    });
+    // It is the last track and looping is off, so it stops at the end. The clock says so: the play
+    // button alone also shows for the moment before the sound has started.
+    await expect.poll(() => audioTime(page), { timeout: 15_000 }).toBe('00:03 / 00:03');
+    await expect(player.getByRole('button', { name: '播放', exact: true })).toBeVisible();
     await player.getByTestId('player-loop').click();
     await player.getByTestId('player-toggle').click();
     await expect(player.getByTestId('player-name')).toHaveText('1 はじめに.wav', {
