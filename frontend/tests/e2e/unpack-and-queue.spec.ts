@@ -241,7 +241,8 @@ test.describe('unpacking and the queue', () => {
     await openWork(page, work);
     await action(page).getByRole('button', { name: '仅下载' }).click();
     await expect(action(page).getByTestId('download-done')).toBeVisible({ timeout: 20_000 });
-    await control({ upgrade: '2026-10-30T00:00:00+09:00' });
+    // Later than the download above, whatever day the test runs.
+    await control({ upgrade: new Date(Date.now() + 30 * 86_400_000).toISOString() });
     await sync();
     await page.goto(`${service.origin}/downloads`);
     const row = page.locator(`[data-update="${work.id}"]`);
