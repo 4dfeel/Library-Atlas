@@ -422,13 +422,13 @@ def test_disconnect_clears_and_stays_cleared_after_restart(rig: Rig, settings: S
 def test_disconnect_keeps_the_library(rig: Rig, settings: Settings) -> None:
     from tests.conftest import seed_library
 
-    seed_library(settings, 5)
+    seed_library(settings, 6)
     with rig.client() as client:
         client.headers.update(write_headers(client))
         login(client)
         wait_for(client, "connected")
         client.post(f"{BASE}/disconnect")
-        assert client.get("/api/v1/works").json()["totalVisible"] == 5
+        assert client.get("/api/v1/works").json()["totalVisible"] == 6
 
 
 def test_failed_cleanup_is_reported_and_never_restored(rig: Rig) -> None:

@@ -1,50 +1,63 @@
 # Library Atlas
 
-运行在你自己电脑上的多平台作品库，面向 Windows 11。目前支持 DLsite，Steam 尚未开放。
+**把你买过的 DLsite 作品，整理成一个属于自己的作品库。** 运行在你自己的 Windows 电脑上，资料不上传。
 
-- 同步已购作品，按类型、制作方、状态筛选和搜索，1500 部以上也能流畅浏览
-- 下载、解压，自动关联 `DLsiteNest\Library` 里已有的作品
-- 启动游戏，记录单次与累计游玩时长、最近游玩和月度统计
-- 内置音声播放器和漫画、CG、PDF 阅读器
-- 查找存档位置，把确认过的存档备份到你自己的 Google Drive
-- 评分、备注、收藏夹，全部只保存在本机
+- **一处看全部**：同步已购作品，按类型、制作方、状态筛选和搜索
+- **下载和解压**：一键完成，并自动找到 `DLsiteNest\Library` 里已有的作品
+- **直接启动**：记录单次和累计游玩时长、最近游玩、月度统计
+- **听和看**：内置音声播放器，以及漫画、CG、PDF 阅读器
+- **保护存档**：帮你找到存档位置，备份到你自己的 Google Drive
+- **你的记录**：评分、备注、收藏夹，只保存在这台电脑上
 
-所有资料都留在这台电脑上，默认没有遥测，服务只对本机开放。
+> Steam 还没有开放，目前只支持 DLsite。
 
-## 安装
+## 安装（3 步，不用敲命令）
 
-**完整步骤见 [安装教程](docs/INSTALL.md)。** 已经装好 Python 3.14、Node.js 22.22.1 和 Git 的话：
+系统要求：Windows 11。
 
-```powershell
-git clone https://github.com/4dfeel/Library-Atlas.git
-cd Library-Atlas
-.\scripts\setup-backend.cmd
-cd frontend
-npm.cmd ci
-npm.cmd run build
-cd ..
-.\scripts\serve.cmd
-```
+### 第 1 步：装好两个软件
 
-然后打开 <http://127.0.0.1:8765/>。解压 RAR、7z 还需要 7-Zip 25.01 或更新版本。
+点击下载，一路点“下一步”就行。已经装过的可以跳过。
 
-## 开发
+1. [Python 3.14](https://www.python.org/ftp/python/3.14.3/python-3.14.3-amd64.exe)
+2. [Node.js 22](https://nodejs.org/dist/v22.22.1/node-v22.22.1-x64.msi)
 
-- [运行与开发说明](docs/LOCAL_DEVELOPMENT.md)、[本地 API](docs/LOCAL_API.md)
-- [产品需求](docs/PRODUCT.md)、[设计规范](docs/DESIGN.md)、[架构](docs/ARCHITECTURE.md)、[路线图](docs/ROADMAP.md)
+想解压 RAR 和 7z 格式的作品，再装一个 [7-Zip](https://www.7-zip.org/download.html)（25.01 或更新版本）。
 
-```powershell
-scripts\setup-backend.cmd dev
-cd backend
-.venv\Scripts\python -m pytest
-cd ..\frontend
-npm.cmd run typecheck
-npm.cmd run lint
-npm.cmd run format:check
-npm.cmd test
-npm.cmd run build
-npx.cmd --no-install playwright install chromium
-npm.cmd run test:e2e
-```
+### 第 2 步：下载 Library Atlas
 
-页面测试跑在隔离测试库上：每次运行都新建一个临时数据库，写入合成样本，由真实的本地服务托管生产构建，不会碰到你的真实资料。快速检查可以用 `npm.cmd run test:smoke`。
+1. 在这个页面上方点绿色的 **Code** 按钮，再点 **Download ZIP**。
+2. 把下载的 ZIP 解压到你想放的位置，比如 `D:\Library-Atlas`。
+
+### 第 3 步：安装并打开
+
+1. 打开解压出来的文件夹，**双击 `install.cmd`**，等它显示“安装完成”，大约几分钟。
+2. **双击 `start.cmd`**，浏览器会自动打开 Library Atlas。
+
+以后每次使用，只需要双击 `start.cmd`。用的时候不要关闭那个黑色窗口，用完关掉它就行。
+
+## 打开之后
+
+作品库一开始是空的，这是正常的：
+
+1. 点左下角的 **设置**，在“账号”里登录 DLsite。
+2. 登录后点 **同步**，你买过的作品就会出现。
+3. 在“文件夹”里选择作品的下载位置。
+
+用 DLsiteNest 下载过的作品，Atlas 会自动找到并关联，不会改动你的文件。
+
+## 遇到问题、更新、卸载
+
+都写在 [详细教程](docs/INSTALL.md) 里。
+
+## 安全吗？
+
+- 所有资料都保存在你的电脑上，没有任何数据统计。
+- 服务只对本机开放，局域网和外网都访问不到。
+- 登录信息保存在 Windows 凭据管理器。只有你勾选“记住账号和密码”时才会保存密码。
+- Library Atlas 不绕过平台的授权或版权保护。
+- 游戏是以你的身份运行的程序，来源不明的作品请不要直接运行。
+
+## 参与开发
+
+见 [运行与开发说明](docs/LOCAL_DEVELOPMENT.md)。
