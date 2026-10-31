@@ -41,6 +41,14 @@
   object-fit: cover;
   object-position: center 42%;
 }
+/* Frosted, not smeared: the picture still reads, and the page's text stays the sharp thing. */
+.hero-backdrop[data-backdrop='store'] > img {
+  position: absolute;
+  inset: 0;
+  object-position: center 30%;
+  filter: blur(7px) saturate(1.08);
+  transform: scale(1.05);
+}
 .hero-fallback {
   background:
     radial-gradient(ellipse 60% 70% at 78% 18%, #8cb4ff14, transparent 70%),

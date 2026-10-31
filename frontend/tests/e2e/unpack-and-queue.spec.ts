@@ -398,6 +398,43 @@ test.describe('unpacking and the queue', () => {
     await expect(page.getByTestId('intro-lightbox')).toHaveCount(0);
   });
 
+  test('the banner is a frosted store image, a wide one, and never the cover', async ({ page }) => {
+    await control({ intro: null, gallery: null });
+    const work = await freshWork();
+    await openWork(page, work);
+    const banner = page.locator('[data-backdrop="store"] img');
+    await expect(banner).toHaveAttribute('src', /\/gallery\/\d+/);
+    await expect
+      .poll(() => banner.evaluate((node: HTMLImageElement) => node.naturalWidth))
+      .toBeGreaterThan(0);
+    // Among the store's images the first stands upright: a wide banner never picks that one.
+    const shape = await banner.evaluate(
+      (node: HTMLImageElement) => node.naturalWidth >= node.naturalHeight,
+    );
+    expect(shape).toBe(true);
+    expect(await banner.evaluate((node) => getComputedStyle(node).filter)).toContain('blur');
+    const covers = await page
+      .locator('.hero-cover img')
+      .evaluateAll((nodes) => nodes.map((node) => node.getAttribute('src')));
+    expect(covers).not.toContain(await banner.getAttribute('src'));
+    await shot(page, 'store-banner');
+    await noHorizontalScroll(page);
+    // Different visits can land on different images, each one of the work's own.
+    const seen = new Set<string>();
+    for (let visit = 0; visit < 12; visit += 1) {
+      await page.reload();
+      seen.add((await banner.getAttribute('src'))!);
+    }
+    expect(seen.size).toBeGreaterThan(1);
+    // No store images: the pattern, not the cover.
+    await control({ gallery: 'none' });
+    const bare = await freshWork();
+    await openWork(page, bare);
+    await expect(page.locator('[data-backdrop="pattern"]')).toBeVisible();
+    await expect(page.locator('[data-backdrop="store"]')).toHaveCount(0);
+    await control({ gallery: null });
+  });
+
   test('the store page video plays here, and nothing is asked of its host until play', async ({
     page,
   }) => {

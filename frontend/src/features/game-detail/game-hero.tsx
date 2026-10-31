@@ -6,6 +6,7 @@ import {
   getBackdropSource,
   getCoverSource,
   useUpdateGame,
+  useWorkGallery,
   useWorkspace,
   type DemoSize,
   type Game,
@@ -26,6 +27,56 @@ import {
 } from '@/lib/utils';
 
 type Notify = (message: string, tone?: 'success' | 'error') => void;
+
+function ContourPattern() {
+  return (
+    <svg className="hero-contours" viewBox="0 0 800 400" preserveAspectRatio="xMidYMid slice">
+      {Array.from({ length: 9 }, (_, index) => (
+        <ellipse
+          key={index}
+          cx="610"
+          cy="170"
+          rx={70 + index * 58}
+          ry={34 + index * 27}
+          transform={`rotate(-14 610 170)`}
+        />
+      ))}
+    </svg>
+  );
+}
+
+/**
+ * One of the work's store images, frosted, chosen afresh each time the page opens. Never the
+ * cover. A wide image suits a wide banner, so an upright one is used only when there is nothing
+ * else. Without any, the pattern stands in.
+ */
+function StoreBackdrop({ workId }: { workId: string }) {
+  const { gallery } = useWorkGallery(workId);
+  const [pick] = useState(() => Math.random());
+  const [failed, setFailed] = useState<string | null>(null);
+  const images = gallery?.images ?? [];
+  const wide = images.filter((image) => (image.width ?? 1) >= (image.height ?? 1));
+  const pool = (wide.length ? wide : images).filter((image) => image.url !== failed);
+  const chosen = pool[Math.floor(pick * pool.length)];
+  if (!chosen)
+    return (
+      <div className="hero-backdrop hero-fallback" data-backdrop="pattern" aria-hidden="true">
+        <ContourPattern />
+      </div>
+    );
+  return (
+    <div className="hero-backdrop" data-backdrop="store" aria-hidden="true">
+      <img
+        key={chosen.url}
+        src={chosen.url}
+        alt=""
+        decoding="async"
+        fetchPriority="high"
+        onError={() => setFailed(chosen.url)}
+      />
+    </div>
+  );
+}
 
 /**
  * Wide local art when present. Otherwise an ambient wash from the cover, or the
@@ -58,18 +109,7 @@ export function HeroBackdrop({ game }: { game: Game }) {
       aria-hidden="true"
     >
       {ambient && <img src={cover} alt="" decoding="async" onError={() => setCoverFailed(true)} />}
-      <svg className="hero-contours" viewBox="0 0 800 400" preserveAspectRatio="xMidYMid slice">
-        {Array.from({ length: 9 }, (_, index) => (
-          <ellipse
-            key={index}
-            cx="610"
-            cy="170"
-            rx={70 + index * 58}
-            ry={34 + index * 27}
-            transform={`rotate(-14 610 170)`}
-          />
-        ))}
-      </svg>
+      <ContourPattern />
     </div>
   );
 }
@@ -127,7 +167,7 @@ export function GameHero({
 
   return (
     <header className="detail-hero" aria-labelledby="detail-title">
-      <HeroBackdrop game={game} />
+      {isDemo ? <HeroBackdrop game={game} /> : <StoreBackdrop workId={game.id} />}
       <div className="hero-scrim" aria-hidden="true" />
       <div className="detail-frame hero-inner">
         <AppLink to={backHref} className="back-link" onClick={onBack} data-testid="back-to-library">
