@@ -194,10 +194,8 @@ test('favorites and container resize preserve the visible collection anchor', as
       return Number(first?.getAttribute('data-game-id')?.replace('demo-', ''));
     });
   await expect.poll(visibleAnchor).toBeGreaterThan(25);
-  // Scrolling down hid the top bar; scrolling up a little brings its controls back.
-  await page.waitForTimeout(350);
-  await scroll(page).hover();
-  await page.mouse.wheel(0, -60);
+  // Scrolling down hid the top bar; Ctrl+K brings its controls back where the list is.
+  await page.keyboard.press('Control+k');
   const toggle = page.getByRole('button', { name: '收起侧栏', exact: true });
   await expect(toggle).toBeVisible();
   const anchor = await visibleAnchor();
@@ -334,7 +332,7 @@ test('1500/5000 virtualization and measured browser performance', async ({
   await writeEvidence(info, 'library.json', measurements);
 });
 
-test('scrolling down gives the list the window, scrolling up brings the controls back', async ({
+test('scrolling down gives the list the window until the top of the list', async ({
   page,
 }, info) => {
   test.skip(!['1080p', 'narrow'].includes(info.project.name), 'Behavior, not layout tiers.');
@@ -359,20 +357,14 @@ test('scrolling down gives the list the window, scrolling up brings the controls
   await noHorizontalScroll(page);
   await screenshot(page, info, 'library-scrolled');
 
+  // Scrolling back up part of the way keeps the whole window for the works.
   await page.waitForTimeout(350);
+  const deep = await list.evaluate((node) => node.scrollTop);
   await page.mouse.wheel(0, -120);
-  await expect(header).toBeVisible();
-  await expect(topbar).toBeVisible();
-  expect(await list.evaluate((node) => node.scrollTop)).toBeGreaterThan(300);
-
-  // A small wobble does not flip it back and forth.
+  await expect.poll(() => list.evaluate((node) => node.scrollTop)).toBeLessThan(deep);
   await page.waitForTimeout(350);
-  await page.mouse.wheel(0, 300);
   await expect(header).toBeHidden();
-  await page.waitForTimeout(350);
-  await page.mouse.wheel(0, -10);
-  await page.waitForTimeout(100);
-  await expect(header).toBeHidden();
+  await expect(topbar).toBeHidden();
 
   // Ctrl+K works from the hidden state and lands in the search field.
   await page.keyboard.press('Control+k');
@@ -387,6 +379,16 @@ test('scrolling down gives the list the window, scrolling up brings the controls
   await expect.poll(() => list.evaluate((node) => node.scrollTop)).toBe(0);
   await expect(header).toBeVisible();
   await expect(page.getByTestId('scroll-to-top')).toHaveCount(0);
+
+  // Scrolling all the way up by hand brings the controls back too.
+  await page.waitForTimeout(350);
+  await list.hover();
+  await page.mouse.wheel(0, 600);
+  await expect(header).toBeHidden();
+  await page.waitForTimeout(350);
+  await page.mouse.wheel(0, -5000);
+  await expect(header).toBeVisible();
+  await expect(topbar).toBeVisible();
 });
 
 test('a narrower result brings the header back even if the list cannot scroll', async ({

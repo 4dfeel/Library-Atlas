@@ -59,13 +59,12 @@ function scenarioFromUrl(): DemoScenario {
 }
 
 const DOWN_TO_COLLAPSE = 24;
-const UP_TO_REVEAL = 40;
 /** Long enough for the layout to settle: resizing the list can itself move its scroll. */
 const SETTLE_MS = 280;
 
 /**
- * Scrolling down gives the list the whole window; scrolling up brings the controls back.
- * Direction has to be held for a moment, so a small wobble does not make the page jump.
+ * Scrolling down gives the list the whole window, and it keeps it until the top of the list.
+ * Scrolling back up part of the way leaves the controls away, so the works stay in full view.
  */
 function useCollapsingHeader() {
   const [collapsed, setCollapsed] = useState(false);
@@ -76,36 +75,26 @@ function useCollapsingHeader() {
     state.current.travel = 0;
     setCollapsed(next);
   }, []);
-  const onScrollChange = useCallback((element: HTMLElement) => {
-    scroller.current = element;
-    const current = state.current;
-    const top = element.scrollTop;
-    const delta = top - current.top;
-    current.top = top;
-    if (top <= 8) {
-      current.travel = 0;
-      setCollapsed(false);
-      return;
-    }
-    if (performance.now() < current.settleUntil) return;
-    // A list that nearly fits would collapse, stop fitting and spring back.
-    if (element.scrollHeight - element.clientHeight < 600) return;
-    current.travel =
-      Math.sign(delta) === Math.sign(current.travel) ? current.travel + delta : delta;
-    setCollapsed((was) => {
-      if (!was && current.travel >= DOWN_TO_COLLAPSE) {
-        current.settleUntil = performance.now() + SETTLE_MS;
+  const onScrollChange = useCallback(
+    (element: HTMLElement) => {
+      scroller.current = element;
+      const current = state.current;
+      const top = element.scrollTop;
+      const delta = top - current.top;
+      current.top = top;
+      if (top <= 8) {
         current.travel = 0;
-        return true;
+        setCollapsed(false);
+        return;
       }
-      if (was && current.travel <= -UP_TO_REVEAL) {
-        current.settleUntil = performance.now() + SETTLE_MS;
-        current.travel = 0;
-        return false;
-      }
-      return was;
-    });
-  }, []);
+      if (performance.now() < current.settleUntil) return;
+      // A list that nearly fits would collapse, stop fitting and spring back.
+      if (element.scrollHeight - element.clientHeight < 600) return;
+      current.travel = delta > 0 ? current.travel + delta : 0;
+      if (current.travel >= DOWN_TO_COLLAPSE) change(true);
+    },
+    [change],
+  );
   const reveal = useCallback(() => {
     flushSync(() => change(false));
   }, [change]);
