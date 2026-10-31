@@ -251,7 +251,8 @@ test('demo download and extract: progress, failure, retry, cancel, reload', asyn
   await expect(action).toContainText(/下载中 \d+%/);
   await page.getByRole('button', { name: /下载任务/ }).click();
   const dialog = page.getByRole('dialog', { name: '下载与解压（演示）' });
-  await expect(dialog.locator('[data-task="demo-00033"] .is-current')).toHaveText('下载');
+  // The demo's time also runs by itself, so a slow machine may already be on the next step.
+  await expect(dialog.locator('[data-task="demo-00033"] .is-current')).toHaveText(/下载|解压/);
   await screenshot(page, info, 'tasks-downloading');
   await page.keyboard.press('Escape');
   await page.clock.runFor(250 * 30);

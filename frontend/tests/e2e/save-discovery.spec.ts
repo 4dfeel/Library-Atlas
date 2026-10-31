@@ -92,7 +92,12 @@ test.describe('finding saves', () => {
     expect(await rulesOf(id)).toEqual([]);
     await likely.getByRole('checkbox').check();
     await page.getByTestId('cloud-config-save').click();
-    await expect.poll(() => rulesOf(id)).toEqual([{ kind: 'outside', path: place }]);
+    // By its end: the same folder can be written with a short name higher up, as on CI.
+    const tail = join('fake-home', 'AppData', 'LocalLow', company, '合成冒险');
+    await expect.poll(async () => (await rulesOf(id))[0]?.kind).toBe('outside');
+    const saved = await rulesOf(id);
+    expect(saved).toHaveLength(1);
+    expect(saved[0]!.path.endsWith(tail)).toBe(true);
   });
 
   test('playing once shows where it wrote, with the likely apart from the noise', async ({
