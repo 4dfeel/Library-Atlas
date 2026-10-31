@@ -1,0 +1,177 @@
+# Library Atlas 本地运行与开发
+
+适用环境：Windows，Python 3.14.3（`.python-version`），Node 22.22.1。路径含中文或空格无需处理；脚本按自身位置解析路径。
+
+## 安装
+```bat
+scripts\setup-backend.cmd          :: 运行依赖，按 requirements.lock 校验哈希
+scripts\setup-backend.cmd dev      :: 另装测试与检查工具
+cd frontend
+npm.cmd ci
+npm.cmd run build
+```
+依赖升级：改 `backend/requirements.in` 或 `requirements-dev.in`，用 `pip-compile --generate-hashes --allow-unsafe --strip-extras --no-header` 重新生成对应 `.lock`，单独提交并说明。
+
+## 启动、检查、关闭
+```bat
+scripts\serve.cmd
+```
+打开 http://127.0.0.1:8765/ 。首次运行显示演示空间；点右上角的模式标识可切换到“我的资料库”。
+
+| 操作 | 命令 |
+| --- | --- |
+| 关闭 | 在服务窗口按 Ctrl+C |
+| 存活 | `curl http://127.0.0.1:8765/api/v1/health` |
+| 就绪 | `curl http://127.0.0.1:8765/api/v1/ready`（未就绪时 503 并给出原因） |
+| 检查配置并执行迁移 | `cd backend && .venv\Scripts\python -m app check` |
+| 新建显式目录并初始化空库 | `cd backend && .venv\Scripts\python -m app init --data-dir "D:\Atlas 数据"` |
+
+端口被占用时服务报错退出（退出码 3），**不会结束任何其他程序**。配置错误退出码 2，资料库问题退出码 4。
+
+## 配置
+优先级：命令行参数 > 环境变量 > 默认值。参考 `backend/.env.example`（该文件不会被自动读取，里面不放密钥）。
+
+| 环境变量 | 默认 | 说明 |
+| --- | --- | --- |
+| `ATLAS_PROFILE` | `real` | `real` 或 `test` |
+| `ATLAS_DATA_DIR` | `%LOCALAPPDATA%\LibraryAtlas\profiles\default` | 必须是绝对路径；显式指定时目录必须已存在 |
+| `ATLAS_PORT` | `8765` | 1024–65535 |
+| `ATLAS_STATIC_DIR` | `frontend/dist` | 前端构建位置 |
+| `ATLAS_DEV_ORIGINS` | 空 | 额外允许的回环来源，逗号分隔 |
+
+服务只绑定 `127.0.0.1`，没有改成其他地址的配置项。浏览器提交的任何内容都不能改变配置或路径。
+
+## 数据目录
+```text
+%LOCALAPPDATA%\LibraryAtlas\profiles\default\
+  library.sqlite3（及 -wal、-shm）
+  backups\            迁移前的自动备份，保留最近 5 份
+```
+- 不依赖当前工作目录，不写入源码目录，不进 Git。
+- **默认目录**不存在时自动创建。**显式目录**不存在时拒绝启动：它可能是没插上的硬盘，新建空库会让人以为资料丢了。
+- 数据库打了 `real` / `test` 印记，服务拒绝打开印记不符的库。测试目录另有 `.atlas-test-data` 标记文件，不能作为真实库打开，也不能位于正常数据目录之内。
+- 不扫描磁盘，不移动已有文件，不创建下载或解压目录。
+
+## 模式
+| | 演示空间 | 我的资料库 | 隔离测试库 |
+| --- | --- | --- | --- |
+| 数据 | 浏览器内合成数据 | 本地 SQLite，默认为空 | 本地 SQLite，合成样本 |
+| 需要服务 | 否 | 是 | 是 |
+| 个人修改保存到 | 浏览器 localStorage | 数据库 | 测试数据库 |
+| 顶部标识 | DEMO · 演示模式 | 我的资料库 | 测试库 · 合成数据 |
+
+- 模式选择保存在 `localStorage` 的 `library-atlas.workspace-mode.v1`，只存这一个值。默认演示空间。构建时设 `VITE_DEMO_MODE=false` 可完全移除演示空间。
+- 查询缓存按模式分开（`['library','demo',…]` 与 `['library','real',…]`）。离开真实模式时取消其请求并清除其缓存。Demo 的修改、连接和任务不会进入真实库，反之亦然；不提供迁移。
+- 服务不可用时显示“本地服务未连接”和重试，不显示空库，也不回退 Demo。
+
+## 连接 DLsite
+1. `scripts\serve.cmd`，打开 http://127.0.0.1:8765/ ，点右上角模式标识切到“我的资料库”。
+2. 点右上角“登录 DLsite”，或在左下角“设置”里登录。
+3. 在面板输入账号密码，点登录。如果 DLsite 要求额外验证，按提示在弹出的窗口完成。
+4. 不想在 Atlas 输入密码，或提示登录方式有变化时，点“改用网页登录”。
+
+需要 Microsoft Edge WebView2 Runtime（Windows 11 通常自带）。会话保存在 Windows 凭据管理器（`LibraryAtlas/real/…`）。密码默认不保存；勾选“记住账号和密码”后同样存在这里，下次点一下就能登录，可在面板“忘记保存的密码”。退出登录不会删除它。保存的密码被 DLsite 拒绝时会自动删除，不会重试。隐藏浏览器的临时数据放在数据目录的 `login-browser\`，每次用完删除。退出登录只清除 Atlas 保存的登录，不影响作品和备注，也不会让你在其他设备退出。
+
+| 现象 | 处理 |
+| --- | --- |
+| 无法启动登录组件 | 安装 WebView2 Runtime 后重试 |
+| 登录方式可能有变化 | 改用网页登录，并反馈 |
+| 暂时无法验证 | 网络或 DLsite 暂时不可用，登录未必失效，稍后点重新验证 |
+| 无法安全保存 | 凭据管理器写入失败，登录未保持；检查后重试 |
+| 已停用但清理出错 | 这个登录不会再被使用，点“重试退出登录” |
+
+## 同步作品
+登录 DLsite 后，在“设置”或“管理来源连接”里点“同步作品库”。只读取作品资料，不下载文件；范围是 DLsite Play 可访问的已购作品。可以随时取消和重跑，不会产生重复，也不会改动评分和备注。
+
+| 现象 | 处理 |
+| --- | --- |
+| 登录已失效 | 重新登录后再同步，已有作品不受影响 |
+| 暂时连不上 DLsite | 稍后重试，已保存的作品保留 |
+| 返回的内容和预期不同 | 接口可能变了，没有写入错误数据；请反馈 |
+| N 部平台未返回资料 | 列表里有但没有资料，这些作品不入库 |
+
+封面缓存在数据目录的 `cache\covers\`，可以删除，用到时会重新下载。
+
+## 下载作品
+先在“设置 → 文件夹”选择作品文件夹。打开一部 DLsite 作品，点“仅下载”；分卷作品会让你选择文件。进度在右上角的下载图标里，下载由本地服务进行，关闭页面不会中断。只下载文件：不解压、不安装、不运行。
+
+| 现象 | 处理 |
+| --- | --- |
+| 已中断 | 服务关闭或异常退出。点“继续”或“重新下载”，不会自动开始 |
+| DLsite 要求重新登录才能下载 | 重新登录后重试；仍然这样请反馈错误码 `login_required` |
+| 下载地址指向了 DLsite 以外的网站 | 已拦截。请反馈错误码 `unexpected_host` |
+| 返回的是网页或错误信息 | 没有保存任何文件，可以重试 |
+| 完整性保障有限 | 服务器没有说明大小，只能确认传输正常结束 |
+| 文件已经不在原位置 | 文件被移走或删除了，可以重新下载 |
+
+同名文件不会被覆盖，新文件会改名为 `名称 (2).zip`。
+
+## 解压作品
+在“设置 → 文件夹”选择作品文件夹。打开作品点“下载并解压”，或在下载完成后点“解压”。作品放在 `类型\制作方\作品名`，压缩包放在 `Archives\作品编号`，并且保留。ZIP 不需要额外软件；RAR、7z 和自解压文件需要安装 [7-Zip](https://www.7-zip.org/) 25.01 或更新版本。Atlas 不会运行压缩包里的任何内容，已解压也不代表已安装。
+
+| 现象 | 处理 |
+| --- | --- |
+| 需要 7-Zip | 安装后点“重新解压”，不会重新下载 |
+| 压缩包有密码 | 暂不支持，用自己的工具解压，下载的文件还在 |
+| 不安全的路径、特殊条目 | 压缩包可能有问题，已拒绝，什么都没写入 |
+| 已下载的文件变了 | 文件被改动或移动了，请重新下载 |
+| 有临时文件没能删除 | 手动删除作品文件夹里以 `.atlas-extract-` 开头的文件夹 |
+
+## 下载页与自动更新
+底部栏或右上角下载图标进入下载页。已登录时每天最多自动同步一次，用于发现作品更新，可在下载页取消勾选。发现更新只提示，不会自动下载。
+
+## 设置页
+左下角“设置”：账号、作品文件夹、下载缓存文件夹、资料空间。右上角账号入口可以查看状态、重新验证和退出登录。
+
+## 合成测试库
+默认启动不会写入任何样本。测试库必须显式指定目录：
+```bat
+cd backend
+.venv\Scripts\python -m app seed-test --data-dir "%TEMP%\atlas-test" --size 120
+.venv\Scripts\python -m app serve --profile test --data-dir "%TEMP%\atlas-test"
+```
+- `--size` 是普通作品数量，大规模验证用 1500、5000；另加 3 条不可见的私人哨兵。
+- 样本覆盖两种来源、各内容类型、跨来源同编号、同名作品、多文件/分卷、未知字段、长标题、缺封面与私人记录。全部虚构。
+- 重建：加 `--reset`。只有带标记文件的目录才允许，且只删除该目录下的 `library.sqlite3*`。非空且无标记的目录拒绝写入。
+- 清理：直接删除这个测试目录。
+- 测试配置下同步使用假作品库，由 `fake-platform.json` 控制：`{"size":150}`，`"sync"` 可为 `expired`、`offline`、`changed`、`slow`，`"sync_after"` 表示先成功几批。
+- 测试配置下介绍图是合成的，`"gallery"` 可为 `none`、`offline`；`"upgrade"` 设置作品的更新日期；`"download"` 里的 `payload` 指定要提供的真实文件。不启动自动检查。
+- 测试配置下下载走回环地址上的真实 HTTP 服务，由 `fake-platform.json` 的 `"download"` 控制，如 `{"size":1000000}`、`{"parts":3}`、`{"mode":"login_page"}`。模式见 `app/testing/fake_download_server.py`。
+- 测试配置下 DLsite 连接使用假平台和目录内的测试存储，不会访问 DLsite，也不碰 Windows 凭据。账号名决定行为：`bad…` 密码错误、`verify…` 需要验证、`slow…` 一直等待、`changed…` 表单变化、其他成功。在测试目录写 `fake-platform.json` 可改变平台答复：`{"check":"expired"}`、`{"check":"unavailable"}`、`{"store":"fail-write"}`、`{"store":"fail-delete"}`。
+
+## 前后端联调
+```bat
+:: 窗口 1
+set ATLAS_DEV_ORIGINS=http://127.0.0.1:5173,http://127.0.0.1:4173
+scripts\serve.cmd
+:: 窗口 2
+scripts\dev.cmd
+```
+Vite 把 `/api` 代理到 `127.0.0.1:%ATLAS_PORT%`（默认 8765）。
+
+## 迁移与恢复
+- 迁移在服务启动时自动执行，版本由 Alembic 记录，幂等。已有数据库在升级前先做 SQLite 在线备份并校验完整性；迁移在单个事务内，失败整体回滚。
+- 资料库版本高于程序时拒绝打开，不做任何改动。本项目**不提供降级**。
+- 手动恢复：关闭服务，删除 `library.sqlite3`、`-wal`、`-shm`，把 `backups\` 中的文件复制为 `library.sqlite3`，再启动。
+- 备份里有你的作品与备注，但没有平台凭据：数据库本身从不保存密码、Cookie 或 API Key。
+
+## 测试
+```bat
+powershell -File scripts\check.ps1                :: 后端 ruff、mypy、pytest；前端类型、lint、格式、单测、构建
+powershell -File scripts\check.ps1 -WithBrowser   :: 再加完整 Playwright 矩阵
+cd frontend && npx.cmd playwright test tests/e2e/real-mode.spec.ts --project=1080p
+```
+- 后端测试用临时目录里的真实 SQLite 文件和真实应用，不 mock 数据库。
+- `real-mode.spec.ts` 启动真实服务进程，使用临时数据目录并把 `LOCALAPPDATA` 指向临时目录，所以不可能碰到正常资料。需要先 `npm.cmd run build`。
+- 证据输出到 `artifacts/phase-2-checkpoint-1/`（不入库）。
+
+## 常见问题
+| 现象 | 处理 |
+| --- | --- |
+| 配置错误：目录不存在 | 检查硬盘是否连接；确需新建用 `init` |
+| 配置错误：该目录是测试目录 | 去掉 `ATLAS_DATA_DIR`，或加 `--profile test` |
+| 端口已被占用 | 关闭占用程序，或设置 `ATLAS_PORT` |
+| 页面显示“本地服务未连接” | 启动 `scripts\serve.cmd` 后点重新连接 |
+| 页面显示“资料库暂时不可用” | 按提示处理；文件未被改动，可从 `backups\` 恢复 |
+| `http://127.0.0.1:8765/` 返回 frontend_not_built | 运行 `npm.cmd run build` |
+| Vite 页面报来源被拒绝 | 启动服务前设置 `ATLAS_DEV_ORIGINS` |

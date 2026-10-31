@@ -1,0 +1,530 @@
+import { useEffect, useRef, useState, type FormEvent } from 'react';
+import {
+  Circle,
+  CircleAlert,
+  CircleDot,
+  FolderOpen,
+  FolderSearch,
+  LoaderCircle,
+  PackageX,
+  Pencil,
+  Play,
+  Plus,
+  Trash2,
+} from 'lucide-react';
+import { useShell } from '@/app/shell-context';
+import { Button } from '@/components/ui/button';
+import { Dialog } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { realSource } from '@/lib/data/real-source';
+import { UninstallDialog } from './uninstall-dialog';
+import {
+  useLocalCopies,
+  useLocalCopyActions,
+  type CopyPreview,
+  type GameDetail,
+  type LocalCopy,
+} from '@/lib/data';
+
+function messageOf(error: unknown) {
+  return error instanceof Error ? error.message : '操作没有完成，请重试。';
+}
+
+function folderName(path: string) {
+  return path.split(/[\\/]/).filter(Boolean).pop() ?? path;
+}
+
+/** Saving links a folder and nothing more. No program in it is opened to find out what it is. */
+function CopyForm({
+  workId,
+  copy,
+  needsEntry,
+  onClose,
+}: {
+  workId: string;
+  copy: LocalCopy | null;
+  needsEntry: boolean;
+  onClose: () => void;
+}) {
+  const actions = useLocalCopyActions(workId);
+  const [root, setRoot] = useState(copy?.root ?? '');
+  const [preview, setPreview] = useState<CopyPreview | null>(null);
+  const [entry, setEntry] = useState(copy?.entry ?? '');
+  const [working, setWorking] = useState(copy?.working ?? '');
+  const [argumentsText, setArguments] = useState((copy?.arguments ?? []).join('\n'));
+  const [label, setLabel] = useState(copy?.label ?? '');
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const look = async (path: string) => {
+    setError(null);
+    try {
+      const next = await actions.preview(path);
+      setPreview(next);
+      setEntry((current) => current || next.suggested || '');
+    } catch (failure) {
+      setPreview(null);
+      setError(messageOf(failure));
+    }
+  };
+
+  const choose = async () => {
+    setError(null);
+    setBusy(true);
+    try {
+      const chosen = await actions.chooseFolder();
+      if (chosen) {
+        setRoot(chosen);
+        await look(chosen);
+      }
+    } catch (failure) {
+      setError(messageOf(failure));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const save = async (event: FormEvent) => {
+    event.preventDefault();
+    setBusy(true);
+    setError(null);
+    const body = {
+      root: root.trim(),
+      entry: entry || null,
+      working: working.trim() || null,
+      arguments: argumentsText.split('\n').filter((line) => line.trim() !== ''),
+      label: label.trim() || null,
+    };
+    try {
+      if (copy) await actions.update(copy.id, body);
+      else await actions.add(body);
+      onClose();
+    } catch (failure) {
+      setError(messageOf(failure));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const entries = preview?.entries ?? [];
+  return (
+    <Dialog
+      open
+      onOpenChange={(open) => !open && onClose()}
+      title={copy ? '编辑本地文件关联' : '关联本地文件'}
+      description="只记录位置，不会移动、修改或运行任何文件。"
+    >
+      <form className="copy-form" onSubmit={(event) => void save(event)} data-testid="copy-form">
+        <label htmlFor="copy-root">文件夹</label>
+        <div className="folder-controls">
+          <Input
+            id="copy-root"
+            value={root}
+            spellCheck={false}
+            placeholder="作品所在的文件夹"
+            onChange={(event) => setRoot(event.target.value)}
+            onBlur={() => {
+              if (root.trim() && root.trim() !== preview?.root) void look(root.trim());
+            }}
+          />
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            disabled={busy}
+            onClick={() => void choose()}
+          >
+            <FolderSearch size={14} />
+            选择
+          </Button>
+        </div>
+        {needsEntry && (
+          <>
+            <label htmlFor="copy-entry">主程序</label>
+            {entries.length > 0 ? (
+              <select
+                id="copy-entry"
+                value={entry}
+                onChange={(event) => setEntry(event.target.value)}
+              >
+                <option value="">之后再选</option>
+                {entries.map((item) => (
+                  <option key={item.path} value={item.path}>
+                    {item.path}
+                    {item.likelyHelper ? '（可能是辅助程序）' : ''}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <Input
+                id="copy-entry"
+                value={entry}
+                spellCheck={false}
+                placeholder="相对于文件夹的路径，如 Game.exe"
+                onChange={(event) => setEntry(event.target.value)}
+              />
+            )}
+            {preview && entries.length > 1 && !preview.suggested && (
+              <p className="settings-note">有多个可能的程序，Atlas 不会替你猜，请选择一个。</p>
+            )}
+            <details className="copy-advanced">
+              <summary>高级选项</summary>
+              <label htmlFor="copy-working">工作目录（相对于文件夹，默认是主程序所在目录）</label>
+              <Input
+                id="copy-working"
+                value={working}
+                spellCheck={false}
+                onChange={(event) => setWorking(event.target.value)}
+              />
+              <label htmlFor="copy-arguments">启动参数（每行一个，按原样传给程序）</label>
+              <textarea
+                id="copy-arguments"
+                rows={3}
+                value={argumentsText}
+                spellCheck={false}
+                onChange={(event) => setArguments(event.target.value)}
+              />
+            </details>
+          </>
+        )}
+        <label htmlFor="copy-label">名称（可选，有多个副本时方便区分）</label>
+        <Input id="copy-label" value={label} onChange={(event) => setLabel(event.target.value)} />
+        {error && (
+          <p className="dlsite-message" role="alert">
+            <CircleAlert size={14} />
+            {error}
+          </p>
+        )}
+        <div className="dlsite-actions">
+          <Button type="submit" size="sm" disabled={busy || !root.trim()}>
+            {busy && <LoaderCircle size={14} className="spin" />}
+            保存
+          </Button>
+          <Button type="button" variant="ghost" size="sm" onClick={onClose}>
+            取消
+          </Button>
+        </div>
+      </form>
+    </Dialog>
+  );
+}
+
+function needsChoice(copy: LocalCopy) {
+  return copy.status === 'no_entry' || copy.status === 'entry_missing';
+}
+
+function driveOf(path: string) {
+  return /^[a-zA-Z]:/.exec(path)?.[0].toUpperCase() ?? '';
+}
+
+/** A folder with several programs: the user says which is the game, once, and it is remembered. */
+function ChooseProgram({
+  copy,
+  onClose,
+  onChoose,
+}: {
+  copy: LocalCopy;
+  onClose: () => void;
+  onChoose: (entry: string) => Promise<void>;
+}) {
+  const actions = useLocalCopyActions(copy.workId);
+  const [entries, setEntries] = useState<CopyPreview['entries'] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const { preview } = actions;
+  const root = copy.root;
+  const asked = useRef(false);
+  useEffect(() => {
+    if (asked.current) return;
+    asked.current = true;
+    preview(root)
+      .then((found) =>
+        setEntries(
+          [...found.entries].sort((a, b) => Number(a.likelyHelper) - Number(b.likelyHelper)),
+        ),
+      )
+      .catch((failure: unknown) => setError(messageOf(failure)));
+  }, [preview, root]);
+  return (
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open && !busy) onClose();
+      }}
+      title="选择要启动的程序"
+      description="这个文件夹里不止一个程序。选好后会记住，以后直接启动。"
+    >
+      <div className="download-plan" data-testid="choose-program">
+        {entries === null && !error && <p className="settings-note">正在读取…</p>}
+        {entries?.length === 0 && (
+          <p className="settings-note" data-testid="choose-none">
+            这个文件夹里没有找到可以启动的程序。可能还没解压完，或者它不是用 exe 启动的。
+          </p>
+        )}
+        <ul className="choose-program-list">
+          {entries?.map((entry) => (
+            <li key={entry.path}>
+              <button
+                type="button"
+                disabled={busy}
+                title={entry.path}
+                onClick={() => {
+                  setBusy(true);
+                  setError(null);
+                  onChoose(entry.path).catch((failure: unknown) => {
+                    setError(messageOf(failure));
+                    setBusy(false);
+                  });
+                }}
+              >
+                <Play size={14} />
+                <span>{entry.path}</span>
+                {entry.likelyHelper && <em>可能是工具程序</em>}
+              </button>
+            </li>
+          ))}
+        </ul>
+        {error && (
+          <p className="dlsite-message" role="alert">
+            <CircleAlert size={14} />
+            {error}
+          </p>
+        )}
+      </div>
+    </Dialog>
+  );
+}
+
+/** What is on this computer, and what can be done with it. Only ever acts on a click. */
+export function LocalCopyPanel({ game }: { game: GameDetail }) {
+  const { notify } = useShell();
+  const { copies, loading } = useLocalCopies(game.id);
+  const actions = useLocalCopyActions(game.id);
+  const [editing, setEditing] = useState<LocalCopy | 'new' | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [starting, setStarting] = useState(false);
+  const [uninstalling, setUninstalling] = useState(false);
+  const [choosing, setChoosing] = useState(false);
+  const [cloudWarning, setCloudWarning] = useState<{ copy: LocalCopy; conflict: boolean } | null>(
+    null,
+  );
+  const isGame = game.kind === 'game';
+  const current = copies.find((copy) => copy.isDefault) ?? copies[0];
+  // Asked for from the library's menu; taken out of the address so it happens once.
+  const [askedToPlay, setAskedToPlay] = useState(() =>
+    new URLSearchParams(window.location.search).has('play'),
+  );
+  useEffect(() => {
+    if (!askedToPlay) return;
+    const url = new URL(window.location.href);
+    url.searchParams.delete('play');
+    window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}`);
+  }, [askedToPlay]);
+  if (loading) return null;
+  const chooserOpen = choosing || (askedToPlay && Boolean(current) && needsChoice(current!));
+  const closeChooser = () => {
+    setChoosing(false);
+    setAskedToPlay(false);
+  };
+
+  /**
+   * If the user asked: what the cloud holds is said before the game can write over it. Atlas does
+   * not restore by itself. When it cannot find out, it says so and the game still starts.
+   */
+  const startChecked = async (copy: LocalCopy) => {
+    const cloud = await realSource.workCloud(game.id).catch(() => null);
+    if (cloud?.autoCheck) {
+      if (cloud.state === 'cloud_update' || cloud.state === 'conflict') {
+        setCloudWarning({ copy, conflict: cloud.state === 'conflict' });
+        return;
+      }
+      if (cloud.state === 'offline' || cloud.state === 'needs_auth' || cloud.state === 'error')
+        notify('无法核对云存档，这次按本机存档启动', 'error');
+    }
+    await start(copy);
+  };
+
+  const start = async (copy: LocalCopy) => {
+    setError(null);
+    setStarting(true);
+    try {
+      const result = await actions.launch(copy.id);
+      // Handing it to Windows is all Atlas can see. Whether the game loads is not known here.
+      if (result.submitted) notify('已请求启动');
+    } catch (failure) {
+      setError(messageOf(failure));
+    } finally {
+      window.setTimeout(() => setStarting(false), 1500);
+    }
+  };
+
+  const run = (action: () => Promise<unknown>) => {
+    setError(null);
+    action().catch((failure: unknown) => setError(messageOf(failure)));
+  };
+
+  return (
+    <div className="local-copy" data-testid="local-copy">
+      {current ? (
+        <>
+          {isGame && (
+            <Button
+              size="sm"
+              disabled={!needsChoice(current) && current.status !== 'ok'}
+              data-testid="launch"
+              onClick={() =>
+                needsChoice(current) ? setChoosing(true) : void startChecked(current)
+              }
+            >
+              {starting ? <LoaderCircle size={14} className="spin" /> : <Play size={14} />}
+              启动
+            </Button>
+          )}
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={current.status === 'root_missing' || current.status === 'offline'}
+            onClick={() => run(() => actions.open(current.id))}
+          >
+            <FolderOpen size={14} />
+            打开目录
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => setEditing(current)}>
+            <Pencil size={14} />
+            编辑关联
+          </Button>
+          <span className="local-copy-path" data-testid="copy-path" title={current.root}>
+            {current.root}
+          </span>
+          {current.status === 'no_entry' || current.status === 'ok' ? null : (
+            <span className="download-state is-error" data-testid="copy-status">
+              <CircleAlert size={14} />
+              {current.message}
+            </span>
+          )}
+          {copies.length > 1 && (
+            <ul className="local-copy-list" aria-label="本地副本">
+              {copies.map((copy) => (
+                <li key={copy.id}>
+                  <button
+                    type="button"
+                    aria-pressed={copy.isDefault}
+                    title={
+                      copy.isDefault ? `默认使用这里：${copy.root}` : `改为使用这里：${copy.root}`
+                    }
+                    onClick={() => run(() => actions.setDefault(copy.id))}
+                  >
+                    {copy.isDefault ? <CircleDot size={13} /> : <Circle size={13} />}
+                    <span>{copy.label ?? `${driveOf(copy.root)} · ${folderName(copy.root)}`}</span>
+                  </button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    aria-label={`移除关联：${copy.label ?? folderName(copy.root)}`}
+                    onClick={() => run(() => actions.remove(copy.id))}
+                  >
+                    <Trash2 size={13} />
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <Button variant="ghost" size="sm" onClick={() => setEditing('new')}>
+            <Plus size={14} />
+            再加一个副本
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            data-testid="copy-uninstall"
+            title="把这个文件夹移到回收站"
+            onClick={() => setUninstalling(true)}
+          >
+            <PackageX size={14} />
+            卸载
+          </Button>
+          {copies.length === 1 && (
+            <Button
+              variant="ghost"
+              size="sm"
+              title="只移除 Atlas 里的记录，文件夹不受影响"
+              onClick={() => run(() => actions.remove(current.id))}
+            >
+              <Trash2 size={14} />
+              取消关联
+            </Button>
+          )}
+        </>
+      ) : (
+        <Button variant="ghost" size="sm" onClick={() => setEditing('new')}>
+          <FolderSearch size={14} />
+          手动指定文件夹
+        </Button>
+      )}
+      {error && (
+        <span className="download-state is-error" role="alert">
+          <CircleAlert size={14} />
+          {error}
+        </span>
+      )}
+      {cloudWarning && (
+        <Dialog
+          open
+          onOpenChange={(open) => {
+            if (!open) setCloudWarning(null);
+          }}
+          title={cloudWarning.conflict ? '云端和本机的存档不一样' : '云端有更新的存档'}
+          description={
+            cloudWarning.conflict
+              ? '两边各有不同的进度。现在启动会继续用本机存档，之后两份都还在，可以再选择。'
+              : '另一台电脑上传了新进度。现在启动会用本机的旧存档继续玩，之后会形成两份不同的进度。'
+          }
+        >
+          <div className="dlsite-actions" data-testid="cloud-before-start">
+            <Button
+              size="sm"
+              data-testid="cloud-start-anyway"
+              onClick={() => {
+                const { copy } = cloudWarning;
+                setCloudWarning(null);
+                void start(copy);
+              }}
+            >
+              仍然启动
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setCloudWarning(null)}>
+              先不启动
+            </Button>
+          </div>
+        </Dialog>
+      )}
+      {chooserOpen && current && (
+        <ChooseProgram
+          copy={current}
+          onClose={closeChooser}
+          onChoose={async (entry) => {
+            await actions.update(current.id, { entry });
+            closeChooser();
+            await start(current);
+          }}
+        />
+      )}
+      {uninstalling && current && (
+        <UninstallDialog
+          copyId={current.id}
+          title={game.title}
+          onClose={() => setUninstalling(false)}
+          onDone={() => notify('已移到回收站')}
+        />
+      )}
+      {editing && (
+        <CopyForm
+          workId={game.id}
+          copy={editing === 'new' ? null : editing}
+          needsEntry={isGame}
+          onClose={() => setEditing(null)}
+        />
+      )}
+    </div>
+  );
+}

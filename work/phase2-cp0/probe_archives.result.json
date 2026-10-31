@@ -1,0 +1,8 @@
+{
+  "default_decode_matches": false,
+  "cp932_decode_matches": true,
+  "utf8_flag_overrides_cp932": true,
+  "containment_cases_ok": true,
+  "long_path_length": 349,
+  "long_path_write_ok": true
+}

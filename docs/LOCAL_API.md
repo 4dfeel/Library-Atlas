@@ -1,0 +1,302 @@
+# Library Atlas 本地 API 契约
+
+状态：Phase 2 检查点 1–4 已实现。这是 Atlas 自有接口，不是 Steam 或 DLsite 的接口。实现见 `backend/app/api/`，端到端验证见 `frontend/tests/e2e/real-mode.spec.ts`。
+
+## 约定
+- 基址 `http://127.0.0.1:<port>/api/v1`，默认端口 8765，只绑定回环地址。开发期由 Vite 代理 `/api`，浏览器只看到一个来源。
+- JSON 字段统一 camelCase。查询参数同样 camelCase。未知查询参数和未知请求字段一律 422，没有任何参数能扩大可见范围。
+- 时间为带时区的 ISO 8601 字符串（UTC）；发售日可为 `YYYY-MM-DD`。时长单位为分钟（非负整数）。
+- **`null` 表示来源未提供或尚不知道，不等于 0、false 或“没有”。** 前端也必须按未知显示。
+
+## 错误
+所有错误使用同一结构，不含堆栈、SQL、路径、上游 URL 或用户输入：
+
+```json
+{ "error": { "code": "work_unavailable", "message": "作品暂不可用。", "requestId": "…", "retryable": false } }
+```
+
+| HTTP | code | 含义 | 前端处理 |
+| --- | --- | --- | --- |
+| 404 | `work_unavailable` | 作品不存在，**或**是私人/隐藏/待确认；两者完全一致 | “找不到这部作品” |
+| 404 | `not_found` | 接口不存在 | — |
+| 409 | `version_conflict` | `expectedVersion` 已过期，未写入 | 保留输入，提示后可再次保存 |
+| 421 | `host_not_allowed` | Host 不在允许列表（防 DNS rebinding） | — |
+| 403 | `origin_not_allowed` / `origin_required` / `csrf_invalid` | 本地请求边界拒绝 | `csrf_invalid` 时取新令牌重试一次 |
+| 422 | `invalid_request` / `no_changes` | 输入无效 / 没有可写字段 | 显示未保存 |
+| 503 | `service_not_ready` / `database_unavailable` | 资料库未就绪或暂时不可访问 | 显示原因与重试，**不显示为空库** |
+| 500 | `internal_error` | 未预期错误，日志只记类型与 requestId | 显示重试 |
+
+## 请求边界
+- 所有请求：`Host` 必须是允许的回环地址。
+- `/api/*`：带 `Origin` 时必须在允许列表；`Sec-Fetch-Site: cross-site` 一律拒绝；不发送任何 CORS 头。
+- 写请求（PATCH/POST）：必须带允许的 `Origin` 和 `X-Atlas-CSRF`。令牌由 `GET /session` 取得，只有同源页面读得到，每次服务启动都会变化，不写入 URL、日志或浏览器持久存储。
+- 允许的来源：服务自身的 `127.0.0.1` / `localhost`，加 `ATLAS_DEV_ORIGINS` 中的回环地址。
+
+## 接口
+### 服务状态
+| 接口 | 说明 |
+| --- | --- |
+| `GET /health` | 存活。进程在即 200，不检查数据库。`{status:"ok",version}` |
+| `GET /ready` | 就绪。200 `{status:"ready",profile,schemaRevision}`；否则 503 `{status:"not_ready",profile,reason,message}`。`reason`：`schema_too_new`、`profile_mismatch`、`database_corrupt`、`database_unavailable`、`migration_failed`、`backup_failed`、`migrations_missing`、`starting` |
+| `GET /session` | `{csrfToken}` |
+
+`profile` 为 `real` 或 `test`。`test` 时前端持续显示“测试库 · 合成数据”。
+
+### 作品列表 `GET /works`
+| 参数 | 取值 | 默认 | 语义 |
+| --- | --- | --- | --- |
+| `search` | ≤200 字符 | 空 | 标题、副标题、制作方的**包含匹配**；NFKC 规范化且不分大小写；`%`、`_` 按普通字符处理 |
+| `kind` | `all` `non-game` `game` `image` `video` `audio` `other` | `all` | `non-game` 为除游戏外的全部 |
+| `platform` | `all` `steam` `dlsite` | `all` | |
+| `genre` | ≤200 字符 | `all` | 精确匹配；未分类作品不可按此筛选 |
+| `status` | `all` `unplayed` `playing` `completed` `paused` | `all` | 个人状态 |
+| `installed` | `all` `installed` `not-installed` | `all` | **本机状态未知的作品两边都不算** |
+| `favoritesOnly` | 布尔 | `false` | |
+| `sort` | `curated` `name-asc` `name-desc` `playtime-desc` `playtime-asc`，以及 `added` `maker` `genre` `rating` `release` `size` 各带 `-asc`/`-desc` | `curated` | 见下；未知值始终排在最后 |
+| `offset` / `limit` | ≥0 / 1–100 | 0 / 100 | 窗口分页 |
+
+所有条件取交集。排序始终以作品 ID 收尾，翻页不跳不重：
+- `curated`：加入时间从新到旧。
+- `name-*`：NFKC 规范化、不分大小写、数字按数值比较（第 2 卷在第 10 卷之前）。**按 Unicode 码位，不是拼音或五十音顺序**。
+- `playtime-*`：未知时长在两个方向都排最后；0 和未知分开。
+
+响应：
+
+| 字段 | 范围 |
+| --- | --- |
+| `items` | 当前窗口的作品 |
+| `filteredCount` | 符合全部筛选的数量 |
+| `totalVisible`、`kindCounts`、`installedCount`、`favoriteCount` | 全部普通作品，不受筛选影响 |
+| `genres` | 随 `kind` 变化的可选类型 |
+
+### 作品对象
+`id`、`platform`、`sourceId`（身份为 `platform + sourceId`，同编号跨平台是两部作品）、`kind`、`maker?`、`releaseDate?`、`title`、`subtitle?`、`genre?`、`status`、`installed?`（Steam 为已安装，DLsite 为已下载）、`playtimeMinutes?`、`favorite`、`visibility`（普通接口恒为 `normal`）、`cover {kind:"procedural"|"remote"|"missing",index,url?}`、`background`（本检查点恒为 null）、`addedAt`、`lastPlayedAt?`、`capabilities {download?,extract?,officialViewerOnly?}`、`file {version?,sizeBytes?}?`（第一个文件）、`sourceUrl?`（平台页面）。带 `?` 的字段可为 `null`。
+
+### 详情 `GET /works/{id}`
+作品对象加：`description?`、`tags[]`、`categories[]`（本检查点恒为空）、`achievements {unlocked,total}?`、`rating?`、`note`、`version`、`files[]`。
+
+`files[]` 每项：`id`、`label?`、`version?`、`language?`、`partIndex?`、`partCount?`、`sizeBytes?`、`format?`、`availability`（`unknown` `downloadable` `viewer_only`）、`downloadState`（`unknown` `not_downloaded` `downloaded`）、`extractState`（`unknown` `not_applicable` `not_extracted` `extracted`）。一个作品可有多个文件，分卷不是独立作品；下载、解压、安装、可启动是分开的事实。
+
+### 个人记录
+| 接口 | 说明 |
+| --- | --- |
+| `PATCH /works/{id}/personal` | 请求体可含 `status`、`rating`（1–5 整数，`null` 清除）、`note`（去首尾空白后 ≤1000 字，纯文本）、`favorite`、`expectedVersion`。只写给出的字段。成功返回完整详情 |
+| `POST /works/{id}/favorite/toggle` | 原子翻转收藏，返回完整详情 |
+
+**并发策略**：单机应用，只防真实会发生的两种情况。
+1. 同一页面连续保存：前端按作品串行发送，响应带 `version`，版本较旧的响应不会覆盖缓存。
+2. 另一标签页已改：备注保存时带 `expectedVersion`，过期返回 409，草稿保留，刷新后可再次保存。状态、评分、收藏是单字段写入，互不覆盖。
+
+**缓存规则**：修改成功后用响应更新详情缓存，并使当前模式下的列表、详情、首页缓存全部失效。修改失败也会失效，让页面回到服务器的真实值。
+
+### 首页 `GET /dashboard`
+参数 `scope`（`all` `games` `steam` `dlsite-games` `dlsite-media`）与 `batch`（≥0）。统计口径与 Demo 的 `selectDashboard` 相同，每个范围的作品数等于作品库相应筛选的数量（有测试）。无时长记录的游戏不计入时长；非游戏作品没有游玩统计。推荐在同一天同一 `batch` 内固定。
+
+### 来源 `GET /sources`
+`{sources:[{id,displayName,connection,workCount,lastSyncAt,capabilities:{connect,sync,download}}]}`。`connection` 见下方“DLsite 连接”；有来源记录不代表已认证。`capabilities.connect` 仅 DLsite 为 `true`，其余为 `false`。
+
+### DLsite 连接
+都不返回账号名、会话或平台响应。写接口受请求边界保护。
+
+| 接口 | 说明 |
+| --- | --- |
+| `GET /sources/dlsite/connection` | `{state,code?,message?,lastVerifiedAt?,canReveal?,accountAlias?,rememberedAccount?}`（后两者是打码账号）。只读本地状态，不访问平台 |
+| `POST /sources/dlsite/login` | `{loginId,password,confirmSwitch?,remember?}`，启动一次登录。`remember` 为真时，登录成功后把账号密码存入 Windows 凭据管理器。不接受其他字段，请求体不进日志和错误响应 |
+| `POST /sources/dlsite/login/saved` | 用保存的账号密码登录。密码不经过前端。无保存时 409 `no_saved_login` |
+| `POST /sources/dlsite/saved-login/forget` | 删除保存的账号密码 |
+| `POST /sources/dlsite/login/window` | 备用网页登录，无请求体 |
+| `POST /sources/dlsite/login/cancel` | 取消当前尝试，其迟到结果被丢弃 |
+| `POST /sources/dlsite/login/reveal` | 把验证窗口调回前台 |
+| `POST /sources/dlsite/verify` | 用保存的会话向平台确认一次 |
+| `POST /sources/dlsite/disconnect` | 清除 Atlas 保存的会话，不影响作品和个人记录，也不代表退出平台其他设备 |
+
+| `state` | 含义 |
+| --- | --- |
+| `not_connected` | 没有可用会话 |
+| `authenticating` / `needs_verification` | 登录进行中 / 平台要求用户本人验证 |
+| `verifying` | 正在确认会话 |
+| `connected` | 已确认可用 |
+| `unverified` | 暂时无法确认（网络、限流、凭据存储读取故障），不代表失效 |
+| `reauth_required` | 平台明确拒绝，或保存的会话损坏，需重新登录 |
+| `disconnect_failed` | 已停用但清理未完成，可重试；重启也不会恢复 |
+
+| `code` | 含义 |
+| --- | --- |
+| `bad_credentials` | 账号或密码不正确 |
+| `form_changed` | 登录页结构不认识，可改用网页登录 |
+| `browser_unavailable` | 登录组件无法启动 |
+| `timeout` | 等待超时 |
+| `not_confirmed` | 没能确认登录成功 |
+| `store_failed` | 登录成功但无法安全保存，未保持连接 |
+| `store_unavailable` | 读不到系统凭据存储 |
+| `session_missing` / `session_expired` | 保存的会话不可用 / 已失效 |
+| `platform_unavailable` | 暂时连不上平台 |
+| `saved_login_rejected` | 保存的密码被拒绝，已自动删除，不会重试 |
+| `remember_failed` | 已登录，但没能保存账号密码 |
+
+错误响应：409 `login_in_progress`（已有登录在进行）、409 `account_mismatch`（账号与之前不同，带 `confirmSwitch: true` 重试）、503 `credential_store_unavailable`。
+
+### 作品同步
+| 接口 | 说明 |
+| --- | --- |
+| `GET /sources/dlsite/sync` | `{lastSyncedAt,job}`。`lastSyncedAt` 只由完整同步更新 |
+| `POST /sources/dlsite/sync` | 开始同步；已有任务时返回那个任务。未连接 409 `not_connected` |
+| `POST /sources/dlsite/sync/cancel` | 请求取消，在批次边界生效 |
+| `GET /works/{id}/cover` | 封面图片，普通可见性之后才返回；无封面或取不到时 404 |
+
+`job`：`id,state,total?,processed,added,updated,skipped,missing,code?,message?,startedAt,finishedAt?`。`total` 在拿到作品列表前为 `null`。`state`：`preparing` `reading` `saving` `succeeded` `partial` `failed` `cancelled` `reauth_required` `interrupted`。`code`：`session_expired` `session_changed` `platform_unavailable` `response_changed` `some_unreadable` `interrupted` `cancelled`。
+
+### 下载
+| 接口 | 说明 |
+| --- | --- |
+| `POST /works/{id}/download-plan` | 向平台询问交付方式，不创建任务。`{kind:"direct"\|"split"\|"serial",parts,totalBytes?,folder,freeBytes?}` |
+| `GET /downloads` | `{tasks,activeCount}`，只含普通可见作品的任务，最近 200 条 |
+| `POST /downloads` | `{workId,parts?,again?}`，返回 202。同一文件重复请求返回原任务；请求不能指定路径 |
+| `POST /downloads/{id}/cancel` `pause` `retry` | 可重复调用；`retry` 能续传时续传，否则从头开始 |
+| `POST /downloads/{id}/open-folder` | 只打开这个已完成任务写入的文件夹 |
+| `POST /downloads/clear` | 清除已取消和失败的记录及其半成品，已完成的文件不动 |
+
+任务：`id,workId,title,part?,partCount?,state,bytesDone,bytesTotal?,fileName?,code?,message?,canRetry,canResume,integrity?,location?,fileMissing,createdAt,finishedAt?`。不包含下载地址。`bytesTotal` 为 `null` 表示服务器没有说明。`integrity`：`length` 长度一致；`stream_end` 只确认传输结束。`location` 只在完成后提供。
+
+`state`：`queued` `resolving` `downloading` `verifying` `paused` `done` `failed` `cancelled` `reauth_required` `interrupted`。`code`：`session_expired` `session_changed` `account_changed` `login_required` `challenged` `no_permission` `file_gone` `file_changed` `unexpected_host` `not_a_file` `empty_file` `size_mismatch` `response_changed` `platform_unavailable` `folder_missing` `folder_invalid` `disk_full` `write_failed` `interrupted` `cancelled` `unexpected`。创建时另有 `folder_not_set` `download_serial` `download_unsupported`。
+
+### 解压
+| 接口 | 说明 |
+| --- | --- |
+| `GET /extractions` | `{tasks,activeCount}`，只含普通可见作品 |
+| `POST /extractions` | `{workId,again?}`，返回 202。只能指定作品，要解压什么由已完成的下载决定 |
+| `POST /extractions/{id}/cancel` `retry` `open-folder` | 重试不会重新下载 |
+| `POST /extractions/clear` | 清除已取消和失败的记录，不动结果和下载 |
+
+`POST /downloads` 另接受 `extract`：全部文件完成后自动解压。不是压缩包的文件也会放入作品文件夹，`format` 为 `file`。
+
+任务：`id,workId,title,state,format?,filesTotal?,bytesTotal?,bytesDone,code?,message?,canRetry,location?,resultMissing,cleanupFailed,createdAt,finishedAt?`。`state`：`queued` `checking` `extracting` `committing` `done` `not_needed` `failed` `cancelled` `interrupted`。`code`：`no_download` `missing_parts` `input_changed` `account_changed` `tool_missing` `unsupported_format` `encrypted` `name_encoding` `unsafe_path` `duplicate_path` `special_entry` `too_large` `damaged` `extract_failed` `output_mismatch` `disk_full` `write_failed` `folder_missing` `interrupted` `cancelled` `unexpected`。
+
+### 更新与介绍图
+| 接口 | 说明 |
+| --- | --- |
+| `GET`、`PUT /settings/updates` | `{autoCheck,lastCheckedAt?}`；写入时只接受 `autoCheck` |
+| `GET /works/{id}/gallery` | `{images:[{url,width?,height?}],intro?,unavailable}`。`url` 是 Atlas 地址 |
+| `GET /works/{id}/gallery/{index}` | 图片本身，按序号，不接受地址 |
+
+`GET /downloads` 另返回 `updates:[{workId,title}]`，任务另有 `bytesPerSecond?`。文件夹类型是 `library`（作品）和 `download_cache`（压缩包，默认在作品文件夹的 `Archives` 里）。
+
+### 文件夹设置
+| 接口 | 说明 |
+| --- | --- |
+| `GET /settings/folders` | `{folders:[{kind,path,isDefault,status}]}`。`kind`：`library`、`download_cache`。`status`：`ok`、`not_set`、`missing` |
+| `PUT /settings/folders/{kind}` | `{path}`。必须是已存在、可写的绝对路径，不能是 Atlas 数据目录或系统文件夹，两个文件夹不能相同。无效返回 422 `folder_invalid` |
+| `POST /settings/folders/{kind}/pick` | 打开系统文件夹选择窗口，用户关闭后返回。取消不改动 |
+| `POST /settings/folders/{kind}/open` | 在资源管理器打开已登记的文件夹。请求不能指定路径 |
+
+只记录和校验，不扫描磁盘，不移动文件。选定的文件夹不见了时报告 `missing`，不会重建。下载功能开放前不会写入。
+
+## 后续检查点的任务状态（仅契约，未实现）
+本检查点没有任务表和任务接口。契约见 [接入方案 §7](PHASE2_INTEGRATION_PLAN.md)。
+
+### 官方介绍
+| 接口 | 说明 |
+| --- | --- |
+| `GET /works/{id}/introduction` | `{status,blocks,fetchedAt?,stale,problem?,message?}`。`status`：`ok` `empty` `unavailable`；`problem`：`gone` `unavailable` `changed`。`blocks` 是校验过的结构，不是 HTML |
+| `POST /works/{id}/introduction/refresh` | 手动重读，60 秒内不重复请求 |
+| `GET /works/{id}/intro-image/{index}` | 介绍里的图片，按序号，不接受地址 |
+
+### 本地副本
+| 接口 | 说明 |
+| --- | --- |
+| `GET`、`POST /works/{id}/local-copies` | 列出、关联。`{root,entry?,working?,arguments?,label?,makeDefault?}` |
+| `POST /works/{id}/local-copies/preview` | `{path}`，返回候选程序，只看文件名 |
+| `POST /local-copies/choose-folder` | 打开文件夹选择窗口 |
+| `PATCH`、`DELETE /local-copies/{id}` | 修改（含重新定位）；移除只删记录 |
+| `POST /local-copies/{id}/default` `open` `launch` | `launch` 返回 `{submitted,repeated}`，只表示已交给 Windows |
+
+`status`：`ok` `no_entry` `root_missing` `offline` `entry_missing`。
+
+### 本机作品库
+| 接口 | 说明 |
+| --- | --- |
+| `GET /library-scan` | 盘、任务、已发现的库、各状态数量 |
+| `GET /library-scan/items?state=&offset=&limit=` | 分页结果 |
+| `POST /library-scan/start` | `{drives,roots,deep}`。网络盘被拒绝 |
+| `POST /library-scan/cancel` | 停止遍历 |
+| `POST /library-scan/import` | `{includeLikely}`，批量关联，返回 `batchId` |
+| `POST /library-scan/undo/{batchId}` | 只撤销这一批关联 |
+| `POST /library-scan/items/{id}/link` `ignore` | 逐条决定 |
+
+### 本机作品库的自动关联
+`POST /library-scan/start` 接受 `autoLink`。任务结果里有 `autoLinked` 和 `batchId`，`batchId` 传给 `undo` 可撤销。
+
+### 手动关联与预览视频
+`POST /library-scan/items/{id}/link` 的 `workId` 可以是任何普通可见作品，不限于候选。介绍的 `video` 块有播放器时带 `embed`、`poster`、`media`、`width`、`height`。
+
+### 卸载、快捷方式、收藏夹
+| 接口 | 说明 |
+| --- | --- |
+| `GET /local-copies/{id}/uninstall` | `{root,files,sizeBytes,complete,blocked}` |
+| `POST /local-copies/{id}/uninstall` | `{confirmRoot}`，必须和预览的路径相同。移到回收站 |
+| `POST /local-copies/{id}/shortcut` | 在桌面创建快捷方式，不覆盖已有文件 |
+| `GET /collections?workId=` | `{favorites,collections:[{id,name,count,contains}]}` |
+| `POST /collections` | `{name,workId?}` |
+| `PATCH`、`DELETE /collections/{id}` | 重命名、删除（作品不受影响） |
+| `PUT`、`DELETE /collections/{id}/works/{workId}` | 放入、移出 |
+| `GET /works?collection=` | 按收藏筛选。作品带 `copyId`、`launchable` |
+
+### 音声
+| 接口 | 说明 |
+| --- | --- |
+| `GET /works/{id}/audio` | `{state,copyId,tracks,complete,lastTrackId}`；`state`：`ready` `empty` `offline` `no_copy` |
+| `GET /media/audio/{copyId}/{trackId}` | 音频内容，支持 Range。不接受路径 |
+| `PUT /media/audio-progress` | `{copyId,trackId,position,duration?}` |
+| `GET /works/{id}/audio/bookmarks`，`POST /media/audio-bookmarks`，`DELETE /audio-bookmarks/{id}` | 书签 |
+| `GET`、`POST /media/playlists`，`DELETE /media/playlists/{id}` | 播放列表，整表保存 |
+
+### 阅读
+| 接口 | 说明 |
+| --- | --- |
+| `GET /works/{id}/books` | `{state,copyId,books,unsupported,complete,lastBookId}`；`kind`：`images` `archive` `pdf` |
+| `GET /media/books/{copyId}/{bookId}/pages` | `{pages,skipped,encrypted,version,pageId,pageIndex,readState}`；PDF 的 `pages` 为空 |
+| `GET /media/pages/{copyId}/{bookId}/{pageId}` | 页面图片。文件头不符或超限返回 415 |
+| `GET /media/books/{copyId}/{bookId}/file` | PDF，支持 Range |
+| `PUT /media/reading` | `{copyId,bookId,pageId,pageIndex,pageCount?,finished?}` |
+| `PUT /media/read-state` | `{copyId,bookId,read}` |
+| `GET /media/books/{copyId}/{bookId}/bookmarks`，`POST /media/reader-bookmarks`，`DELETE /reader-bookmarks/{id}` | 书签 |
+
+### 游戏更新与存档
+| 接口 | 说明 |
+| --- | --- |
+| `GET`、`PUT /works/{id}/save-config` | `{rules:[{kind:"inside"\|"outside",path}],confirmedNone}` |
+| `GET /works/{id}/update` | `{task?,config,backups}` |
+| `POST /works/{id}/update` | `{copyId,confirmClosed}`，不接受路径 |
+| `POST /game-updates/{id}/cancel` `retry` `confirm` `rollback` | `confirm` 删除旧目录，`rollback` 恢复旧版本 |
+| `POST /save-backups/{id}/restore` | `{copyId}`，恢复前先备份当前存档 |
+
+`state`：`queued` `backing_up` `downloading` `unpacking` `replacing` `awaiting_confirmation` `cleaning` `done` `failed` `cancelled` `interrupted` `rolled_back`。
+
+### 云存档（检查点 9b）
+| 接口 | 说明 |
+| --- | --- |
+| `GET /cloud` | `{configured,connected,connecting,problem,accountName,deviceName,autoCheck,autoBackup}`，不含任何令牌 |
+| `PUT /cloud/client` | `{clientId,clientSecret?}`，密钥进 Windows 凭据管理器 |
+| `PUT /cloud/options` | `{autoCheck,autoBackup}` |
+| `POST /cloud/connect` `disconnect` | 打开系统浏览器；断开只清本机授权 |
+| `GET /works/{id}/cloud` | `{state,message,history,queue,localFiles,localBytes,autoCheck}` |
+| `POST /works/{id}/cloud/backup` `retry` | |
+| `POST /works/{id}/cloud/restore` | `{snapshotId,confirmClosed}` |
+| `POST /works/{id}/cloud/resolve` | `{keep:"local"\|快照 ID,confirmClosed}` |
+
+`state`：`not_connected` `unconfigured` `no_saves` `no_copy` `folder_offline` `empty` `local_only` `local_changed` `pending` `uploading` `synced` `cloud_update` `conflict` `needs_auth` `offline` `quota` `error` `restore_interrupted` `too_large`。
+
+### 查找存档
+| 接口 | 说明 |
+| --- | --- |
+| `GET /works/{id}/saves/suggestions` | `{available,engine,suggestions,session}`。只是建议，不会写入存档配置 |
+| `POST /works/{id}/saves/session` | 从现在开始记录 |
+| `POST /works/{id}/saves/session/finish` | 查找记录期间变化的文件，后台进行 |
+
+存档规则的 `kind` 增加 `registry`，路径只能是 `HKCU\\Software\\公司\\游戏`。`inside` 的最后一段可以用一个通配符，比如 `Save*.dat`。
+
+### 游玩记录
+| 接口 | 说明 |
+| --- | --- |
+| `GET /works/{id}/play` | `{running,runningSince,totalSeconds,totalMinutes,lastPlayedAt,recentSeconds,sessions,months}` |
+| `GET /play/stats?months=12` | `{totalSeconds,recentSeconds,months,recent}`，不含隐藏作品 |

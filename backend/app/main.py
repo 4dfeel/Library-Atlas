@@ -1,0 +1,1099 @@
+"""Application factory: one loopback service for the API and the built frontend."""
+
+import logging
+import mimetypes
+import time
+import uuid
+from collections.abc import AsyncIterator, Awaitable, Callable
+from contextlib import asynccontextmanager
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Annotated
+
+from alembic.runtime.migration import MigrationContext
+from fastapi import APIRouter, Depends, FastAPI, Query, Request, Response
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import FileResponse, JSONResponse
+from sqlalchemy import Engine
+from sqlalchemy.exc import DBAPIError, SQLAlchemyError
+from starlette.exceptions import HTTPException as StarletteHTTPException
+
+from app import __version__
+from app.adapters.dlsite.covers import CoverCache, CoverUnavailable
+from app.adapters.system.process_job import RunningGame
+from app.api import models
+from app.core.config import Settings
+from app.core.errors import NOT_READY_MESSAGES, AtlasError
+from app.core.security import LocalBoundaryMiddleware, new_csrf_token
+from app.db.bootstrap import DatabaseNotReady, open_database
+from app.services import library
+from app.services.cloud_saves import CloudSaves
+from app.services.collections import Collections
+from app.services.dlsite_auth import DlsiteAuth
+from app.services.dlsite_factory import (
+    build_cloud_saves,
+    build_dlsite_auth,
+    build_dlsite_sync,
+    build_download_queue,
+    build_extraction_service,
+    build_folder_service,
+    build_gallery,
+    build_introductions,
+    build_local_copies,
+    build_play_tracker,
+    build_registry,
+    build_save_discovery,
+    build_update_checker,
+)
+from app.services.dlsite_sync import DlsiteSync
+from app.services.downloads import DownloadQueue
+from app.services.extractions import ExtractionService
+from app.services.folders import FolderService
+from app.services.gallery import WorkGallery
+from app.services.game_updates import GameUpdater
+from app.services.introductions import WorkIntroductions
+from app.services.library_scan import LibraryScanner
+from app.services.local_copies import LocalCopies
+from app.services.local_media import AUDIO_TYPES, LocalMedia
+from app.services.play_tracker import PlayTracker
+from app.services.reader import Reader
+from app.services.save_discovery import SaveDiscovery
+from app.services.update_checks import UpdateChecker
+
+# What Python answers comes partly from the Windows registry, which may say `.mjs` is plain text. A
+# browser then refuses to run it as a module, so PDF reading silently stops working on that machine.
+mimetypes.add_type("text/javascript", ".js")
+mimetypes.add_type("text/javascript", ".mjs")
+
+logger = logging.getLogger("atlas")
+
+SECURITY_HEADERS = {
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "no-referrer",
+    "Content-Security-Policy": (
+        "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; "
+        "font-src 'self' data:; connect-src 'self'; frame-src https://chobit.cc; "
+        "frame-ancestors 'none'; base-uri 'none'"
+    ),
+}
+
+
+@dataclass
+class ServiceState:
+    settings: Settings
+    csrf_token: str
+    engine: Engine | None = None
+    revision: str | None = None
+    not_ready_reason: str | None = "starting"
+    dlsite: DlsiteAuth | None = None
+    folders: FolderService | None = None
+    sync: DlsiteSync | None = None
+    covers: CoverCache | None = None
+    downloads: DownloadQueue | None = None
+    extractions: ExtractionService | None = None
+    gallery: WorkGallery | None = None
+    introductions: WorkIntroductions | None = None
+    local_copies: LocalCopies | None = None
+    scanner: LibraryScanner | None = None
+    media: LocalMedia | None = None
+    collections: Collections | None = None
+    cloud: CloudSaves | None = None
+    discovery: SaveDiscovery | None = None
+    play: PlayTracker | None = None
+    reader: Reader | None = None
+    updates_game: GameUpdater | None = None
+    updates: UpdateChecker | None = None
+
+
+def _error_body(
+    code: str, message: str, request_id: str | None, *, retryable: bool = False
+) -> dict[str, object]:
+    return {
+        "error": {
+            "code": code,
+            "message": message,
+            "requestId": request_id,
+            "retryable": retryable,
+        }
+    }
+
+
+def _state(request: Request) -> ServiceState:
+    state: ServiceState = request.app.state.service
+    return state
+
+
+def _engine(request: Request) -> Engine:
+    state = _state(request)
+    if state.engine is None:
+        reason = state.not_ready_reason or "starting"
+        raise AtlasError(
+            "service_not_ready",
+            NOT_READY_MESSAGES.get(reason, "服务尚未就绪。"),
+            status=503,
+            retryable=reason == "starting",
+        )
+    return state.engine
+
+
+EngineDep = Annotated[Engine, Depends(_engine)]
+
+
+def _dlsite(request: Request, _engine: EngineDep) -> DlsiteAuth:
+    auth = _state(request).dlsite
+    if auth is None:
+        raise AtlasError(
+            "credential_store_unavailable", "系统凭据存储不可用，无法连接 DLsite。", status=503
+        )
+    return auth
+
+
+DlsiteDep = Annotated[DlsiteAuth, Depends(_dlsite)]
+
+
+def _sync(request: Request, _engine: EngineDep) -> DlsiteSync:
+    sync = _state(request).sync
+    if sync is None:
+        raise AtlasError(
+            "credential_store_unavailable", "系统凭据存储不可用，无法同步作品。", status=503
+        )
+    return sync
+
+
+SyncDep = Annotated[DlsiteSync, Depends(_sync)]
+
+
+def _downloads(request: Request, _engine: EngineDep) -> DownloadQueue:
+    queue = _state(request).downloads
+    if queue is None:
+        raise AtlasError(
+            "credential_store_unavailable", "系统凭据存储不可用，无法下载。", status=503
+        )
+    return queue
+
+
+DownloadsDep = Annotated[DownloadQueue, Depends(_downloads)]
+
+
+def _extractions(request: Request, _engine: EngineDep) -> ExtractionService:
+    service = _state(request).extractions
+    assert service is not None  # Built whenever the engine is.
+    return service
+
+
+ExtractionsDep = Annotated[ExtractionService, Depends(_extractions)]
+
+
+def _gallery(request: Request, _engine: EngineDep) -> WorkGallery:
+    service = _state(request).gallery
+    assert service is not None  # Built whenever the engine is.
+    return service
+
+
+GalleryDep = Annotated[WorkGallery, Depends(_gallery)]
+
+
+def _introductions(request: Request, _engine: EngineDep) -> WorkIntroductions:
+    service = _state(request).introductions
+    assert service is not None  # Built whenever the engine is.
+    return service
+
+
+IntroductionsDep = Annotated[WorkIntroductions, Depends(_introductions)]
+
+
+def _local_copies(request: Request, _engine: EngineDep) -> LocalCopies:
+    service = _state(request).local_copies
+    assert service is not None  # Built whenever the engine is.
+    return service
+
+
+CopiesDep = Annotated[LocalCopies, Depends(_local_copies)]
+
+
+def _scanner(request: Request, _engine: EngineDep) -> LibraryScanner:
+    service = _state(request).scanner
+    assert service is not None  # Built whenever the engine is.
+    return service
+
+
+ScannerDep = Annotated[LibraryScanner, Depends(_scanner)]
+
+
+def _game_updates(request: Request, _engine: EngineDep) -> GameUpdater:
+    service = _state(request).updates_game
+    assert service is not None  # Built whenever the engine is.
+    return service
+
+
+GameUpdatesDep = Annotated[GameUpdater, Depends(_game_updates)]
+
+
+def _media(request: Request, _engine: EngineDep) -> LocalMedia:
+    service = _state(request).media
+    assert service is not None  # Built whenever the engine is.
+    return service
+
+
+MediaDep = Annotated[LocalMedia, Depends(_media)]
+
+
+def _collections(request: Request, _engine: EngineDep) -> Collections:
+    service = _state(request).collections
+    assert service is not None  # Built whenever the engine is.
+    return service
+
+
+CollectionsDep = Annotated[Collections, Depends(_collections)]
+
+
+def _cloud(request: Request, _engine: EngineDep) -> CloudSaves:
+    service = _state(request).cloud
+    assert service is not None  # Built whenever the engine is.
+    return service
+
+
+CloudDep = Annotated[CloudSaves, Depends(_cloud)]
+
+
+def _discovery(request: Request, _engine: EngineDep) -> SaveDiscovery:
+    service = _state(request).discovery
+    assert service is not None  # Built whenever the engine is.
+    return service
+
+
+DiscoveryDep = Annotated[SaveDiscovery, Depends(_discovery)]
+
+
+def _play(request: Request, _engine: EngineDep) -> PlayTracker:
+    service = _state(request).play
+    assert service is not None  # Built whenever the engine is.
+    return service
+
+
+PlayDep = Annotated[PlayTracker, Depends(_play)]
+
+
+def _reader(request: Request, _engine: EngineDep) -> Reader:
+    service = _state(request).reader
+    assert service is not None  # Built whenever the engine is.
+    return service
+
+
+ReaderDep = Annotated[Reader, Depends(_reader)]
+
+
+def _updates(request: Request, _engine: EngineDep) -> UpdateChecker:
+    checker = _state(request).updates
+    if checker is None:
+        raise AtlasError(
+            "credential_store_unavailable", "系统凭据存储不可用，无法检查更新。", status=503
+        )
+    return checker
+
+
+UpdatesDep = Annotated[UpdateChecker, Depends(_updates)]
+
+
+def _folders(request: Request, _engine: EngineDep) -> FolderService:
+    service = _state(request).folders
+    assert service is not None  # Built whenever the engine is.
+    return service
+
+
+FoldersDep = Annotated[FolderService, Depends(_folders)]
+
+
+def _build_api() -> APIRouter:
+    api = APIRouter(prefix="/api/v1")
+
+    @api.get("/health")
+    def health() -> models.HealthOut:
+        return models.HealthOut(version=__version__)
+
+    @api.get("/ready", response_model_exclude_none=True)
+    def ready(request: Request, response: Response) -> models.ReadyOut:
+        state = _state(request)
+        profile = state.settings.profile
+        reason = state.not_ready_reason
+        if state.engine is not None:
+            try:
+                with state.engine.connect() as connection:
+                    current = MigrationContext.configure(connection).get_current_revision()
+                if current == state.revision:
+                    return models.ReadyOut(status="ready", profile=profile, schema_revision=current)
+                reason = "schema_too_new"
+            except SQLAlchemyError:
+                reason = "database_unavailable"
+        response.status_code = 503
+        reason = reason or "starting"
+        return models.ReadyOut(
+            status="not_ready",
+            profile=profile,
+            reason=reason,
+            message=NOT_READY_MESSAGES.get(reason, "服务尚未就绪。"),
+        )
+
+    @api.get("/session")
+    def session(request: Request) -> models.SessionOut:
+        return models.SessionOut(csrf_token=_state(request).csrf_token)
+
+    @api.get("/works")
+    def list_works(
+        engine: EngineDep, query: Annotated[models.WorkQuery, Query()]
+    ) -> models.WorkPage:
+        return library.list_page(engine, query)
+
+    @api.get("/works/{work_id}")
+    def get_work(engine: EngineDep, work_id: str) -> models.WorkDetailOut:
+        return library.get_detail(engine, work_id)
+
+    @api.patch("/works/{work_id}/personal")
+    def patch_personal(
+        engine: EngineDep, work_id: str, body: models.PersonalUpdate
+    ) -> models.WorkDetailOut:
+        return library.update_personal(engine, work_id, body)
+
+    @api.post("/works/{work_id}/favorite/toggle")
+    def toggle_favorite(engine: EngineDep, work_id: str) -> models.WorkDetailOut:
+        return library.toggle_favorite(engine, work_id)
+
+    @api.get("/dashboard")
+    def dashboard(
+        engine: EngineDep, query: Annotated[models.DashboardQuery, Query()]
+    ) -> models.DashboardOut:
+        return library.dashboard(engine, query)
+
+    @api.get("/sources")
+    def sources(request: Request, engine: EngineDep) -> models.SourcesOut:
+        auth = _state(request).dlsite
+        return library.source_status(engine, auth.summary_state() if auth else None)
+
+    @api.get("/sources/dlsite/connection", response_model_exclude_none=True)
+    def dlsite_connection(auth: DlsiteDep) -> models.DlsiteConnection:
+        return auth.connection()
+
+    @api.post("/sources/dlsite/login", response_model_exclude_none=True)
+    def dlsite_login(auth: DlsiteDep, body: models.DlsiteLogin) -> models.DlsiteConnection:
+        return auth.start_login(
+            body.login_id,
+            body.password.get_secret_value(),
+            confirm_switch=body.confirm_switch,
+            remember=body.remember,
+        )
+
+    @api.post("/sources/dlsite/login/saved", response_model_exclude_none=True)
+    def dlsite_saved_login(auth: DlsiteDep) -> models.DlsiteConnection:
+        return auth.start_saved_login()
+
+    @api.post("/sources/dlsite/saved-login/forget", response_model_exclude_none=True)
+    def dlsite_forget_login(auth: DlsiteDep) -> models.DlsiteConnection:
+        return auth.forget_saved_login()
+
+    @api.post("/sources/dlsite/login/window", response_model_exclude_none=True)
+    def dlsite_window_login(auth: DlsiteDep) -> models.DlsiteConnection:
+        return auth.start_window_login()
+
+    @api.post("/sources/dlsite/login/cancel", response_model_exclude_none=True)
+    def dlsite_cancel(auth: DlsiteDep) -> models.DlsiteConnection:
+        return auth.cancel()
+
+    @api.post("/sources/dlsite/login/reveal", response_model_exclude_none=True)
+    def dlsite_reveal(auth: DlsiteDep) -> models.DlsiteConnection:
+        return auth.reveal()
+
+    @api.post("/sources/dlsite/verify", response_model_exclude_none=True)
+    def dlsite_verify(auth: DlsiteDep) -> models.DlsiteConnection:
+        return auth.verify()
+
+    @api.get("/sources/dlsite/sync")
+    def sync_status(sync: SyncDep) -> models.SyncStatus:
+        return sync.status()
+
+    @api.post("/sources/dlsite/sync")
+    def sync_start(sync: SyncDep) -> models.SyncStatus:
+        return sync.start()
+
+    @api.post("/sources/dlsite/sync/cancel")
+    def sync_cancel(sync: SyncDep) -> models.SyncStatus:
+        return sync.cancel()
+
+    @api.get("/works/{work_id}/cover", include_in_schema=False)
+    def work_cover(request: Request, engine: EngineDep, work_id: str) -> Response:
+        ref = library.cover_reference(engine, work_id)
+        covers = _state(request).covers
+        if not ref or covers is None:
+            raise AtlasError("cover_unavailable", "没有封面。", status=404)
+        try:
+            path, content_type = covers.get(ref)
+        except CoverUnavailable:
+            raise AtlasError("cover_unavailable", "封面暂时无法获取。", status=404) from None
+        return FileResponse(
+            path, media_type=content_type, headers={"Cache-Control": "private, max-age=604800"}
+        )
+
+    # POST, though it changes nothing here: it spends the user's session on the platform.
+    @api.post("/works/{work_id}/download-plan")
+    def download_plan(queue: DownloadsDep, work_id: str) -> models.DownloadPlanOut:
+        return queue.plan(work_id)
+
+    @api.get("/downloads")
+    def list_downloads(queue: DownloadsDep, work_id: str | None = None) -> models.DownloadsOut:
+        return queue.tasks(work_id)
+
+    @api.post("/downloads", status_code=202)
+    def create_download(queue: DownloadsDep, body: models.DownloadCreate) -> models.DownloadsOut:
+        return queue.create(body)
+
+    @api.post("/downloads/clear")
+    def clear_downloads(queue: DownloadsDep) -> models.DownloadsOut:
+        return queue.clear_finished()
+
+    @api.post("/downloads/{task_id}/cancel")
+    def cancel_download(queue: DownloadsDep, task_id: str) -> models.DownloadTaskOut:
+        return queue.cancel(task_id)
+
+    @api.post("/downloads/{task_id}/pause")
+    def pause_download(queue: DownloadsDep, task_id: str) -> models.DownloadTaskOut:
+        return queue.pause(task_id)
+
+    @api.post("/downloads/{task_id}/retry")
+    def retry_download(queue: DownloadsDep, task_id: str) -> models.DownloadTaskOut:
+        return queue.retry(task_id)
+
+    @api.post("/downloads/{task_id}/open-folder")
+    def open_download_folder(queue: DownloadsDep, task_id: str) -> models.DownloadTaskOut:
+        return queue.open_folder(task_id)
+
+    @api.get("/works/{work_id}/gallery")
+    def work_gallery(service: GalleryDep, work_id: str) -> models.GalleryOut:
+        return service.gallery(work_id)
+
+    @api.get("/works/{work_id}/gallery/{index}", include_in_schema=False)
+    def work_gallery_image(service: GalleryDep, work_id: str, index: int) -> Response:
+        path, content_type = service.image(work_id, index)
+        return FileResponse(
+            path, media_type=content_type, headers={"Cache-Control": "private, max-age=604800"}
+        )
+
+    @api.get("/works/{work_id}/introduction")
+    def work_introduction(service: IntroductionsDep, work_id: str) -> models.IntroOut:
+        return service.introduction(work_id)
+
+    @api.post("/works/{work_id}/introduction/refresh")
+    def refresh_introduction(service: IntroductionsDep, work_id: str) -> models.IntroOut:
+        return service.introduction(work_id, refresh=True)
+
+    @api.get("/works/{work_id}/intro-image/{index}", include_in_schema=False)
+    def work_intro_image(service: IntroductionsDep, work_id: str, index: int) -> Response:
+        path, content_type = service.image(work_id, index)
+        return FileResponse(
+            path, media_type=content_type, headers={"Cache-Control": "private, max-age=604800"}
+        )
+
+    @api.get("/works/{work_id}/local-copies")
+    def list_copies(service: CopiesDep, work_id: str) -> models.LocalCopiesOut:
+        return service.copies(work_id)
+
+    @api.post("/works/{work_id}/local-copies")
+    def add_copy(
+        service: CopiesDep, work_id: str, body: models.LocalCopyIn
+    ) -> models.LocalCopiesOut:
+        return service.add(work_id, body)
+
+    @api.post("/works/{work_id}/local-copies/preview")
+    def preview_copy(
+        service: CopiesDep, work_id: str, body: models.CopyPreviewIn
+    ) -> models.CopyPreviewOut:
+        return service.preview(body.path)
+
+    @api.post("/local-copies/choose-folder")
+    def choose_copy_folder(service: CopiesDep) -> models.ChosenFolderOut:
+        return service.choose_folder()
+
+    @api.patch("/local-copies/{copy_id}")
+    def update_copy(
+        service: CopiesDep, copy_id: str, body: models.LocalCopyUpdate
+    ) -> models.LocalCopyOut:
+        return service.update_copy(copy_id, body)
+
+    @api.delete("/local-copies/{copy_id}")
+    def remove_copy(service: CopiesDep, copy_id: str) -> models.LocalCopiesOut:
+        return service.remove(copy_id)
+
+    @api.post("/local-copies/{copy_id}/default")
+    def default_copy(service: CopiesDep, copy_id: str) -> models.LocalCopiesOut:
+        return service.set_default(copy_id)
+
+    @api.post("/local-copies/{copy_id}/open")
+    def open_copy(service: CopiesDep, copy_id: str) -> models.LocalCopyOut:
+        return service.open_folder(copy_id)
+
+    @api.post("/local-copies/{copy_id}/launch")
+    def launch_copy(service: CopiesDep, copy_id: str) -> models.LaunchOut:
+        return service.launch(copy_id)
+
+    @api.get("/local-copies/{copy_id}/uninstall")
+    def uninstall_preview(service: CopiesDep, copy_id: str) -> models.UninstallPreview:
+        return service.uninstall_preview(copy_id)
+
+    @api.post("/local-copies/{copy_id}/uninstall")
+    def uninstall_copy(
+        service: CopiesDep, copy_id: str, body: models.UninstallIn
+    ) -> models.LocalCopiesOut:
+        return service.uninstall(copy_id, body)
+
+    @api.post("/local-copies/{copy_id}/shortcut")
+    def copy_shortcut(service: CopiesDep, copy_id: str) -> models.ShortcutOut:
+        return service.shortcut(copy_id)
+
+    @api.get("/works/{work_id}/saves/suggestions")
+    def save_suggestions(service: DiscoveryDep, work_id: str) -> models.SaveSuggestionsOut:
+        return service.suggestions(work_id)
+
+    @api.post("/works/{work_id}/saves/session")
+    def save_session_start(service: DiscoveryDep, work_id: str) -> models.SaveSuggestionsOut:
+        return service.start_session(work_id)
+
+    @api.post("/works/{work_id}/saves/session/finish")
+    def save_session_finish(service: DiscoveryDep, work_id: str) -> models.SaveSuggestionsOut:
+        return service.finish_session(work_id)
+
+    @api.get("/works/{work_id}/play")
+    def work_play(service: PlayDep, work_id: str) -> models.WorkPlayOut:
+        return service.work(work_id)
+
+    @api.get("/play/stats")
+    def play_stats(
+        service: PlayDep, months: Annotated[int, Query(ge=1, le=36)] = 12
+    ) -> models.PlayStatsOut:
+        return service.stats(months)
+
+    @api.get("/cloud")
+    def cloud_status(service: CloudDep) -> models.CloudStatus:
+        return service.status()
+
+    @api.put("/cloud/client")
+    def cloud_client(service: CloudDep, body: models.CloudClientIn) -> models.CloudStatus:
+        return service.set_client(body)
+
+    @api.put("/cloud/options")
+    def cloud_options(service: CloudDep, body: models.CloudOptionsIn) -> models.CloudStatus:
+        return service.set_options(body)
+
+    @api.post("/cloud/connect")
+    def cloud_connect(service: CloudDep) -> models.CloudStatus:
+        return service.connect()
+
+    @api.post("/cloud/disconnect")
+    def cloud_disconnect(service: CloudDep) -> models.CloudStatus:
+        return service.disconnect()
+
+    @api.get("/works/{work_id}/cloud")
+    def work_cloud(service: CloudDep, work_id: str) -> models.CloudWorkOut:
+        return service.work_status(work_id)
+
+    @api.post("/works/{work_id}/cloud/backup")
+    def work_cloud_backup(service: CloudDep, work_id: str) -> models.CloudWorkOut:
+        return service.backup(work_id)
+
+    @api.post("/works/{work_id}/cloud/retry")
+    def work_cloud_retry(service: CloudDep, work_id: str) -> models.CloudWorkOut:
+        return service.retry(work_id)
+
+    @api.post("/works/{work_id}/cloud/restore")
+    def work_cloud_restore(
+        service: CloudDep, work_id: str, body: models.CloudRestoreIn
+    ) -> models.CloudWorkOut:
+        return service.restore(work_id, body.snapshot_id, body.confirm_closed)
+
+    @api.post("/works/{work_id}/cloud/resolve")
+    def work_cloud_resolve(
+        service: CloudDep, work_id: str, body: models.CloudResolveIn
+    ) -> models.CloudWorkOut:
+        return service.resolve(work_id, body.keep, body.confirm_closed)
+
+    @api.get("/collections")
+    def list_collections(
+        service: CollectionsDep, work_id: Annotated[str | None, Query(alias="workId")] = None
+    ) -> models.CollectionsOut:
+        return service.listed(work_id)
+
+    @api.post("/collections")
+    def create_collection(
+        service: CollectionsDep, body: models.CollectionIn
+    ) -> models.CollectionsOut:
+        return service.create(body)
+
+    @api.patch("/collections/{collection_id}")
+    def rename_collection(
+        service: CollectionsDep, collection_id: str, body: models.CollectionRename
+    ) -> models.CollectionsOut:
+        return service.rename(collection_id, body)
+
+    @api.delete("/collections/{collection_id}")
+    def remove_collection(service: CollectionsDep, collection_id: str) -> models.CollectionsOut:
+        return service.remove(collection_id)
+
+    @api.put("/collections/{collection_id}/works/{work_id}")
+    def add_to_collection(
+        service: CollectionsDep, collection_id: str, work_id: str
+    ) -> models.CollectionsOut:
+        return service.add_work(collection_id, work_id)
+
+    @api.delete("/collections/{collection_id}/works/{work_id}")
+    def remove_from_collection(
+        service: CollectionsDep, collection_id: str, work_id: str
+    ) -> models.CollectionsOut:
+        return service.remove_work(collection_id, work_id)
+
+    @api.get("/library-scan")
+    def scan_status(service: ScannerDep) -> models.ScanStatus:
+        return service.status()
+
+    @api.get("/library-scan/items")
+    def scan_items(
+        service: ScannerDep,
+        state: models.ScanItemState | None = None,
+        offset: Annotated[int, Query(ge=0)] = 0,
+        limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    ) -> models.ScanItemsOut:
+        return service.items(state, offset, limit)
+
+    @api.post("/library-scan/start")
+    def scan_start(service: ScannerDep, body: models.ScanStart) -> models.ScanStatus:
+        return service.start(body)
+
+    @api.post("/library-scan/cancel")
+    def scan_cancel(service: ScannerDep) -> models.ScanStatus:
+        return service.cancel()
+
+    @api.post("/library-scan/import")
+    def scan_import(service: ScannerDep, body: models.ScanImport) -> models.ScanImportOut:
+        return service.import_matches(body)
+
+    @api.post("/library-scan/undo/{batch_id}")
+    def scan_undo(service: ScannerDep, batch_id: str) -> models.ScanImportOut:
+        return service.undo(batch_id)
+
+    @api.post("/library-scan/items/{item_id}/link")
+    def scan_link(service: ScannerDep, item_id: str, body: models.ScanLink) -> models.ScanItemsOut:
+        return service.link_item(item_id, body.work_id)
+
+    @api.post("/library-scan/items/{item_id}/ignore")
+    def scan_ignore(service: ScannerDep, item_id: str) -> models.ScanItemsOut:
+        return service.ignore_item(item_id)
+
+    @api.get("/works/{work_id}/save-config")
+    def get_save_config(service: GameUpdatesDep, work_id: str) -> models.SaveConfigOut:
+        return service.save_config(work_id)
+
+    @api.put("/works/{work_id}/save-config")
+    def put_save_config(
+        service: GameUpdatesDep, work_id: str, body: models.SaveConfigIn
+    ) -> models.SaveConfigOut:
+        return service.set_save_config(work_id, body)
+
+    @api.get("/works/{work_id}/update")
+    def game_update_status(service: GameUpdatesDep, work_id: str) -> models.GameUpdateStatus:
+        return service.status(work_id)
+
+    @api.post("/works/{work_id}/update")
+    def game_update_start(
+        service: GameUpdatesDep, work_id: str, body: models.GameUpdateStart
+    ) -> models.GameUpdateStatus:
+        return service.start(work_id, body)
+
+    @api.post("/game-updates/{task_id}/cancel")
+    def game_update_cancel(service: GameUpdatesDep, task_id: str) -> models.GameUpdateStatus:
+        return service.cancel(task_id)
+
+    @api.post("/game-updates/{task_id}/retry")
+    def game_update_retry(service: GameUpdatesDep, task_id: str) -> models.GameUpdateStatus:
+        return service.retry(task_id)
+
+    @api.post("/game-updates/{task_id}/confirm")
+    def game_update_confirm(service: GameUpdatesDep, task_id: str) -> models.GameUpdateStatus:
+        return service.confirm(task_id)
+
+    @api.post("/game-updates/{task_id}/rollback")
+    def game_update_rollback(service: GameUpdatesDep, task_id: str) -> models.GameUpdateStatus:
+        return service.rollback(task_id)
+
+    @api.post("/save-backups/{backup_id}/restore")
+    def save_backup_restore(
+        service: GameUpdatesDep, backup_id: str, body: models.SaveRestoreIn
+    ) -> models.SaveRestoreOut:
+        return service.restore(backup_id, body.copy_id)
+
+    @api.get("/works/{work_id}/audio")
+    def work_audio(service: MediaDep, work_id: str) -> models.AudioOut:
+        return service.audio(work_id)
+
+    @api.get("/works/{work_id}/audio/bookmarks")
+    def audio_bookmarks(service: MediaDep, work_id: str) -> models.BookmarksOut:
+        return service.bookmarks(work_id, "audio")
+
+    @api.get("/media/audio/{copy_id}/{track_id}", include_in_schema=False)
+    def stream_audio(service: MediaDep, copy_id: str, track_id: str) -> Response:
+        # FileResponse answers range requests, and reads from disk as they are served.
+        path, media_type = service.resolve(copy_id, track_id, AUDIO_TYPES)
+        return FileResponse(path, media_type=media_type)
+
+    @api.put("/media/audio-progress")
+    def audio_progress(service: MediaDep, body: models.AudioProgressIn) -> dict[str, bool]:
+        service.save_progress(
+            body.copy_id, body.track_id, "audio", body.position, body.duration, set(AUDIO_TYPES)
+        )
+        return {"saved": True}
+
+    @api.post("/media/audio-bookmarks")
+    def add_audio_bookmark(service: MediaDep, body: models.BookmarkIn) -> models.BookmarksOut:
+        work_id = service.add_bookmark(body, "audio", set(AUDIO_TYPES))
+        return service.bookmarks(work_id, "audio")
+
+    @api.delete("/audio-bookmarks/{bookmark_id}")
+    def remove_audio_bookmark(service: MediaDep, bookmark_id: str) -> dict[str, bool]:
+        service.remove_bookmark(bookmark_id)
+        return {"removed": True}
+
+    @api.get("/media/playlists")
+    def list_playlists(service: MediaDep) -> models.PlaylistsOut:
+        return service.playlists()
+
+    @api.post("/media/playlists")
+    def save_playlist(service: MediaDep, body: models.PlaylistIn) -> models.PlaylistsOut:
+        return service.save_playlist(body)
+
+    @api.delete("/media/playlists/{playlist_id}")
+    def remove_playlist(service: MediaDep, playlist_id: str) -> models.PlaylistsOut:
+        return service.remove_playlist(playlist_id)
+
+    @api.get("/works/{work_id}/books")
+    def work_books(service: ReaderDep, work_id: str) -> models.BooksOut:
+        return service.books(work_id)
+
+    @api.get("/media/books/{copy_id}/{book_id}/pages")
+    def book_pages(service: ReaderDep, copy_id: str, book_id: str) -> models.BookPagesOut:
+        return service.pages(copy_id, book_id)
+
+    @api.get("/media/books/{copy_id}/{book_id}/file", include_in_schema=False)
+    def book_file(service: ReaderDep, copy_id: str, book_id: str) -> Response:
+        return FileResponse(service.pdf(copy_id, book_id), media_type="application/pdf")
+
+    @api.get("/media/pages/{copy_id}/{book_id}/{page_id}", include_in_schema=False)
+    def book_page(service: ReaderDep, copy_id: str, book_id: str, page_id: str) -> Response:
+        # A page's ID covers its content, so what the browser kept cannot go out of date.
+        headers = {"Cache-Control": "private, max-age=3600"}
+        page = service.page(copy_id, book_id, page_id)
+        if page.path is not None:
+            return FileResponse(page.path, media_type=page.media_type, headers=headers)
+        return Response(page.content, media_type=page.media_type, headers=headers)
+
+    @api.put("/media/reading")
+    def save_reading(service: ReaderDep, body: models.ReadingPositionIn) -> dict[str, bool]:
+        service.save_position(body)
+        return {"saved": True}
+
+    @api.put("/media/read-state")
+    def save_read_state(service: ReaderDep, body: models.ReadStateIn) -> dict[str, bool]:
+        service.set_read(body)
+        return {"saved": True}
+
+    @api.get("/media/books/{copy_id}/{book_id}/bookmarks")
+    def book_bookmarks(service: ReaderDep, copy_id: str, book_id: str) -> models.ReaderBookmarksOut:
+        return service.bookmarks(copy_id, book_id)
+
+    @api.post("/media/reader-bookmarks")
+    def add_reader_bookmark(
+        service: ReaderDep, body: models.ReaderBookmarkIn
+    ) -> models.ReaderBookmarksOut:
+        return service.add_bookmark(body)
+
+    @api.delete("/reader-bookmarks/{bookmark_id}")
+    def remove_reader_bookmark(service: ReaderDep, bookmark_id: str) -> dict[str, bool]:
+        service.remove_bookmark(bookmark_id)
+        return {"removed": True}
+
+    @api.get("/settings/updates")
+    def update_settings(checker: UpdatesDep) -> models.UpdateSettings:
+        return checker.status()
+
+    @api.put("/settings/updates")
+    def set_update_settings(
+        checker: UpdatesDep, body: models.UpdateSettingsIn
+    ) -> models.UpdateSettings:
+        return checker.set_auto(body.auto_check)
+
+    @api.get("/extractions")
+    def list_extractions(service: ExtractionsDep) -> models.ExtractionsOut:
+        return service.tasks()
+
+    @api.post("/extractions", status_code=202)
+    def create_extraction(
+        service: ExtractionsDep, body: models.ExtractCreate
+    ) -> models.ExtractionsOut:
+        return service.start(body.work_id, again=body.again)
+
+    @api.post("/extractions/clear")
+    def clear_extractions(service: ExtractionsDep) -> models.ExtractionsOut:
+        return service.clear_finished()
+
+    @api.post("/extractions/{task_id}/cancel")
+    def cancel_extraction(service: ExtractionsDep, task_id: str) -> models.ExtractTaskOut:
+        return service.cancel(task_id)
+
+    @api.post("/extractions/{task_id}/retry")
+    def retry_extraction(service: ExtractionsDep, task_id: str) -> models.ExtractTaskOut:
+        return service.retry(task_id)
+
+    @api.post("/extractions/{task_id}/open-folder")
+    def open_extraction_folder(service: ExtractionsDep, task_id: str) -> models.ExtractTaskOut:
+        return service.open_folder(task_id)
+
+    @api.get("/settings/folders")
+    def get_folders(service: FoldersDep) -> models.FoldersOut:
+        return service.folders()
+
+    @api.put("/settings/folders/{kind}")
+    def set_folder(
+        service: FoldersDep, kind: models.FolderKind, body: models.FolderUpdate
+    ) -> models.FoldersOut:
+        return service.set_folder(kind, body.path)
+
+    @api.post("/settings/folders/{kind}/pick")
+    def pick_folder(service: FoldersDep, kind: models.FolderKind) -> models.FoldersOut:
+        return service.pick(kind)
+
+    @api.post("/settings/folders/{kind}/open")
+    def open_folder(service: FoldersDep, kind: models.FolderKind) -> models.FoldersOut:
+        return service.open_folder(kind)
+
+    @api.post("/sources/dlsite/disconnect", response_model_exclude_none=True)
+    def dlsite_disconnect(auth: DlsiteDep) -> models.DlsiteConnection:
+        return auth.disconnect()
+
+    @api.api_route(
+        "/{rest:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"], include_in_schema=False
+    )
+    def unknown_api(rest: str) -> None:
+        raise AtlasError("not_found", "接口不存在。", status=404)
+
+    return api
+
+
+def _static_response(static_dir: Path | None, path: str) -> Response:
+    """Files inside the build, otherwise the SPA shell. Nothing outside the build is served."""
+    if static_dir is None:
+        return JSONResponse(
+            _error_body("frontend_not_built", "前端尚未构建，请先运行 npm run build。", None),
+            status_code=503,
+        )
+    root = static_dir.resolve()
+    candidate = (root / path).resolve()
+    if path and candidate.is_relative_to(root) and candidate.is_file():
+        return FileResponse(candidate)
+    return FileResponse(root / "index.html", headers={"Cache-Control": "no-cache"})
+
+
+def create_app(
+    settings: Settings,
+    *,
+    open_db: bool = True,
+    dlsite_factory: Callable[[Settings, Engine], DlsiteAuth | None] = build_dlsite_auth,
+    dlsite_sync_factory: Callable[[Settings, Engine, DlsiteAuth], DlsiteSync] = build_dlsite_sync,
+) -> FastAPI:
+    state = ServiceState(settings=settings, csrf_token=new_csrf_token())
+
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+        if open_db:
+            try:
+                opened = open_database(
+                    settings.database_path, settings.backup_dir, settings.profile
+                )
+                state.engine, state.revision = opened.engine, opened.revision
+                state.not_ready_reason = None
+                state.folders = build_folder_service(settings, opened.engine)
+                state.extractions = build_extraction_service(opened.engine, state.folders)
+                state.extractions.recover()
+                state.local_copies = build_local_copies(settings, opened.engine, state.folders)
+                state.extractions.on_result = state.local_copies.record_unpacked
+                # A test library is never shown the real drives, so no test can read them.
+                state.scanner = (
+                    LibraryScanner(opened.engine, state.local_copies, lambda: [])
+                    if settings.profile == "test"
+                    else LibraryScanner(opened.engine, state.local_copies)
+                )
+                state.scanner.recover()
+                state.media = LocalMedia(opened.engine)
+                state.collections = Collections(opened.engine)
+                state.reader = Reader(opened.engine, state.media)
+                state.dlsite = dlsite_factory(settings, opened.engine)
+                state.covers = CoverCache(settings.data_dir / "cache" / "covers")
+                state.gallery = build_gallery(settings, opened.engine, state.covers)
+                state.introductions = build_introductions(settings, opened.engine, state.covers)
+                if state.dlsite is not None:
+                    state.sync = dlsite_sync_factory(settings, opened.engine, state.dlsite)
+                    state.sync.recover()
+                    assert state.scanner is not None  # Built just above.
+                    state.sync.on_finished = state.scanner.scan_automatically
+                    assert state.folders is not None  # Built just above.
+                    state.downloads = build_download_queue(
+                        settings, opened.engine, state.dlsite, state.folders
+                    )
+                    state.downloads.recover()
+                    state.downloads.on_flow_finished = state.extractions.flow_finished
+                    state.updates = build_update_checker(settings, opened.engine, state.sync)
+                    state.dlsite.restore()
+                assert state.extractions is not None  # Built just above.
+                registry = build_registry(settings)
+                state.updates_game = GameUpdater(
+                    opened.engine, settings, state.downloads, state.extractions, registry
+                )
+                state.updates_game.recover()
+                state.cloud = build_cloud_saves(settings, opened.engine, state.updates_game)
+                state.cloud.start()
+                state.discovery = build_save_discovery(
+                    settings, opened.engine, state.updates_game, registry
+                )
+                state.discovery.recover()
+                cloud, discovery = state.cloud, state.discovery
+                state.play = build_play_tracker(settings, opened.engine)
+                play = state.play
+
+                def exited(work_id: str, program: Path | None) -> None:
+                    for listener in (cloud.game_exited, discovery.game_exited):
+                        try:
+                            listener(work_id, program)
+                        except Exception as error:  # noqa: BLE001 - type only, no paths.
+                            logger.error("after exit: %s", type(error).__name__)
+
+                def launched(
+                    work_id: str, copy_id: str, running: RunningGame | None, program: Path
+                ) -> None:
+                    # The game has already been handed over: nothing here may fail that.
+                    try:
+                        discovery.game_started(work_id)
+                        play.started(work_id, copy_id, running, program)
+                    except Exception as error:  # noqa: BLE001 - type only, no paths.
+                        logger.error("after launch: %s", type(error).__name__)
+
+                play.on_exit = exited
+                play.recover()
+                state.local_copies.on_launched = launched
+                state.scanner.scan_automatically()
+            except DatabaseNotReady as error:
+                state.not_ready_reason = error.reason
+                logger.error("database not ready: %s", error.reason)
+        yield
+        if state.play is not None:
+            state.play.shutdown()
+        if state.discovery is not None:
+            state.discovery.shutdown()
+        if state.cloud is not None:
+            state.cloud.shutdown()
+        if state.updates_game is not None:
+            state.updates_game.shutdown()
+        if state.scanner is not None:
+            state.scanner.shutdown()
+        if state.updates is not None:
+            state.updates.shutdown()
+        if state.extractions is not None:
+            state.extractions.shutdown()
+        if state.downloads is not None:
+            state.downloads.shutdown()
+        if state.sync is not None:
+            state.sync.shutdown()
+        if state.dlsite is not None:
+            state.dlsite.shutdown()
+        if state.engine is not None:
+            state.engine.dispose()
+
+    app = FastAPI(
+        title="Library Atlas",
+        version=__version__,
+        lifespan=lifespan,
+        docs_url=None,
+        redoc_url=None,
+        openapi_url=None,
+    )
+    app.state.service = state
+
+    @app.middleware("http")
+    async def request_context(
+        request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
+        request.state.request_id = uuid.uuid4().hex
+        started = time.perf_counter()
+        response = await call_next(request)
+        response.headers["X-Request-Id"] = request.state.request_id
+        for name, value in SECURITY_HEADERS.items():
+            response.headers[name] = value
+        # The route template only: no query strings, titles, IDs or paths in the log.
+        route = request.scope.get("route")
+        logger.info(
+            "%s %s %s %.0fms",
+            request.method,
+            getattr(route, "path", "(static)"),
+            response.status_code,
+            (time.perf_counter() - started) * 1000,
+        )
+        return response
+
+    def request_id(request: Request) -> str | None:
+        return getattr(request.state, "request_id", None)
+
+    @app.exception_handler(AtlasError)
+    async def on_atlas_error(request: Request, error: AtlasError) -> JSONResponse:
+        return JSONResponse(
+            _error_body(error.code, error.message, request_id(request), retryable=error.retryable),
+            status_code=error.status,
+        )
+
+    @app.exception_handler(RequestValidationError)
+    async def on_invalid_request(request: Request, _error: RequestValidationError) -> JSONResponse:
+        # The details echo user input, so they stay out of the response and the log.
+        return JSONResponse(
+            _error_body("invalid_request", "请求内容无效。", request_id(request)), status_code=422
+        )
+
+    @app.exception_handler(StarletteHTTPException)
+    async def on_http_error(request: Request, error: StarletteHTTPException) -> JSONResponse:
+        return JSONResponse(
+            _error_body("http_error", "请求无法处理。", request_id(request)),
+            status_code=error.status_code,
+        )
+
+    @app.exception_handler(DBAPIError)
+    async def on_database_error(request: Request, error: DBAPIError) -> JSONResponse:
+        logger.error("database error %s request=%s", type(error.orig).__name__, request_id(request))
+        return JSONResponse(
+            _error_body(
+                "database_unavailable",
+                "资料库暂时无法访问，修改尚未保存，请重试。",
+                request_id(request),
+                retryable=True,
+            ),
+            status_code=503,
+        )
+
+    @app.exception_handler(Exception)
+    async def on_unexpected(request: Request, error: Exception) -> JSONResponse:
+        logger.error("unexpected %s request=%s", type(error).__name__, request_id(request))
+        return JSONResponse(
+            _error_body(
+                "internal_error", "服务遇到意外错误。", request_id(request), retryable=True
+            ),
+            status_code=500,
+        )
+
+    app.include_router(_build_api())
+
+    @app.get("/{path:path}", include_in_schema=False)
+    def frontend(path: str) -> Response:
+        return _static_response(settings.static_dir, path)
+
+    app.add_middleware(LocalBoundaryMiddleware, settings=settings, csrf_token=state.csrf_token)
+    return app

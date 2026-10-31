@@ -1,6 +1,6 @@
 # Library Atlas 技术架构草案
 
-状态：Phase 0 待审核；2026-10-30。目录、模型、接口均为拟议契约，不代表已有代码或 Steam 能力。
+状态：Phase 0 已审核；2026-10-30。§1–§7 是总体设计；**实际落地情况见 §10**，真实平台接入尚未实现。
 
 ## 1. 运行结构与决策
 采用本地单体、分层模块架构。React 处理呈现与交互；FastAPI 统一执行可见性、业务规则、同步和文件访问；SQLite 保存结构化资料。1500 条规模不需要微服务、Redis 或远程数据库。
@@ -58,7 +58,7 @@ scripts/                 # Windows 启动、构建和检查
 | 表 | 主要字段/约束 |
 | --- | --- |
 | profiles | id、mode(real/demo)、steam_id(nullable)、display_name；MVP 单活动账号 |
-| games | id、steam_app_id(unique nullable)、canonical_title、metadata_status；不直接包含账号隐私 |
+| games（作品） | id、platform(steam/dlsite)、external_id、unique(platform,external_id)、kind(game/image/video/audio/other)、maker、release_date(nullable)、canonical_title、metadata_status；不直接包含账号隐私。原 steam_app_id 由 platform=steam + external_id 表示 |
 | library_entries | id、profile_id、game_id、ownership_status(unknown/observed_owned/not_currently_observed)、first_seen_at；unique(profile_id,game_id) |
 | local_preferences | entry_id(unique)、visibility(normal/hidden/private/quarantined)、visibility_confirmed_at、title_override、backlog_status、priority、notes、version |
 | source_observations | id、entry_id、source、field_name、value_json、observed_at、scope、confidence；校验字段白名单与大小 |
@@ -116,3 +116,148 @@ scripts/                 # Windows 启动、构建和检查
 | 1500 项与缩放 | 尚无运行实现/性能实测 | 合成数据性能 trace、虚拟化键盘测试、1920 和缩放矩阵；超预算先优化查询与渲染 |
 
 官方依据：[IPlayerService 文档](https://partner.steamgames.com/doc/webapi/IPlayerService?language=english)、[Steam Private Games 帮助](https://help.steampowered.com/en/faqs/view/1150-C06F-4D62-4966)。帮助说明不能证明 API 提供对应状态。后续记录适配器能力为 supported/unsupported/unknown，逐项附实测日期和脱敏证据。
+
+## 8. Phase 1 检查点 1 实施边界
+用户明确将本轮收窄为纯前端 AppShell + Library（见 [执行规范](specs/PHASE1.md)），覆盖此前 Phase 1 含后端骨架的安排。正式产品仍采用上述 FastAPI 单服务架构；本轮使用 Vite 本地 dev/preview 供视觉评审，不是正式交付运行架构。未创建 Python、数据库或假业务接口。
+
+前端 `LibrarySource` 是替换边界：组件 → TanStack Query hooks → Demo source → 先按 visibility=normal 过滤的查询结果。Demo 默认启用（`VITE_DEMO_MODE=false` 可关闭），默认生成规模 1500，`?size=5000` 启用压力场景。数据为固定种子、会话内存存储，收藏只保留至刷新。真实 source 尚未实现；这里的前端可见性过滤仅适用于合成数据，不能充当未来真实数据的安全边界。
+
+图片分为三类：24 张本地原创 SVG 叙事插画、可见卡片按需生成的程序化 SVG、明确缺失的统一占位。SVG 不需 srcset，任意 DPR 下保持矢量清晰；未来位图源仍必须提供 sizes/srcset。字体依赖包打入 dist，通过 unicode-range 按需取本地 WOFF2，运行时不联网取字体。原始私人哨兵仅存在 Demo source 内部，普通 hooks 不返回它们；它们不是用户真实隐私资料。
+
+## 9. 多平台扩展：DLsite（2026-10-30 用户决定，待 Phase 2 调查）
+- **模型**：上表 games 改为平台中立的作品表；前端 `Game` 类型已包含 `platform`、`kind`、`maker`、`releaseDate`（类型名沿用历史名称，含义为“任意平台的作品条目”）。可见性、本地偏好、收藏、Backlog 与平台无关。
+- **适配器**：`adapters/dlsite/` 与 Steam 并列，输出同一标准化观测；按 (platform, external_id) 幂等合并，缺项不删除库存。新条目进入 quarantined，直至用户确认。
+- **会话凭据**（2026-10-31 用户决定更新）：用户默认在 Atlas 面板输入账号密码，经本地服务和进程管道交给隐藏的 WebView2 提交；验证码/二步验证由用户本人完成；另有备用网页登录。密码默认只用于本次尝试；用户勾选“记住”后存入 Windows Credential Manager，只用于登录，绝不返回前端。后端仅保存会话 Cookie 至 Windows Credential Manager 并以引用访问；不进数据库、日志、前端、导出或错误上报。会话失效返回明确的 `reauth_required` 状态，不自动重试登录。只读请求，限速，手动或低频触发。
+- **打开作品**：后端按作品类型执行：游戏只启动用户确认并登记的可执行文件；其他类型交给系统默认程序或资源管理器。使用参数数组启动，不经 shell 拼接；扫描到的程序不自动运行。
+- **下载解压（候选）**：仅限会话可访问的已购作品下载链接与 DLsite 主机白名单；断点续传、大小与完整性校验、限定写入目录；解压逐项校验目标路径（拒绝绝对路径与 `..`）、限制展开大小与文件数。需许可证认证的作品不处理授权。引入 7-Zip/unrar 等组件前另行征询。
+- **待调查**：Nest 本地数据位置与格式（是否加密）、网站购买列表与下载链接的获取方式及稳定性、使用条款对自动化读取/下载的限制、作品编号格式、封面与元数据许可。结论写入 §7 能力表后再实现。
+
+### 9.1 检查点 3 前端增量（演示，已实现）
+- `Game` 增加 `sourceId`（与 `platform` 组合为身份，演示数据刻意让跨平台编号相同以验证不覆盖）、`capabilities`（download / extract / officialViewerOnly，按作品而非按平台硬编码）、`file`（version、sizeBytes，未知为 null）。`installed` 表示“本机可用”：Steam 为已安装，DLsite 为已下载，二者文案分开，下载完成不等于已安装或可启动。`lastPlayedAt` 为最近使用记录（游戏为游玩，其他为阅读/观看/收听，演示数据）。
+- `selectDashboard` 为纯函数：先可见性过滤，再按范围（all / games / steam / dlsite-games / dlsite-media）聚合；每个范围对应一组 Library 筛选（新增 `kind=non-game`），计数一致性有单测。
+- `demo-connections`、`demo-tasks` 为页面级单例外部 store（`useSyncExternalStore`）：一个任务服务、一个计时器，任务按作品去重，取消后不再完成，刷新丢弃未完成任务；完成结果写入演示编辑存储的 `downloaded`（v1 增量字段，不清空既有修改）。连接状态只保存粗粒度状态到 localStorage，不含任何凭据。
+- 以上均为前端演示边界，不代表后端设计已落地。真实认证、会话存储、库同步、下载器与文件系统操作仍属 Phase 2 及以后，按 §9 的约束在后端实现。
+- 检查点 4 补充：`VITE_DEMO_MODE=false` 时来源连接与下载任务弹层不渲染任何演示状态（只说明“尚未接入”），首页聚合查询也不执行；首页范围切换期间的占位数据以 `data-ready=false` / `aria-busy` 标示，测试与性能计时以真实结果到位为准。
+
+## 10. Phase 2 检查点 1 实际落地（2026-10-30）
+契约见 [LOCAL_API.md](LOCAL_API.md)，运行见 [LOCAL_DEVELOPMENT.md](LOCAL_DEVELOPMENT.md)，与设计的差异见 [接入方案 §10](PHASE2_INTEGRATION_PLAN.md)。
+
+```text
+backend/app/
+  main.py            应用工厂：API + 静态托管 + 统一错误 + 不含敏感信息的请求日志
+  __main__.py        python -m app serve|check|init|seed-test
+  api/models.py      Pydantic 请求/响应契约
+  services/library.py  用例：行 → 契约对象；一次请求一个事务
+  domain/            首页聚合、文本规范化（纯函数）
+  repositories/works.py  全部 SQL；ORDINARY 可见性条件唯一定义处
+  db/                schema、engine、bootstrap（校验/备份/迁移/印记）、Alembic 迁移
+  core/              config、errors、security（请求边界）、credentials（凭据边界）
+  testing/synthetic.py  合成样本，只由 seed-test 命令调用
+frontend/src/lib/data/
+  workspace.ts       模式选择
+  api-client.ts      唯一的 HTTP 出口：错误分类、CSRF
+  real-source.ts     真实数据源（实现 LibrarySource）
+  hooks.ts           页面唯一入口；按模式分流，缓存键按模式隔离
+```
+
+- **已落地**：单一回环 FastAPI 服务托管 `frontend/dist`；SQLite（WAL、外键、CHECK、busy_timeout、显式事务）；SQLAlchemy Core + Alembic；迁移前在线备份；数据库 real/test 印记；服务端可见性；Host/Origin/CSRF 边界；Windows 凭据存储接口。
+- **表**：`library_meta`、`sources`、`source_accounts`（空）、`works`、`work_files`、`library_entries`、`personal_records`。来源数据与个人记录分表，同步代码写不到个人记录。
+- **未落地**：真实认证、同步、下载、解压、任务系统、私人空间、图片资产路由（封面现在只有合成样本的本地绘制与缺图占位）、Steam 适配器、观测表、收藏夹与分类规则。
+- **Demo**：仍是纯前端，不需要服务。其可见性过滤只作用于合成数据，真实模式的可见性只在服务端。
+
+## 11. Phase 2 检查点 2 实际落地（2026-10-31）
+```text
+backend/app/
+  adapters/dlsite/browser.py     隐藏浏览器进程（独立进程，stdin/stdout JSON 行）
+  adapters/dlsite/login_page.py  登录页状态判断（纯函数）
+  adapters/dlsite/login_host.py  服务侧：启动进程、读事件
+  adapters/dlsite/session.py     Cookie 过滤、编解码、有效性检查
+  core/session_vault.py          凭据分片（清单最后写、最先删，校验长度和哈希）
+  services/dlsite_auth.py        连接状态机：单一尝试、过期结果丢弃
+  services/dlsite_factory.py     按 profile 装配真实或测试部件
+  repositories/accounts.py       非敏感账号状态
+  testing/fake_dlsite.py         假平台，仅 test 配置
+```
+- **已落地**：登录、备用网页登录、取消、验证窗口、会话保存与恢复、重新验证、断开与清理重试、换号确认。迁移 `0002` 增加 `source_accounts.cleanup_pending`。
+- **未验证**：向真实站点提交后的全部行为，见[检查点 2 报告](PHASE2_CHECKPOINT2_REPORT.md)。
+- **设置**：`app_settings` 表（迁移 `0003`）保存下载文件夹；`services/folders.py` 校验，`adapters/system/folder_dialog.py` 在独立进程打开系统选择窗口。`source_accounts.account_alias` 保存打码账号。前端路由 `/settings`，顶部 `AccountMenu`。
+- **未落地**：作品同步、下载、解压、Steam。
+
+## 12. Phase 2 检查点 3 实际落地（2026-10-31）
+```text
+backend/app/
+  adapters/dlsite/library.py   Play 已购读取（固定地址）
+  adapters/dlsite/covers.py    封面获取与缓存（主机白名单、限大小、不跟跳转、不带会话）
+  domain/dlsite_works.py       响应 → 元数据，类型映射（纯函数）
+  services/dlsite_sync.py      同步任务：单任务、分批短事务、会话代次校验
+frontend/src/features/workspace/dlsite-sync.tsx
+```
+- 迁移 `0004`：`sync_jobs`、`source_accounts.last_synced_at`、`works.source_url`。
+- 封面路由 `GET /api/v1/works/{id}/cover` 先走普通可见性，缓存在数据目录 `cache/covers`，文件名是地址的哈希。
+- 作品库滚动时收起介绍、工具栏和顶栏（前端状态 + `:has()`）。
+- **未落地**：下载、解压、Steam、缓存清理。
+
+## 13. Phase 2 检查点 4 实际落地（2026-10-31）
+```text
+backend/app/
+  adapters/dlsite/downloads.py   下载方案与文件流：逐跳校验主机，地址不出模块
+  domain/download_names.py       文件名清理（纯函数）
+  services/downloads.py          持久化队列：有限并发、尝试号、提交边界、崩溃恢复
+  testing/fake_download_server.py 回环上的真实 HTTP 服务，只用于测试配置
+frontend/src/features/downloads/real-downloads.tsx
+```
+- 迁移 `0006`：`download_tasks`。`active_key` 唯一，保证一个文件只有一个进行中任务。
+- 文件先写 `<缓存>/<任务号>.part`，校验后移动到 `<作品文件夹>/<作品编号>/`，不覆盖。
+- 前端只轮询任务列表；进度变化不触碰作品库查询，只有完成时才刷新。
+- **未落地**：解压、安装、运行、Steam。
+
+## 14. Phase 2 检查点 5 实际落地（2026-10-31）
+```text
+backend/app/
+  adapters/system/archives.py  ZIP 与 7-Zip：列表、解压、路径语义、最终检查
+  adapters/dlsite/product.py   公开作品记录（不带会话）
+  services/extractions.py      解压任务：输入核对、暂存、提交、崩溃恢复
+  services/update_checks.py    每天一次的更新检查（复用同步）
+  services/gallery.py          介绍图：按需读取，保存一周，按序号取图
+  db/engine.py                 writing()：写事务一开始就取得写锁
+frontend/src/features/downloads/downloads-page.tsx  下载页与底部栏
+frontend/src/features/game-detail/work-gallery.tsx  介绍图
+```
+- 迁移 `0007`：`extract_tasks`、`download_tasks.flow_id`。`0008`：`works.upgraded_at`、`gallery_json`、`gallery_checked_at`、`download_tasks.source_upgraded_at`。
+- 7-Zip 是可选的外部程序，由用户安装，不随项目分发。
+- **未落地**：安装、运行、Steam。
+
+## 15. Phase 2 检查点 6 实际落地（2026-10-31）
+- `adapters/dlsite/store_page.py`：读公开作品页，白名单解析为块，不存 HTML。
+- `services/introductions.py`：按需读取、保存一周、失败保留旧内容。
+- 迁移 `0010`：`works.intro_json`、`intro_fetched_at`。
+- 前端 `features/game-detail/official-intro.tsx` 只渲染校验过的块。
+- **未落地**：视频内嵌播放。
+
+## 16. Phase 2 检查点 7 实际落地（2026-10-31）
+- `services/local_copies.py`、`domain/local_files.py`（候选程序，只看文件名）、`adapters/system/launcher.py`（参数列表，不经过 shell）。
+- 迁移 `0011`：`local_copies`。C8–C11 都基于它。
+
+## 17. Phase 2 检查点 8 实际落地（2026-10-31）
+- `services/library_scan.py`：只读文件夹名，后台任务，有预算。`adapters/system/volumes.py`：列出盘。测试配置下拿不到真实盘符。
+- 迁移 `0012`：`scan_roots`、`scan_jobs`、`scan_items`。
+
+## 18. Phase 2 检查点 9 实际落地（2026-10-31）
+- `services/game_updates.py`：备份并验证 → 下载 → 暂存解压 → 改名替换 → 迁入存档 → 等待确认 → 清理。每步先记录，崩溃时看磁盘恢复。
+- 迁移 `0013`：`save_configs`、`save_backups`、`game_updates`。备份在数据目录 `save-backups`。
+
+- `services/local_media.py`：在已关联副本内找媒体文件（不跟随链接，有数量上限，短期缓存），页面只用 ID。进度绑定文件版本（大小+修改时间）。迁移 `0014`：`media_progress`、`media_bookmarks`、`playlists`、`playlist_items`。
+- `lib/data/audio-session.ts`：页面树之外的单一音频会话，只由点击启动。
+
+- `services/reader.py`：把副本里的文件整理成册，压缩包原地读取，页面 ID 含内容版本。`domain/image_header.py`：读文件头判断类型和尺寸。迁移 `0015`：`reading_progress`、`reader_bookmarks`。
+- `features/reader/`：阅读器。PDF 用本地打包的 `pdfjs-dist`，按需加载，只渲染页面内容。
+
+- 迁移 `0016`：`scan_jobs.auto_linked`、`scan_jobs.batch_id`、`scan_items.declined`。`LibraryScanner.scan_automatically` 在启动和同步完成后运行，测试配置下没有盘，不做任何事。
+
+- `adapters/system/shell_files.py`：回收站和 `.lnk`，路径作为数据传给 Windows API，不经命令行。测试配置用 `testing/fake_shell.py`。`services/collections.py`：收藏。迁移 `0017`：`collections`、`collection_items`。`repositories/works.py`：“已安装”同时看下载状态和本地副本。
+
+- `adapters/google/`：官方 OAuth 桌面流程和 Drive 调用。`services/cloud_saves.py`：快照、队列、冲突判定、恢复。复用 C9 的存档配置和本地备份。`testing/fake_drive.py`：HTTP 层的假 Google，放在一个文件夹里，两个资料库可以共用。迁移 `0018`：`cloud_states`、`cloud_outbox`。C13 导出必须排除凭据和 `cloud-outbox`。
+
+- `domain/save_hints.py`：按游戏文件判断引擎和存档位置。`services/save_discovery.py`：游戏期间变化文件的查找，只看名字、时间和大小，结果只是建议。`adapters/system/registry.py`：只读写游戏自己在 `HKCU\\Software` 下的键，导出成稳定的 JSON，下游当普通存档文件处理。测试配置用假用户目录和文件版注册表。迁移 `0019`：`save_discoveries`。
+
+- `adapters/system/process_job.py`：用命名 Job 对象跟踪游戏及其子进程。`services/play_tracker.py`：session 和汇总，结束事件通知云存档和存档查找。迁移 `0020`：`play_sessions`，`source` 字段留给 Steam 统一。

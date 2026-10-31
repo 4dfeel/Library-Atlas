@@ -1,0 +1,192 @@
+import type { DemoSize, Game, GameStatus, Platform, Visibility, WorkKind } from './types';
+
+const featured = [
+  ['星穹观测站', 'ASTRAL OBSERVATORY', '探索'],
+  ['潮汐之后', 'AFTER THE TIDE', '冒险'],
+  ['赤沙行者', 'RED SAND PILGRIM', '角色扮演'],
+  ['月下花园', 'THE MOON GARDEN', '休闲'],
+  ['山间来信', 'LETTERS FROM THE ALPS', '模拟'],
+  ['雨幕之外', 'BEYOND THE RAIN', '解谜'],
+  ['浮岛纪元', 'AGE OF FLOATING ISLES', '冒险'],
+  ['深海回声', 'ECHOES OF THE DEEP', '探索'],
+  ['珊瑚圣殿', 'CORAL CATHEDRAL', '解谜'],
+  ['森林的低语', 'WHISPERS OF THE WOODS', '角色扮演'],
+  ['日曜遗迹', 'SOLAR RELICS', '策略'],
+  ['余烬王座', 'THRONE OF EMBERS', '动作'],
+  ['远方列车', 'THE DISTANT TRAIN', '模拟'],
+  ['极地信号', 'POLAR SIGNAL', '探索'],
+  ['薄暮之刃', 'TWILIGHT BLADE', '动作'],
+  ['植物档案馆', 'BOTANICAL ARCHIVE', '休闲'],
+  ['轨道拾荒者', 'ORBITAL SALVAGE', '策略'],
+  ['折纸之旅', 'PAPER CRANES', '解谜'],
+  ['沙丘疾行', 'DUNE RUNNER', '竞速'],
+  ['守灯人', 'THE LIGHTHOUSE KEEPER', '冒险'],
+  ['秋日神社', 'AUTUMN SHRINE', '休闲'],
+  ['星海鲸歌', 'SONG OF THE COSMIC WHALE', '探索'],
+  ['发条之城', 'CLOCKWORK CITY', '策略'],
+  ['风中的原野', 'MEADOW IN THE WIND', '模拟'],
+] as const;
+
+const words = [
+  '失落航线',
+  '琥珀之境',
+  '夜航日记',
+  '漫游者',
+  '晨雾回廊',
+  '银河边界',
+  '旧城往事',
+  '天空档案',
+  '银色旅途',
+  '远山回响',
+];
+const qualifiers = [
+  '终章',
+  '序曲',
+  '新世界',
+  '永恒回声',
+  '漫长的归途',
+  '重逢',
+  '未知领域',
+  'The Last Horizon',
+  'Beyond the Stars',
+  '遠い空の向こう',
+];
+const genres = [
+  '探索',
+  '冒险',
+  '角色扮演',
+  '休闲',
+  '模拟',
+  '解谜',
+  '策略',
+  '动作',
+  '竞速',
+] as const;
+const statuses: readonly GameStatus[] = ['unplayed', 'playing', 'completed', 'paused'];
+
+// Fictional makers only; none refer to a real studio or circle.
+const makers = [
+  'Atlas Original',
+  '北风工作室',
+  'Lumen Works',
+  '月影社',
+  'Paper Harbor',
+  '星屑工房',
+  'Quiet Orbit',
+  '灯塔制作组',
+] as const;
+const dlsiteKinds: readonly WorkKind[] = ['game', 'image', 'audio', 'video', 'game', 'other'];
+const kindGenres: Record<Exclude<WorkKind, 'game'>, readonly [string, string]> = {
+  image: ['插画集', '漫画'],
+  video: ['动画', '短片'],
+  audio: ['有声剧', '环境音'],
+  other: ['设定集', '原声集'],
+};
+
+/**
+ * Index-based so the seeded sequence stays unchanged. Featured art entries are
+ * Steam games; about a third of the rest are DLsite works of every kind. All
+ * synthetic and all-ages; nothing mirrors a real catalogue.
+ */
+function sourceFor(index: number): { platform: Platform; kind: WorkKind } {
+  if (index < 24 || index % 3 !== 2) return { platform: 'steam', kind: 'game' };
+  return { platform: 'dlsite', kind: dlsiteKinds[Math.floor(index / 3) % dlsiteKinds.length]! };
+}
+
+function seededRandom(seed: number): () => number {
+  let value = seed >>> 0;
+  return () => {
+    value += 0x6d2b79f5;
+    let mixed = Math.imul(value ^ (value >>> 15), 1 | value);
+    mixed ^= mixed + Math.imul(mixed ^ (mixed >>> 7), 61 | mixed);
+    return ((mixed ^ (mixed >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function visibilityFor(index: number): Visibility {
+  if (index < 24) return 'normal';
+  if (index % 97 === 0) return 'private';
+  if (index % 113 === 0) return 'hidden';
+  if (index % 151 === 0) return 'quarantined';
+  return 'normal';
+}
+
+/** Local synthetic fixtures only. No identifier refers to a Steam app or user. */
+export function generateDemoGames(size: DemoSize): readonly Game[] {
+  const random = seededRandom(0x41544c41);
+  return Array.from({ length: size }, (_, index): Game => {
+    const entry = featured[index];
+    const visibility = visibilityFor(index);
+    const status = statuses[Math.floor(random() * statuses.length)] ?? 'unplayed';
+    let title: string =
+      entry?.[0] ??
+      // Strides decorrelate the word cycle from the platform/kind cycle for variety.
+      `${words[(index * 3) % words.length]}：${qualifiers[(index * 7 + Math.floor(index / 10)) % qualifiers.length]} ${String(index + 1).padStart(4, '0')}`;
+    if (index === 28)
+      title =
+        '跨越星海的最后一封信：遠い銀河の向こうへ — A Journey Beyond the Infinite Horizon · 完整典藏纪念版';
+    if (index === 29)
+      title = 'TheLastObservatoryBeyondTheEndOfTheKnownUniverseCollectorsEditionWithoutAnySpaces';
+    if (visibility !== 'normal') title = `PRIVATE_SENTINEL_${visibility.toUpperCase()}_${index}`;
+    // Skewed like a real library: many short sessions, a few very long games.
+    const playtimeMinutes =
+      status === 'unplayed' ? 0 : Math.round(30 - Math.log(1 - random() * 0.9999) * 2_400);
+    const { platform, kind } = sourceFor(index);
+    const dlsite = platform === 'dlsite';
+    return {
+      id: `demo-${String(index + 1).padStart(5, '0')}`,
+      platform,
+      // Synthetic numbers. A DLsite work deliberately reuses the preceding Steam
+      // entry's number, proving identity is (platform, sourceId).
+      sourceId: String(200_000 + (dlsite ? index - 1 : index)),
+      kind,
+      maker: makers[index % makers.length]!,
+      releaseDate:
+        index % 41 === 13
+          ? null
+          : new Date(
+              Date.UTC(2015 + (index % 11), (index * 7) % 12, 1 + (index % 27)),
+            ).toISOString(),
+      title,
+      subtitle: entry?.[1] ?? `ATLAS ORIGINALS · VOL. ${String(index + 1).padStart(4, '0')}`,
+      genre:
+        kind === 'game'
+          ? (entry?.[2] ?? genres[index % genres.length] ?? '探索')
+          : kindGenres[kind][index % 2]!,
+      status,
+      installed: index < 7 || random() > 0.66,
+      // DLsite reports no usable play history; unknown stays null, never 0.
+      playtimeMinutes: dlsite || (index % 173 === 0 && index > 24) ? null : playtimeMinutes,
+      favorite: index === 0 || index === 3 || index === 7 || random() > 0.84,
+      visibility,
+      cover: {
+        kind: index < 24 ? 'art' : index % 11 === 2 ? 'missing' : 'procedural',
+        index: index < 24 ? index + 1 : index,
+      },
+      background:
+        index % 5 === 4
+          ? null
+          : `/demo/backdrops/backdrop-${String((index % 24) + 1).padStart(2, '0')}.svg`,
+      addedAt: new Date(Date.UTC(2026, 9, 30) - index * 86_400_000).toISOString(),
+      // Demo usage record. Some started DLsite works deliberately have none.
+      lastPlayedAt:
+        status === 'unplayed' || (dlsite && index % 4 === 1)
+          ? null
+          : // Minute-level spread across ~60 days, so recent lists are not ID-ordered ties.
+            new Date(Date.UTC(2026, 9, 30, 13) - ((index * 7_919) % 86_400) * 60_000).toISOString(),
+      capabilities: {
+        download: dlsite && index % 10 !== 7,
+        extract:
+          dlsite && index % 10 !== 7 && (kind === 'game' || kind === 'image' || kind === 'other'),
+        officialViewerOnly: dlsite && index % 10 === 7,
+      },
+      file: dlsite
+        ? {
+            version: `v1.${index % 4}`,
+            // Unknown size stays null; it is never shown as 0 B.
+            sizeBytes: index % 13 === 5 ? null : (40 + ((index * 7919) % 2600)) * 1_048_576,
+          }
+        : null,
+    };
+  });
+}
