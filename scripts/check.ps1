@@ -1,6 +1,6 @@
 param([switch]$WithBrowser)
 $ErrorActionPreference = 'Stop'
-Push-Location -LiteralPath (Join-Path $PSScriptRoot '..ackend')
+Push-Location -LiteralPath (Join-Path $PSScriptRoot '..\backend')
 try {
     $atlasPython = '.venv\Scripts\python.exe'
     if (-not (Test-Path -LiteralPath $atlasPython)) { throw 'Backend missing. Run scripts\setup-backend.cmd first.' }
