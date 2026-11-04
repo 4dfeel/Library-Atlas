@@ -2,6 +2,9 @@
 
 适用环境：Windows，Python 3.14.3（`.python-version`），Node 22.22.1。路径含中文或空格无需处理；脚本按自身位置解析路径。
 
+## 检查在哪里跑
+测试默认在本地跑。GitHub Actions 只手动触发：在仓库的 Actions 页面选择工作流，点 Run workflow。每次运行都会消耗账号的 Actions 额度。
+
 ## 安装
 ```bat
 scripts\setup-backend.cmd          :: 运行依赖，按 requirements.lock 校验哈希

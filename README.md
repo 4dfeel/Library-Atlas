@@ -61,3 +61,7 @@
 ## 参与开发
 
 见 [运行与开发说明](docs/LOCAL_DEVELOPMENT.md)。
+
+## 许可证
+
+[MIT](LICENSE)。
